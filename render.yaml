@@ -1,0 +1,26 @@
+# Exported from Render on 2025-06-10T21:42:54Z
+databases:
+- name: arbitragem-render
+  databaseName: arbitragem_render
+  user: arbitragem_render_user
+  plan: free
+  region: oregon
+  ipAllowList:
+  - source: 0.0.0.0/0
+    description: everywhere
+  postgresMajorVersion: "16"
+services:
+- type: web
+  name: robo-de-arbitragem
+  env: node
+  region: oregon
+  plan: free
+  branch: main
+  buildCommand: npm install && npm run build
+  startCommand: npm run start
+  envVars:
+  - key: DATABASE_URL
+    fromDatabase:
+      name: arbitragem-render
+      property: connectionString
+version: "1" 
