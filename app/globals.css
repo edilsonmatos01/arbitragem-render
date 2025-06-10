@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 13, 17, 23;
+  --background-end-rgb: 13, 17, 23;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-start-rgb));
+  /* Vamos usar as cores personalizadas definidas no tailwind.config.ts para melhor controle */
+  @apply bg-dark-bg text-gray-100;
+  /* Você pode adicionar estilos globais ao body aqui, se necessário */
+  /* Exemplo: background-color: #000; color: #fff; */
+} 

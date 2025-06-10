@@ -1,0 +1,23 @@
+// schema.prisma
+// Definição da tabela para histórico de spreads
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model SpreadHistory {
+  id           String   @id @default(cuid())
+  symbol       String
+  exchangeBuy  String
+  exchangeSell String
+  direction    String
+  spread       Float
+  timestamp    DateTime @default(now())
+
+  @@index([symbol, exchangeBuy, exchangeSell, direction])
+} 
