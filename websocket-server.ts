@@ -24,51 +24,49 @@ let clients: CustomWebSocket[] = []; // Usamos o tipo estendido
 export function startWebSocketServer(httpServer: Server) {
     const wss = new WebSocketServer({ server: httpServer });
 
-    wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
-        try {
-            const clientIp = req.socket.remoteAddress || req.headers['x-forwarded-for'];
-            clients.push(ws as CustomWebSocket);
-            console.log(`[WS Server] Cliente conectado: ${clientIp}. Total: ${clients.length}`);
+    wss.on('connection', (ws: CustomWebSocket, req: IncomingMessage) => {
+        ws.isAlive = true; // A conexão está viva ao ser estabelecida
 
-            if (Object.keys(marketPrices).length > 0) {
-                ws.send(JSON.stringify({ type: 'full_book', data: marketPrices }));
-            }
+        ws.on('pong', () => {
+          ws.isAlive = true; // O cliente respondeu ao nosso ping, então está vivo
+        });
+        
+        const clientIp = req.socket.remoteAddress || req.headers['x-forwarded-for'];
+        clients.push(ws);
+        console.log(`[WS Server] Cliente conectado: ${clientIp}. Total: ${clients.length}`);
 
-            ws.on('close', () => {
-                clients = clients.filter(c => c !== ws);
-                console.log(`[WS Server] Cliente desconectado: ${clientIp}. Total: ${clients.length}`);
-            });
-
-            ws.on('error', (error) => {
-                console.error(`[WS Server] Erro na conexão de ${clientIp}:`, error);
-            });
-
-        } catch (error) {
-            console.error('[WS Server] Erro crítico ao estabelecer conexão:', error);
-            ws.close();
+        if (Object.keys(marketPrices).length > 0) {
+            ws.send(JSON.stringify({ type: 'full_book', data: marketPrices }));
         }
+
+        ws.on('close', () => {
+            clients = clients.filter(c => c !== ws);
+            console.log(`[WS Server] Cliente desconectado: ${clientIp}. Total: ${clients.length}`);
+        });
     });
     
-    // Substitui o ping/pong complexo por um heartbeat de dados simples
-    const heartbeatInterval = setInterval(() => {
-        const heartbeatMessage = JSON.stringify({ type: 'heartbeat' });
-        clients.forEach(client => {
-            if (client.readyState === WebSocket.OPEN) {
-                client.send(heartbeatMessage, (error) => {
-                    if (error) {
-                        console.error('[WS Server] Erro ao enviar heartbeat para cliente. Removendo cliente.', error);
-                        clients = clients.filter(c => c !== client);
-                    }
-                });
+    // Intervalo para verificar conexões e mantê-las vivas
+    const interval = setInterval(() => {
+        wss.clients.forEach(client => {
+            const ws = client as CustomWebSocket;
+
+            // Se o cliente não respondeu ao PING do ciclo anterior, encerre.
+            if (ws.isAlive === false) {
+                console.log('[WS Server] Conexão inativa terminada.');
+                return ws.terminate();
             }
+
+            // Marque como inativo e envie um PING. A resposta 'pong' marcará como vivo novamente.
+            ws.isAlive = false; 
+            ws.ping(() => {}); // A função de callback vazia é necessária.
         });
-    }, 25000); // A cada 25 segundos para segurança extra
+    }, 30000); // A cada 30 segundos
 
     wss.on('close', () => {
-        clearInterval(heartbeatInterval);
+        clearInterval(interval); // Limpa o intervalo quando o servidor é fechado
     });
 
-    console.log(`Servidor WebSocket iniciado com heartbeat e anexado ao servidor HTTP.`);
+    console.log(`Servidor WebSocket iniciado e anexado ao servidor HTTP.`);
     startFeeds();
 }
 

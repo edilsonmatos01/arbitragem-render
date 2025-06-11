@@ -99,7 +99,7 @@ export default function ArbitrageTable() {
   const [amount, setAmount] = useState(100);
   const [spotExchange, setSpotExchange] = useState('gateio');
   const [futuresExchange, setFuturesExchange] = useState('mexc');
-  const [isPaused, setIsPaused] = useState(false);
+  const [isPaused, setIsPaused] = useState(true);
 
   // Novo estado para o ranking dinâmico
   const [rankedOpportunities, setRankedOpportunities] = useState<Opportunity[]>([]);
