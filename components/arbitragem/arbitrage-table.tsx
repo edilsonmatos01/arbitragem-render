@@ -2,6 +2,7 @@
 import { useCallback, useState, useEffect, useRef, useMemo } from "react";
 import { Play, RefreshCw, AlertTriangle, CheckCircle2, Clock } from 'lucide-react'; // Ícones
 import { useArbitrageWebSocket } from './useArbitrageWebSocket';
+import MaxSpreadCell from './MaxSpreadCell'; // Importar o novo componente
 
 const EXCHANGES = [
   { value: "gateio", label: "Gate.io" },
@@ -341,16 +342,16 @@ export default function ArbitrageTable() {
       <div className="bg-dark-card p-4 rounded-lg shadow">
         <h2 className="text-xl font-semibold text-white mb-4">Oportunidades Encontradas</h2>
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm text-left text-gray-300">
-            <thead className="bg-gray-700/50">
+          <table className="min-w-full divide-y divide-gray-700">
+            <thead className="bg-gray-800">
               <tr>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300 uppercase tracking-wider">Par</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300 uppercase tracking-wider">Compra</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300 uppercase tracking-wider">Venda</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300 uppercase tracking-wider">Spread Atual</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300 uppercase tracking-wider">Spread Máximo (24h)</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300 uppercase tracking-wider">Lucro (USD)</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300 uppercase tracking-wider">Ação</th>
+                <th scope="col" className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Par</th>
+                <th scope="col" className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Compra</th>
+                <th scope="col" className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Venda</th>
+                <th scope="col" className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Spread %</th>
+                <th scope="col" className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Spread Máximo (24h)</th>
+                <th scope="col" className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Lucro Estimado (USD)</th>
+                <th scope="col" className="py-3 px-6 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
@@ -361,30 +362,17 @@ export default function ArbitrageTable() {
               ) : (
                 rankedOpportunities.map((opportunity, index) => (
                   <tr key={index} className="hover:bg-gray-800 transition-colors duration-150">
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <div className="text-sm font-semibold text-white">{opportunity.symbol}</div>
-                      <div className="text-xs text-gray-400">{opportunity.tipo === 'inter' ? 'Inter-Exchange' : 'Intra-Exchange'}</div>
+                    <td className="py-4 px-6 whitespace-nowrap text-sm font-semibold">{opportunity.symbol}</td>
+                    <td className="py-4 px-6 whitespace-nowrap text-sm font-semibold">{opportunity.compraExchange}</td>
+                    <td className="py-4 px-6 whitespace-nowrap text-sm font-semibold">{opportunity.vendaExchange}</td>
+                    <td className={`py-4 px-6 whitespace-nowrap text-sm font-bold ${getSpreadDisplayClass(opportunity.spread)}`}>
+                      {opportunity.spread.toFixed(4)}%
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-300">
-                      <div>{opportunity.compraExchange}</div>
-                      <div>${formatPrice(opportunity.compraPreco)}</div>
+                    <td className="py-4 px-6 whitespace-nowrap text-sm">
+                      <MaxSpreadCell symbol={opportunity.symbol} />
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-300">
-                      <div>{opportunity.vendaExchange}</div>
-                      <div>${formatPrice(opportunity.vendaPreco)}</div>
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm">
-                      <div className={getSpreadDisplayClass(opportunity.spread)}>
-                        {opportunity.spread.toFixed(2)}%
-                      </div>
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-300">
-                      {opportunity.maxSpread24h ? `${opportunity.maxSpread24h.toFixed(4)}%` : 'N/A'}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-green-400">
-                      ${opportunity.lucroEstimado}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm">
+                    <td className="py-4 px-6 whitespace-nowrap text-sm">{calcularLucro(opportunity.spread)}</td>
+                    <td className="py-4 px-6 whitespace-nowrap text-center text-sm">
                       <button 
                         onClick={() => handleExecuteArbitrage(opportunity as Opportunity)}
                         className="flex items-center justify-center bg-custom-cyan hover:bg-custom-cyan/90 text-black font-bold py-2 px-3 rounded-md transition-colors text-sm"

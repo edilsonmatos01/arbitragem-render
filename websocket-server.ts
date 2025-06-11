@@ -258,15 +258,10 @@ async function findAndBroadcastArbitrage() {
         opportunities.sort((a, b) => b.profitPercentage - a.profitPercentage);
         
         for (const op of opportunities) {
+            // Apenas grava no banco e transmite a oportunidade.
+            // O frontend buscará as estatísticas separadamente.
             await recordSpread(op as ArbitrageOpportunity);
-            const stats = await getSpreadStats(op as ArbitrageOpportunity);
-            const opportunityWithStats: ArbitrageOpportunity = {
-                ...op,
-                spMax: stats.spMax ?? undefined,
-                spMin: stats.spMin ?? undefined,
-                crosses: stats.crosses,
-            };
-            broadcastOpportunity(opportunityWithStats);
+            broadcast({ ...op, type: 'arbitrage' });
         }
     }
 }
