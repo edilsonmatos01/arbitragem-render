@@ -23,4 +23,33 @@ services:
     fromDatabase:
       name: arbitragem-banco
       property: connectionString
+  - key: GATEIO_API_KEY
+    value: f7a050637951e0630232e6a27143070e
+  - key: GATEIO_SECRET
+    value: 432f123e7f8daca9c69b4a3a4429d21ad55d343e9e8601f35827104f38bda7b9
+  - key: MEXC_API_KEY
+    value: mx0vglku8FLgYzicLG
+  - key: MEXC_SECRET
+    value: 886652e4ca80420fb54d27df9bf9cd64
+- type: worker
+  name: tracker-de-arbitragem
+  env: node
+  region: oregon
+  plan: free
+  branch: main
+  buildCommand: npm install && npm run prisma:deploy && npm run build
+  startCommand: npm run start:tracker
+  envVars:
+  - key: DATABASE_URL
+    fromDatabase:
+      name: arbitragem-banco
+      property: connectionString
+  - key: GATEIO_API_KEY
+    value: f7a050637951e0630232e6a27143070e
+  - key: GATEIO_SECRET
+    value: 432f123e7f8daca9c69b4a3a4429d21ad55d343e9e8601f35827104f38bda7b9
+  - key: MEXC_API_KEY
+    value: mx0vglku8FLgYzicLG
+  - key: MEXC_SECRET
+    value: 886652e4ca80420fb54d27df9bf9cd64
 version: "1" 
