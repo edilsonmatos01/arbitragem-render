@@ -1,8 +1,8 @@
 # Exported from Render on 2025-06-10T21:42:54Z
 databases:
-- name: arbitragem-render
-  databaseName: arbitragem_render
-  user: arbitragem_render_user
+- name: arbitragem-banco
+  databaseName: arbitragem_banco
+  user: arbitragem_banco_user
   plan: free
   region: oregon
   ipAllowList:
@@ -21,6 +21,6 @@ services:
   envVars:
   - key: DATABASE_URL
     fromDatabase:
-      name: arbitragem-render
+      name: arbitragem-banco
       property: connectionString
 version: "1" 
