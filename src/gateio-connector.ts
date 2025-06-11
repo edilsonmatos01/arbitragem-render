@@ -1,6 +1,5 @@
 import WebSocket from 'ws';
 import fetch from 'node-fetch';
-import { MarketPrices } from './types';
 
 const GATEIO_WS_URL = 'wss://api.gateio.ws/ws/v4/';
 
@@ -12,19 +11,17 @@ export class GateIoConnector {
     private ws: WebSocket | null = null;
     private marketIdentifier: string; // Ex: 'GATEIO_SPOT' ou 'GATEIO_FUTURES'
     private marketType: 'spot' | 'futures';
-    private marketPrices: MarketPrices;
-    private broadcast: (data: any) => void;
+    private priceUpdateCallback: (data: any) => void;
     
     private subscriptionQueue: string[] = [];
     private isConnected: boolean = false;
     private pingInterval: NodeJS.Timeout | null = null;
     private reconnectTimeout: NodeJS.Timeout | null = null;
 
-    constructor(identifier: string, marketPrices: MarketPrices, broadcast: (data: any) => void) {
+    constructor(identifier: string, priceUpdateCallback: (data: any) => void) {
         this.marketIdentifier = identifier;
         this.marketType = identifier.includes('_SPOT') ? 'spot' : 'futures';
-        this.marketPrices = marketPrices;
-        this.broadcast = broadcast;
+        this.priceUpdateCallback = priceUpdateCallback;
         console.log(`[${this.marketIdentifier}] Conector inicializado.`);
     }
 
@@ -106,19 +103,13 @@ export class GateIoConnector {
         const priceData = {
             bestAsk: parseFloat(ticker.lowest_ask || ticker.ask1),
             bestBid: parseFloat(ticker.highest_bid || ticker.bid1),
-            timestamp: Date.now()
         };
 
         if (!priceData.bestAsk || !priceData.bestBid) return;
 
-        if (!this.marketPrices[this.marketIdentifier]) {
-            this.marketPrices[this.marketIdentifier] = {};
-        }
-        this.marketPrices[this.marketIdentifier][pair] = priceData;
-
-        // Emite o evento de atualização de preço para o frontend.
-        this.broadcast({
-            type: 'price-update',
+        // Chama o callback centralizado no servidor
+        this.priceUpdateCallback({
+            identifier: this.marketIdentifier,
             symbol: pair,
             marketType: this.marketType,
             bestAsk: priceData.bestAsk,

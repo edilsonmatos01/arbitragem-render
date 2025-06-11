@@ -1,5 +1,4 @@
 import WebSocket from 'ws';
-import { MarketPrices } from './types';
 
 const MEXC_FUTURES_WS_URL = 'wss://contract.mexc.com/edge';
 
@@ -7,21 +6,18 @@ export class MexcConnector {
     private ws: WebSocket | null = null;
     private subscriptions: Set<string> = new Set();
     private pingInterval: NodeJS.Timeout | null = null;
-    private marketPrices: MarketPrices;
-    private broadcast: (data: any) => void;
+    private priceUpdateCallback: (data: any) => void;
     private onConnectedCallback: (() => void) | null;
     private isConnected: boolean = false;
     private marketIdentifier: string;
 
     constructor(
         identifier: string, 
-        marketPrices: MarketPrices, 
-        broadcast: (data: any) => void,
+        priceUpdateCallback: (data: any) => void,
         onConnected: () => void
     ) {
         this.marketIdentifier = identifier;
-        this.marketPrices = marketPrices;
-        this.broadcast = broadcast;
+        this.priceUpdateCallback = priceUpdateCallback;
         this.onConnectedCallback = onConnected;
         console.log(`[${this.marketIdentifier}] Conector instanciado.`);
     }
@@ -73,19 +69,17 @@ export class MexcConnector {
             if (message.channel === 'push.ticker' && message.data) {
                 const ticker = message.data;
                 const pair = ticker.symbol.replace('_', '/');
-                if (!this.marketPrices[this.marketIdentifier]) {
-                    this.marketPrices[this.marketIdentifier] = {};
-                }
+
                 const priceData = {
                     bestAsk: parseFloat(ticker.ask1),
                     bestBid: parseFloat(ticker.bid1),
-                    timestamp: ticker.timestamp,
                 };
-                this.marketPrices[this.marketIdentifier][pair] = priceData;
 
-                // Emite o evento de atualização de preço para o frontend.
-                this.broadcast({
-                    type: 'price-update',
+                if (!priceData.bestAsk || !priceData.bestBid) return;
+
+                // Chama o callback centralizado no servidor
+                this.priceUpdateCallback({
+                    identifier: this.marketIdentifier,
                     symbol: pair,
                     marketType: 'futures',
                     bestAsk: priceData.bestAsk,

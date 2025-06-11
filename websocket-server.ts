@@ -21,6 +21,26 @@ interface CustomWebSocket extends WebSocket {
 
 let clients: CustomWebSocket[] = []; // Usamos o tipo estendido
 
+// ✅ Nova função centralizadora para lidar com todas as atualizações de preço
+function handlePriceUpdate(update: { type: string, symbol: string, marketType: string, bestAsk: number, bestBid: number, identifier: string }) {
+    const { identifier, symbol, priceData, marketType, bestAsk, bestBid } = update as any;
+
+    // 1. Atualiza o estado central de preços
+    if (!marketPrices[identifier]) {
+        marketPrices[identifier] = {};
+    }
+    marketPrices[identifier][symbol] = { bestAsk, bestBid, timestamp: Date.now() };
+    
+    // 2. Transmite a atualização para todos os clientes
+    broadcast({
+        type: 'price-update',
+        symbol,
+        marketType,
+        bestAsk,
+        bestBid
+    });
+}
+
 export function startWebSocketServer(httpServer: Server) {
     const wss = new WebSocketServer({ server: httpServer });
 
@@ -271,12 +291,12 @@ async function findAndBroadcastArbitrage() {
 
 async function startFeeds() {
     console.log("Iniciando feeds de dados...");
-    // Passa a função 'broadcast' para os conectores
-    const gateIoSpotConnector = new GateIoConnector('GATEIO_SPOT', marketPrices, broadcast);
-    const gateIoFuturesConnector = new GateIoConnector('GATEIO_FUTURES', marketPrices, broadcast);
     
-    const mexcConnector = new MexcConnector('MEXC_FUTURES', marketPrices, broadcast, () => {
-        // Usa os pares combinados da Gate.io para se inscrever na MEXC
+    // Passa a função 'handlePriceUpdate' para os conectores
+    const gateIoSpotConnector = new GateIoConnector('GATEIO_SPOT', handlePriceUpdate);
+    const gateIoFuturesConnector = new GateIoConnector('GATEIO_FUTURES', handlePriceUpdate);
+    
+    const mexcConnector = new MexcConnector('MEXC_FUTURES', handlePriceUpdate, () => {
         const mexcPairs = targetPairs.map(p => p.replace('/', '_'));
         mexcConnector.subscribe(mexcPairs);
     });
@@ -285,14 +305,13 @@ async function startFeeds() {
         const spotPairs = await gateIoSpotConnector.getTradablePairs();
         const futuresPairs = await gateIoFuturesConnector.getTradablePairs();
         
-        // Encontra os pares comuns entre os dois mercados da Gate.io
         targetPairs = spotPairs.filter(p => futuresPairs.includes(p));
         
-        console.log(`Encontrados ${targetPairs.length} pares em comum entre Gate.io (Spot) e Gate.io (Futures).`);
+        console.log(`Encontrados ${targetPairs.length} pares em comum.`);
         
         gateIoSpotConnector.connect(targetPairs);
         gateIoFuturesConnector.connect(targetPairs);
-        mexcConnector.connect(); 
+        mexcConnector.connect();
 
         console.log(`Monitorando ${targetPairs.length} pares.`);
         setInterval(findAndBroadcastArbitrage, 5000);
