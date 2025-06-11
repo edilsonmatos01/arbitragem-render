@@ -238,8 +238,11 @@ async function findAndBroadcastArbitrage() {
 async function startFeeds() {
     console.log("Iniciando feeds de dados...");
     const gateIoSpotConnector = new GateIoConnector('GATEIO_SPOT', marketPrices);
+    
+    // Passamos os pares formatados corretamente para a MEXC no callback de conexão
     const mexcConnector = new MexcConnector('MEXC_FUTURES', marketPrices, () => {
-        mexcConnector.subscribe(targetPairs);
+        const mexcPairs = targetPairs.map(p => p.replace('/', '_'));
+        mexcConnector.subscribe(mexcPairs);
     });
 
     try {
