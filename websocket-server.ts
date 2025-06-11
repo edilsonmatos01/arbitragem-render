@@ -219,33 +219,43 @@ async function findAndBroadcastArbitrage() {
                 if (buyPriceSpot <= 0 || sellPriceFutures <= 0 || buyPriceFutures <= 0 || sellPriceSpot <= 0) {
                     continue;
                 }
-                
+
+                // --- Verificação de compatibilidade de escala de preços ---
+
                 // Oportunidade: Comprar no Spot, Vender nos Futuros
-                const profitSpotToFutures = ((sellPriceFutures - buyPriceSpot) / buyPriceSpot) * 100;
-                if (profitSpotToFutures >= MIN_PROFIT_PERCENTAGE) {
-                    opportunities.push({
-                        type: 'arbitrage',
-                        baseSymbol: spotData.baseSymbol,
-                        profitPercentage: profitSpotToFutures,
-                        buyAt: { exchange: spotId, price: buyPriceSpot, marketType: 'spot', originalSymbol: spotSymbol },
-                        sellAt: { exchange: futuresId, price: sellPriceFutures, marketType: 'futures', originalSymbol: futuresSymbol },
-                        arbitrageType: 'spot_to_futures_inter',
-                        timestamp: Date.now()
-                    });
+                if (buyPriceSpot < sellPriceFutures * 100 && sellPriceFutures < buyPriceSpot * 100) {
+                    const profitSpotToFutures = ((sellPriceFutures - buyPriceSpot) / buyPriceSpot) * 100;
+                    if (profitSpotToFutures >= MIN_PROFIT_PERCENTAGE) {
+                        opportunities.push({
+                            type: 'arbitrage',
+                            baseSymbol: spotData.baseSymbol,
+                            profitPercentage: profitSpotToFutures,
+                            buyAt: { exchange: spotId, price: buyPriceSpot, marketType: 'spot', originalSymbol: spotSymbol },
+                            sellAt: { exchange: futuresId, price: sellPriceFutures, marketType: 'futures', originalSymbol: futuresSymbol },
+                            arbitrageType: 'spot_to_futures_inter',
+                            timestamp: Date.now()
+                        });
+                    }
+                } else {
+                    console.warn(`Par ignorado por escala incompatível (Spot->Futures): ${spotData.baseSymbol}. Preços: Spot=${buyPriceSpot}, Futures=${sellPriceFutures}`);
                 }
 
                 // Oportunidade: Comprar nos Futuros, Vender no Spot
-                const profitFuturesToSpot = ((sellPriceSpot - buyPriceFutures) / buyPriceFutures) * 100;
-                if (profitFuturesToSpot >= MIN_PROFIT_PERCENTAGE) {
-                    opportunities.push({
-                        type: 'arbitrage',
-                        baseSymbol: spotData.baseSymbol,
-                        profitPercentage: profitFuturesToSpot,
-                        buyAt: { exchange: futuresId, price: buyPriceFutures, marketType: 'futures', originalSymbol: futuresSymbol },
-                        sellAt: { exchange: spotId, price: sellPriceSpot, marketType: 'spot', originalSymbol: spotSymbol },
-                        arbitrageType: 'futures_to_spot_inter',
-                        timestamp: Date.now()
-                    });
+                if (buyPriceFutures < sellPriceSpot * 100 && sellPriceSpot < buyPriceFutures * 100) {
+                    const profitFuturesToSpot = ((sellPriceSpot - buyPriceFutures) / buyPriceFutures) * 100;
+                    if (profitFuturesToSpot >= MIN_PROFIT_PERCENTAGE) {
+                        opportunities.push({
+                            type: 'arbitrage',
+                            baseSymbol: spotData.baseSymbol,
+                            profitPercentage: profitFuturesToSpot,
+                            buyAt: { exchange: futuresId, price: buyPriceFutures, marketType: 'futures', originalSymbol: futuresSymbol },
+                            sellAt: { exchange: spotId, price: sellPriceSpot, marketType: 'spot', originalSymbol: spotSymbol },
+                            arbitrageType: 'futures_to_spot_inter',
+                            timestamp: Date.now()
+                        });
+                    }
+                } else {
+                    console.warn(`Par ignorado por escala incompatível (Futures->Spot): ${spotData.baseSymbol}. Preços: Futures=${buyPriceFutures}, Spot=${sellPriceSpot}`);
                 }
             }
         }
