@@ -40,6 +40,15 @@ export function useArbitrageWebSocket() {
   // após o desmonte, especialmente útil no Strict Mode do React.
   const isMounted = useRef(false);
 
+  const getWebSocketURL = () => {
+    if (typeof window === 'undefined') {
+      return ''; // Não faz nada se estiver no lado do servidor
+    }
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    return `${protocol}//${host}`;
+  };
+
   const connect = () => {
     // Limpa qualquer timeout de reconexão pendente
     if (reconnectTimeout.current) {
@@ -48,8 +57,11 @@ export function useArbitrageWebSocket() {
     // Previne novas conexões se já houver uma ou se o componente estiver desmontado.
     if (ws.current || !isMounted.current) return;
 
-    ws.current = new WebSocket('ws://localhost:8888');
-    console.log('[WS Hook] Tentando conectar ao servidor WebSocket...');
+    const wsURL = getWebSocketURL();
+    if (!wsURL) return; // Não tenta conectar se não houver URL (SSR)
+
+    ws.current = new WebSocket(wsURL);
+    console.log(`[WS Hook] Tentando conectar ao servidor WebSocket em ${wsURL}...`);
 
     ws.current.onopen = () => {
       console.log('[WS Hook] Conexão WebSocket estabelecida.');
