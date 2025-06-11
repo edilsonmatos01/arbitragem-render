@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "concurrently \"npm:start:next\" \"npm:dev:tracker\"",
     "build": "next build && npm run build:tracker",
-    "start": "concurrently \"npm:start:next\" \"npm:start:tracker\"",
+    "start": "next start",
     "start:next": "next start",
     "lint": "next lint",
     "dev:tracker": "ts-node-dev --respawn --transpile-only websocket-server.ts",
