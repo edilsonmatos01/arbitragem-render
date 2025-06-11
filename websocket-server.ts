@@ -14,12 +14,23 @@ const MIN_PROFIT_PERCENTAGE = 0.1;
 let marketPrices: MarketPrices = {};
 let targetPairs: string[] = [];
 
-let clients: WebSocket[] = [];
+// Estendemos a interface do WebSocket para adicionar nossa propriedade de controle
+interface CustomWebSocket extends WebSocket {
+  isAlive?: boolean;
+}
+
+let clients: CustomWebSocket[] = []; // Usamos o tipo estendido
 
 export function startWebSocketServer(httpServer: Server) {
     const wss = new WebSocketServer({ server: httpServer });
 
-    wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
+    wss.on('connection', (ws: CustomWebSocket, req: IncomingMessage) => {
+        ws.isAlive = true; // A conexão está viva ao ser estabelecida
+
+        ws.on('pong', () => {
+          ws.isAlive = true; // O cliente respondeu ao nosso ping, então está vivo
+        });
+        
         const clientIp = req.socket.remoteAddress || req.headers['x-forwarded-for'];
         clients.push(ws);
         console.log(`[WS Server] Cliente conectado: ${clientIp}. Total: ${clients.length}`);
@@ -32,6 +43,25 @@ export function startWebSocketServer(httpServer: Server) {
             clients = clients.filter(c => c !== ws);
             console.log(`[WS Server] Cliente desconectado: ${clientIp}. Total: ${clients.length}`);
         });
+    });
+    
+    // Intervalo para verificar conexões e mantê-las vivas
+    const interval = setInterval(() => {
+        wss.clients.forEach(client => {
+            const ws = client as CustomWebSocket;
+
+            if (ws.isAlive === false) {
+                console.log('[WS Server] Conexão inativa terminada.');
+                return ws.terminate();
+            }
+
+            ws.isAlive = false; // Presumimos que está inativa até que um 'pong' prove o contrário
+            ws.ping(() => {}); // Enviamos o ping para o cliente
+        });
+    }, 30000); // A cada 30 segundos
+
+    wss.on('close', () => {
+        clearInterval(interval); // Limpa o intervalo quando o servidor é fechado
     });
 
     console.log(`Servidor WebSocket iniciado e anexado ao servidor HTTP.`);
