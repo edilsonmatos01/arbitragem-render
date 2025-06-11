@@ -41,12 +41,21 @@ export function useArbitrageWebSocket() {
   const isMounted = useRef(false);
 
   const getWebSocketURL = () => {
-    if (typeof window === 'undefined') {
-      return ''; // Não faz nada se estiver no lado do servidor
+    // A URL agora é lida da variável de ambiente, que é definida no processo de build.
+    const wsURL = process.env.NEXT_PUBLIC_WEBSOCKET_URL;
+
+    if (!wsURL) {
+      console.error("A variável de ambiente NEXT_PUBLIC_WEBSOCKET_URL não está definida!");
+      // Em desenvolvimento, podemos ter um fallback para a configuração antiga
+      if (process.env.NODE_ENV === 'development') {
+        if (typeof window === 'undefined') return '';
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        return `${protocol}//${host}`;
+      }
+      return '';
     }
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    return `${protocol}//${host}`;
+    return wsURL;
   };
 
   const connect = () => {

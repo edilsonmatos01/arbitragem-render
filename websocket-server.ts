@@ -8,7 +8,7 @@ import { MarketPrices, ArbitrageOpportunity } from './src/types';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
-const PORT = process.env.PORT || 8888;
+const PORT = process.env.PORT || 10000;
 const MIN_PROFIT_PERCENTAGE = 0.1;
 
 let marketPrices: MarketPrices = {};
@@ -69,6 +69,40 @@ export function startWebSocketServer(httpServer: Server) {
     console.log(`Servidor WebSocket iniciado e anexado ao servidor HTTP.`);
     startFeeds();
 }
+
+// --- Início: Adição para Servidor Standalone ---
+
+// Esta função cria e inicia um servidor HTTP que usa a nossa lógica WebSocket.
+function initializeStandaloneServer() {
+    const httpServer = createServer((req, res) => {
+        // O servidor HTTP básico não fará nada além de fornecer uma base para o WebSocket.
+        // Podemos adicionar um endpoint de health check simples.
+        if (req.url === '/health') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'ok', message: 'WebSocket server is running' }));
+        } else {
+            res.writeHead(404);
+            res.end();
+        }
+    });
+
+    // Anexa a lógica do WebSocket ao nosso servidor HTTP.
+    startWebSocketServer(httpServer);
+
+    httpServer.listen(PORT, () => {
+        console.log(`[Servidor Standalone] Servidor HTTP e WebSocket escutando na porta ${PORT}`);
+    });
+}
+
+// Inicia o servidor standalone.
+// O `require.main === module` garante que este código só rode quando
+// o arquivo é executado diretamente (ex: `node dist/websocket-server.js`),
+// mas não quando é importado por outro arquivo (como o `server.js` em dev).
+if (require.main === module) {
+    initializeStandaloneServer();
+}
+
+// --- Fim: Adição para Servidor Standalone ---
 
 function broadcast(data: any) {
     const serializedData = JSON.stringify(data);
