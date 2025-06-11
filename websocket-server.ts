@@ -176,14 +176,14 @@ async function getSpreadStats(opportunity: ArbitrageOpportunity): Promise<{ spMa
     }
 }
 
-function getNormalizedData(symbol: string, price: number): { baseSymbol: string, normalizedPrice: number } {
+function getNormalizedData(symbol: string): { baseSymbol: string, factor: number } {
     const match = symbol.match(/^(\d+)(.+)$/);
     if (match) {
         const factor = parseInt(match[1], 10);
         const baseSymbol = match[2];
-        return { baseSymbol, normalizedPrice: price / factor };
+        return { baseSymbol, factor };
     }
-    return { baseSymbol: symbol, normalizedPrice: price };
+    return { baseSymbol: symbol, factor: 1 };
 }
 
 async function findAndBroadcastArbitrage() {
@@ -191,69 +191,66 @@ async function findAndBroadcastArbitrage() {
     const exchangeIdentifiers = Object.keys(marketPrices);
     if (exchangeIdentifiers.length < 2) return;
 
-    for (let i = 0; i < exchangeIdentifiers.length; i++) {
-        for (let j = i + 1; j < exchangeIdentifiers.length; j++) {
-            const idA = exchangeIdentifiers[i];
-            const idB = exchangeIdentifiers[j];
-            const pricesA = marketPrices[idA];
-            const pricesB = marketPrices[idB];
-            
-            const marketTypeA = idA.toUpperCase().includes('FUTURES') ? 'futures' : 'spot';
-            const marketTypeB = idB.toUpperCase().includes('FUTURES') ? 'futures' : 'spot';
+    for (const spotId of exchangeIdentifiers.filter(id => !id.toUpperCase().includes('FUTURES'))) {
+        const futuresId = exchangeIdentifiers.find(id => id.toUpperCase().includes('FUTURES'));
+        if (!futuresId) continue;
 
-            if (marketTypeA === marketTypeB) continue;
+        const spotPrices = marketPrices[spotId];
+        const futuresPrices = marketPrices[futuresId];
 
-            const spotId = marketTypeA === 'spot' ? idA : idB;
-            const futuresId = marketTypeA === 'futures' ? idA : idB;
-            const spotPrices = marketTypeA === 'spot' ? pricesA : pricesB;
-            const futuresPrices = marketTypeA === 'futures' ? pricesA : pricesB;
+        for (const spotSymbol in spotPrices) {
+            const spotData = getNormalizedData(spotSymbol);
             
-            for (const spotSymbol in spotPrices) {
-                const { baseSymbol: normalizedSpotSymbol, normalizedPrice: normalizedSpotAsk } = getNormalizedData(spotSymbol, spotPrices[spotSymbol].bestAsk);
+            const futuresSymbol = Object.keys(futuresPrices).find(fs => {
+                const futuresData = getNormalizedData(fs);
+                return futuresData.baseSymbol === spotData.baseSymbol;
+            });
+
+            if (futuresSymbol) {
+                const futuresData = getNormalizedData(futuresSymbol);
                 
-                const futuresSymbol = Object.keys(futuresPrices).find(fs => getNormalizedData(fs, 0).baseSymbol === normalizedSpotSymbol);
+                // Normaliza os preços para uma base comum antes de calcular
+                const buyPriceSpot = spotPrices[spotSymbol].bestAsk * (futuresData.factor / spotData.factor);
+                const sellPriceFutures = futuresPrices[futuresSymbol].bestBid;
+                
+                const buyPriceFutures = futuresPrices[futuresSymbol].bestAsk;
+                const sellPriceSpot = spotPrices[spotSymbol].bestBid * (futuresData.factor / spotData.factor);
 
-                if (futuresSymbol && futuresPrices[futuresSymbol]) {
-                    const { normalizedPrice: normalizedFuturesBid } = getNormalizedData(futuresSymbol, futuresPrices[futuresSymbol].bestBid);
-                    const { normalizedPrice: normalizedFuturesAsk } = getNormalizedData(futuresSymbol, futuresPrices[futuresSymbol].bestAsk);
-                    const { normalizedPrice: normalizedSpotBid } = getNormalizedData(spotSymbol, spotPrices[spotSymbol].bestBid);
+                if (buyPriceSpot <= 0 || sellPriceFutures <= 0 || buyPriceFutures <= 0 || sellPriceSpot <= 0) {
+                    continue;
+                }
+                
+                // Oportunidade: Comprar no Spot, Vender nos Futuros
+                const profitSpotToFutures = ((sellPriceFutures - buyPriceSpot) / buyPriceSpot) * 100;
+                if (profitSpotToFutures >= MIN_PROFIT_PERCENTAGE) {
+                    opportunities.push({
+                        type: 'arbitrage',
+                        baseSymbol: spotData.baseSymbol,
+                        profitPercentage: profitSpotToFutures,
+                        buyAt: { exchange: spotId, price: spotPrices[spotSymbol].bestAsk, marketType: 'spot', originalSymbol: spotSymbol },
+                        sellAt: { exchange: futuresId, price: futuresPrices[futuresSymbol].bestBid, marketType: 'futures', originalSymbol: futuresSymbol },
+                        arbitrageType: 'spot_to_futures_inter',
+                        timestamp: Date.now()
+                    });
+                }
 
-                    // Validação de Preços: Ignorar cálculo se algum preço for zero ou negativo.
-                    if (normalizedSpotAsk <= 0 || normalizedFuturesBid <= 0 || normalizedSpotBid <= 0 || normalizedFuturesAsk <= 0) {
-                        continue;
-                    }
-
-                    const profitSpotToFutures = ((normalizedFuturesBid - normalizedSpotAsk) / normalizedSpotAsk) * 100;
-
-                    if (profitSpotToFutures >= MIN_PROFIT_PERCENTAGE) {
-                        opportunities.push({
-                            type: 'arbitrage',
-                            baseSymbol: normalizedSpotSymbol,
-                            profitPercentage: profitSpotToFutures,
-                            buyAt: { exchange: spotId, price: spotPrices[spotSymbol].bestAsk, marketType: 'spot', originalSymbol: spotSymbol },
-                            sellAt: { exchange: futuresId, price: futuresPrices[futuresSymbol].bestBid, marketType: 'futures', originalSymbol: futuresSymbol },
-                            arbitrageType: 'spot_to_futures_inter',
-                            timestamp: Date.now()
-                        });
-                    }
-
-                    const profitFuturesToSpot = ((normalizedSpotBid - normalizedFuturesAsk) / normalizedFuturesAsk) * 100;
-                    if (profitFuturesToSpot >= MIN_PROFIT_PERCENTAGE) {
-                         opportunities.push({
-                            type: 'arbitrage',
-                            baseSymbol: normalizedSpotSymbol,
-                            profitPercentage: profitFuturesToSpot,
-                            buyAt: { exchange: futuresId, price: futuresPrices[futuresSymbol].bestAsk, marketType: 'futures', originalSymbol: futuresSymbol },
-                            sellAt: { exchange: spotId, price: spotPrices[spotSymbol].bestBid, marketType: 'spot', originalSymbol: spotSymbol },
-                            arbitrageType: 'futures_to_spot_inter',
-                            timestamp: Date.now()
-                        });
-                    }
+                // Oportunidade: Comprar nos Futuros, Vender no Spot
+                const profitFuturesToSpot = ((sellPriceSpot - buyPriceFutures) / buyPriceFutures) * 100;
+                if (profitFuturesToSpot >= MIN_PROFIT_PERCENTAGE) {
+                    opportunities.push({
+                        type: 'arbitrage',
+                        baseSymbol: spotData.baseSymbol,
+                        profitPercentage: profitFuturesToSpot,
+                        buyAt: { exchange: futuresId, price: futuresPrices[futuresSymbol].bestAsk, marketType: 'futures', originalSymbol: futuresSymbol },
+                        sellAt: { exchange: spotId, price: spotPrices[spotSymbol].bestBid, marketType: 'spot', originalSymbol: spotSymbol },
+                        arbitrageType: 'futures_to_spot_inter',
+                        timestamp: Date.now()
+                    });
                 }
             }
         }
     }
-
+    
     if (opportunities.length > 0) {
         opportunities.sort((a, b) => b.profitPercentage - a.profitPercentage);
         

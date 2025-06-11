@@ -361,10 +361,10 @@ export default function ArbitrageTable() {
                 <tr><td colSpan={8} className="text-center text-gray-400 py-8">Nenhuma oportunidade encontrada para os filtros selecionados.</td></tr>
               ) : (
                 rankedOpportunities.map((opportunity, index) => (
-                  <tr key={index} className="hover:bg-gray-800 transition-colors duration-150">
+                  <tr key={index} className="border-b border-gray-700 hover:bg-gray-800">
                     <td className="py-4 px-6 whitespace-nowrap text-sm font-semibold">{opportunity.symbol}</td>
-                    <td className="py-4 px-6 whitespace-nowrap text-sm font-semibold">{opportunity.compraExchange}</td>
-                    <td className="py-4 px-6 whitespace-nowrap text-sm font-semibold">{opportunity.vendaExchange}</td>
+                    <td className="py-4 px-6 whitespace-nowrap text-sm">{opportunity.compraExchange} <br /> <span className="font-bold">{formatPrice(opportunity.compraPreco)}</span></td>
+                    <td className="py-4 px-6 whitespace-nowrap text-sm">{opportunity.vendaExchange} <br /> <span className="font-bold">{formatPrice(opportunity.vendaPreco)}</span></td>
                     <td className={`py-4 px-6 whitespace-nowrap text-sm font-bold ${getSpreadDisplayClass(opportunity.spread)}`}>
                       {opportunity.spread.toFixed(4)}%
                     </td>
