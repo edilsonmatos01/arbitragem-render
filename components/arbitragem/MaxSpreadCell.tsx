@@ -61,7 +61,7 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
 
   return (
     <div className="flex flex-col">
-      <span className="font-bold text-green-400">{stats.spMax.toFixed(4)}%</span>
+      <span className="font-bold text-green-400">{stats.spMax.toFixed(2)}%</span>
       <span className="text-xs text-gray-500">({stats.crosses} ocorrências)</span>
     </div>
   );

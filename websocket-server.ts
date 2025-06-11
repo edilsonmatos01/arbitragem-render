@@ -227,8 +227,8 @@ async function findAndBroadcastArbitrage() {
                         type: 'arbitrage',
                         baseSymbol: spotData.baseSymbol,
                         profitPercentage: profitSpotToFutures,
-                        buyAt: { exchange: spotId, price: spotPrices[spotSymbol].bestAsk, marketType: 'spot', originalSymbol: spotSymbol },
-                        sellAt: { exchange: futuresId, price: futuresPrices[futuresSymbol].bestBid, marketType: 'futures', originalSymbol: futuresSymbol },
+                        buyAt: { exchange: spotId, price: buyPriceSpot, marketType: 'spot', originalSymbol: spotSymbol },
+                        sellAt: { exchange: futuresId, price: sellPriceFutures, marketType: 'futures', originalSymbol: futuresSymbol },
                         arbitrageType: 'spot_to_futures_inter',
                         timestamp: Date.now()
                     });
@@ -241,8 +241,8 @@ async function findAndBroadcastArbitrage() {
                         type: 'arbitrage',
                         baseSymbol: spotData.baseSymbol,
                         profitPercentage: profitFuturesToSpot,
-                        buyAt: { exchange: futuresId, price: futuresPrices[futuresSymbol].bestAsk, marketType: 'futures', originalSymbol: futuresSymbol },
-                        sellAt: { exchange: spotId, price: spotPrices[spotSymbol].bestBid, marketType: 'spot', originalSymbol: spotSymbol },
+                        buyAt: { exchange: futuresId, price: buyPriceFutures, marketType: 'futures', originalSymbol: futuresSymbol },
+                        sellAt: { exchange: spotId, price: sellPriceSpot, marketType: 'spot', originalSymbol: spotSymbol },
                         arbitrageType: 'futures_to_spot_inter',
                         timestamp: Date.now()
                     });

@@ -138,6 +138,9 @@ export default function ArbitrageTable() {
 
   const getSpreadDisplayClass = (spreadValue: number): string => {
     const absSpread = Math.abs(spreadValue);
+    if (absSpread > 1000) {
+      return 'text-yellow-400 border border-yellow-500 p-1 rounded';
+    }
     if (absSpread > 0.5) {
       return 'text-green-400';
     } else if (absSpread < 0.5) {
@@ -150,48 +153,24 @@ export default function ArbitrageTable() {
   useEffect(() => {
     if (isPaused) return;
 
-    // 1. Mapeia e pré-filtra as novas oportunidades recebidas
+    // 1. Mapeia as novas oportunidades recebidas do WebSocket
     const newOpportunities = opportunitiesRaw
       .map((opp): Opportunity | null => {
-        // A mesma lógica de mapeamento e normalização de antes
-        let compraPreco = opp.buyAt.price;
-        let vendaPreco = opp.sellAt.price;
-        const compraSymbol = opp.buyAt.originalSymbol || opp.baseSymbol;
-        const vendaSymbol = opp.sellAt.originalSymbol || opp.baseSymbol;
-
-        const getMultiplier = (symbol: string) => {
-          const match = symbol.match(/^(\d+)(.+)$/);
-          return match ? { factor: parseInt(match[1], 10), base: match[2].toUpperCase() } : { factor: 1, base: symbol.toUpperCase() };
-        };
-
-        const compraInfo = getMultiplier(compraSymbol);
-        const vendaInfo = getMultiplier(vendaSymbol);
-
-        if (compraInfo.base === vendaInfo.base && compraInfo.factor !== vendaInfo.factor) {
-          if (compraInfo.factor > vendaInfo.factor) {
-            compraPreco /= (compraInfo.factor / vendaInfo.factor);
-          } else {
-            vendaPreco /= (vendaInfo.factor / compraInfo.factor);
-          }
-        }
-
-        if (compraPreco <= 0) return null;
-        const spread = ((vendaPreco - compraPreco) / compraPreco) * 100;
-        const isSpotBuy = opp.arbitrageType.startsWith('spot_');
+        // Confia nos dados do backend, sem recálculo de spread ou normalização de preços.
+        if (opp.buyAt.price <= 0) return null;
 
         const newOpp: Opportunity = {
           symbol: opp.baseSymbol,
           compraExchange: `${opp.buyAt.exchange} (${opp.buyAt.marketType})`,
           vendaExchange: `${opp.sellAt.exchange} (${opp.sellAt.marketType})`,
-          compraPreco,
-          vendaPreco,
-          spread,
-          lucroEstimado: ((spread / 100) * amount).toFixed(2),
+          compraPreco: opp.buyAt.price,
+          vendaPreco: opp.sellAt.price,
+          spread: opp.profitPercentage,
+          lucroEstimado: ((opp.profitPercentage / 100) * amount).toFixed(2),
           status: 'available',
           tipo: opp.buyAt.exchange !== opp.sellAt.exchange ? 'inter' : 'intra',
-          directionApi: isSpotBuy ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT',
-          fundingRateApi: opp.sellAt.fundingRate || opp.buyAt.fundingRate || '',
-          maxSpread24h: opp.maxSpread24h || null,
+          directionApi: opp.arbitrageType.startsWith('spot_') ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT',
+          maxSpread24h: null, // Será preenchido pelo MaxSpreadCell
         };
         return newOpp;
       })
@@ -366,7 +345,7 @@ export default function ArbitrageTable() {
                     <td className="py-4 px-6 whitespace-nowrap text-sm">{opportunity.compraExchange} <br /> <span className="font-bold">{formatPrice(opportunity.compraPreco)}</span></td>
                     <td className="py-4 px-6 whitespace-nowrap text-sm">{opportunity.vendaExchange} <br /> <span className="font-bold">{formatPrice(opportunity.vendaPreco)}</span></td>
                     <td className={`py-4 px-6 whitespace-nowrap text-sm font-bold ${getSpreadDisplayClass(opportunity.spread)}`}>
-                      {opportunity.spread.toFixed(4)}%
+                      {opportunity.spread.toFixed(2)}%
                     </td>
                     <td className="py-4 px-6 whitespace-nowrap text-sm">
                       <MaxSpreadCell symbol={opportunity.symbol} />
