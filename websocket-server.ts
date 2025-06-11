@@ -50,13 +50,15 @@ export function startWebSocketServer(httpServer: Server) {
         wss.clients.forEach(client => {
             const ws = client as CustomWebSocket;
 
+            // Se o cliente não respondeu ao PING do ciclo anterior, encerre.
             if (ws.isAlive === false) {
                 console.log('[WS Server] Conexão inativa terminada.');
                 return ws.terminate();
             }
 
-            ws.isAlive = false; // Presumimos que está inativa até que um 'pong' prove o contrário
-            ws.ping(() => {}); // Enviamos o ping para o cliente
+            // Marque como inativo e envie um PING. A resposta 'pong' marcará como vivo novamente.
+            ws.isAlive = false; 
+            ws.ping(() => {}); // A função de callback vazia é necessária.
         });
     }, 30000); // A cada 30 segundos
 
