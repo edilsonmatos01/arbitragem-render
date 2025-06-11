@@ -1,17 +1,17 @@
 import { NextResponse } from 'next/server';
 import ccxt, { Balances } from 'ccxt';
 
-const API_KEY = process.env.GATEIO_API_KEY!;
-const API_SECRET = process.env.GATEIO_API_SECRET!;
-
 export async function GET() {
   try {
     const exchange = new ccxt.gateio({
-      apiKey: API_KEY,
-      secret: API_SECRET,
+      apiKey: process.env.GATEIO_API_KEY,
+      secret: process.env.GATEIO_API_SECRET,
+      options: {
+        defaultType: 'spot',
+      },
     });
 
-    const balanceData: Balances = await exchange.fetchBalance();
+    const balanceData: Balances = await exchange.fetchBalance({ type: 'spot' });
 
     const balances = Object.entries(balanceData.total)
       .filter(([, totalAmount]) => typeof totalAmount === 'number' && totalAmount > 0)

@@ -15,8 +15,11 @@ interface CustomBalance {
 export async function GET() {
   try {
     const exchange = new ccxt.mexc({
-      apiKey: API_KEY,
-      secret: API_SECRET,
+      apiKey: process.env.MEXC_API_KEY,
+      secret: process.env.MEXC_API_SECRET,
+      options: {
+        defaultType: 'spot',
+      },
     });
 
     // A MEXC pode precisar que a v1 da API seja habilitada para fetchBalance em algumas contas
