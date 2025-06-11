@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"npm:start:next\" \"npm:dev:tracker\"",
+    "dev": "node server.js",
     "build": "next build && npm run build:tracker",
-    "start": "next start",
+    "start": "NODE_ENV=production node server.js",
     "start:next": "next start",
     "lint": "next lint",
     "dev:tracker": "ts-node-dev --respawn --transpile-only websocket-server.ts",

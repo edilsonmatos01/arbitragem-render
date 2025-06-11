@@ -1,7 +1,7 @@
 require('dotenv').config();
 
 import { WebSocket, WebSocketServer } from 'ws';
-import { createServer } from 'http';
+import { createServer, IncomingMessage, Server } from 'http';
 import { GateIoConnector } from './src/gateio-connector';
 import { MexcConnector } from './src/mexc-connector';
 import { MarketPrices, ArbitrageOpportunity } from './src/types';
@@ -14,25 +14,29 @@ const MIN_PROFIT_PERCENTAGE = 0.1;
 let marketPrices: MarketPrices = {};
 let targetPairs: string[] = [];
 
-const server = createServer();
-const wss = new WebSocketServer({ server });
-
 let clients: WebSocket[] = [];
 
-wss.on('connection', (ws, req) => {
-    const clientIp = req.socket.remoteAddress || req.headers['x-forwarded-for'];
-    clients.push(ws);
-    console.log(`[WS Server] Cliente conectado: ${clientIp}. Total: ${clients.length}`);
+export function startWebSocketServer(httpServer: Server) {
+    const wss = new WebSocketServer({ server: httpServer });
 
-    if (Object.keys(marketPrices).length > 0) {
-        ws.send(JSON.stringify({ type: 'full_book', data: marketPrices }));
-    }
+    wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
+        const clientIp = req.socket.remoteAddress || req.headers['x-forwarded-for'];
+        clients.push(ws);
+        console.log(`[WS Server] Cliente conectado: ${clientIp}. Total: ${clients.length}`);
 
-    ws.on('close', () => {
-        clients = clients.filter(c => c !== ws);
-        console.log(`[WS Server] Cliente desconectado: ${clientIp}. Total: ${clients.length}`);
+        if (Object.keys(marketPrices).length > 0) {
+            ws.send(JSON.stringify({ type: 'full_book', data: marketPrices }));
+        }
+
+        ws.on('close', () => {
+            clients = clients.filter(c => c !== ws);
+            console.log(`[WS Server] Cliente desconectado: ${clientIp}. Total: ${clients.length}`);
+        });
     });
-});
+
+    console.log(`Servidor WebSocket iniciado e anexado ao servidor HTTP.`);
+    startFeeds();
+}
 
 function broadcast(data: any) {
     const serializedData = JSON.stringify(data);
@@ -221,8 +225,3 @@ async function startFeeds() {
         console.error("Erro fatal ao iniciar os feeds:", error);
     }
 }
-
-server.listen(PORT, () => {
-    console.log(`Servidor WebSocket rodando na porta ${PORT}`);
-    startFeeds();
-});
