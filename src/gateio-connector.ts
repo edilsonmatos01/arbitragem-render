@@ -13,16 +13,18 @@ export class GateIoConnector {
     private marketIdentifier: string; // Ex: 'GATEIO_SPOT' ou 'GATEIO_FUTURES'
     private marketType: 'spot' | 'futures';
     private marketPrices: MarketPrices;
+    private broadcast: (data: any) => void;
     
     private subscriptionQueue: string[] = [];
     private isConnected: boolean = false;
     private pingInterval: NodeJS.Timeout | null = null;
     private reconnectTimeout: NodeJS.Timeout | null = null;
 
-    constructor(identifier: string, marketPrices: MarketPrices) {
+    constructor(identifier: string, marketPrices: MarketPrices, broadcast: (data: any) => void) {
         this.marketIdentifier = identifier;
         this.marketType = identifier.includes('_SPOT') ? 'spot' : 'futures';
         this.marketPrices = marketPrices;
+        this.broadcast = broadcast;
         console.log(`[${this.marketIdentifier}] Conector inicializado.`);
     }
 
@@ -113,6 +115,15 @@ export class GateIoConnector {
             this.marketPrices[this.marketIdentifier] = {};
         }
         this.marketPrices[this.marketIdentifier][pair] = priceData;
+
+        // Emite o evento de atualização de preço para o frontend.
+        this.broadcast({
+            type: 'price-update',
+            symbol: pair,
+            marketType: this.marketType,
+            bestAsk: priceData.bestAsk,
+            bestBid: priceData.bestBid,
+        });
     }
 
     private processSubscriptionQueue(): void {

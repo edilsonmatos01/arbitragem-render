@@ -32,8 +32,18 @@ interface ArbitrageOpportunity {
   maxSpread24h?: number;
 }
 
+interface LivePrices {
+    [symbol: string]: {
+        [marketType: string]: {
+            bestAsk: number;
+            bestBid: number;
+        }
+    }
+}
+
 export function useArbitrageWebSocket() {
   const [opportunities, setOpportunities] = useState<ArbitrageOpportunity[]>([]);
+  const [livePrices, setLivePrices] = useState<LivePrices>({});
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
   // Ref para rastrear se o componente está montado e evitar ações assíncronas
@@ -80,8 +90,19 @@ export function useArbitrageWebSocket() {
       if (!isMounted.current) return;
       try {
         const message = JSON.parse(event.data);
+        
         if (message.type === 'arbitrage') {
           setOpportunities((prev) => [message, ...prev.slice(0, 99)]);
+        }
+        if (message.type === 'price-update') {
+            const { symbol, marketType, bestAsk, bestBid } = message;
+            setLivePrices(prev => ({
+                ...prev,
+                [symbol]: {
+                    ...prev[symbol],
+                    [marketType]: { bestAsk, bestBid }
+                }
+            }));
         }
       } catch (error) {
         console.error('[WS Hook] Erro ao processar mensagem do WebSocket:', error);
@@ -122,5 +143,5 @@ export function useArbitrageWebSocket() {
     };
   }, []);
 
-  return opportunities;
+  return { opportunities, livePrices };
 } 

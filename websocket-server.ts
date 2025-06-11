@@ -271,22 +271,30 @@ async function findAndBroadcastArbitrage() {
 
 async function startFeeds() {
     console.log("Iniciando feeds de dados...");
-    const gateIoSpotConnector = new GateIoConnector('GATEIO_SPOT', marketPrices);
+    // Passa a função 'broadcast' para os conectores
+    const gateIoSpotConnector = new GateIoConnector('GATEIO_SPOT', marketPrices, broadcast);
+    const gateIoFuturesConnector = new GateIoConnector('GATEIO_FUTURES', marketPrices, broadcast);
     
-    // Passamos os pares formatados corretamente para a MEXC no callback de conexão
-    const mexcConnector = new MexcConnector('MEXC_FUTURES', marketPrices, () => {
+    const mexcConnector = new MexcConnector('MEXC_FUTURES', marketPrices, broadcast, () => {
+        // Usa os pares combinados da Gate.io para se inscrever na MEXC
         const mexcPairs = targetPairs.map(p => p.replace('/', '_'));
         mexcConnector.subscribe(mexcPairs);
     });
 
     try {
-        targetPairs = await gateIoSpotConnector.getTradablePairs();
-        console.log(`Gate.io: Encontrados ${targetPairs.length} pares SPOT negociáveis.`);
+        const spotPairs = await gateIoSpotConnector.getTradablePairs();
+        const futuresPairs = await gateIoFuturesConnector.getTradablePairs();
+        
+        // Encontra os pares comuns entre os dois mercados da Gate.io
+        targetPairs = spotPairs.filter(p => futuresPairs.includes(p));
+        
+        console.log(`Encontrados ${targetPairs.length} pares em comum entre Gate.io (Spot) e Gate.io (Futures).`);
         
         gateIoSpotConnector.connect(targetPairs);
-        mexcConnector.connect();
+        gateIoFuturesConnector.connect(targetPairs);
+        mexcConnector.connect(); 
 
-        console.log(`Monitorando ${targetPairs.length} pares em Gate.io (Spot) e MEXC (Futures).`);
+        console.log(`Monitorando ${targetPairs.length} pares.`);
         setInterval(findAndBroadcastArbitrage, 5000);
     } catch (error) {
         console.error("Erro fatal ao iniciar os feeds:", error);

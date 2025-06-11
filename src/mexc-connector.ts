@@ -8,13 +8,20 @@ export class MexcConnector {
     private subscriptions: Set<string> = new Set();
     private pingInterval: NodeJS.Timeout | null = null;
     private marketPrices: MarketPrices;
+    private broadcast: (data: any) => void;
     private onConnectedCallback: (() => void) | null;
     private isConnected: boolean = false;
     private marketIdentifier: string;
 
-    constructor(identifier: string, marketPrices: MarketPrices, onConnected: () => void) {
+    constructor(
+        identifier: string, 
+        marketPrices: MarketPrices, 
+        broadcast: (data: any) => void,
+        onConnected: () => void
+    ) {
         this.marketIdentifier = identifier;
         this.marketPrices = marketPrices;
+        this.broadcast = broadcast;
         this.onConnectedCallback = onConnected;
         console.log(`[${this.marketIdentifier}] Conector instanciado.`);
     }
@@ -69,11 +76,21 @@ export class MexcConnector {
                 if (!this.marketPrices[this.marketIdentifier]) {
                     this.marketPrices[this.marketIdentifier] = {};
                 }
-                this.marketPrices[this.marketIdentifier][pair] = {
+                const priceData = {
                     bestAsk: parseFloat(ticker.ask1),
                     bestBid: parseFloat(ticker.bid1),
                     timestamp: ticker.timestamp,
                 };
+                this.marketPrices[this.marketIdentifier][pair] = priceData;
+
+                // Emite o evento de atualização de preço para o frontend.
+                this.broadcast({
+                    type: 'price-update',
+                    symbol: pair,
+                    marketType: 'futures',
+                    bestAsk: priceData.bestAsk,
+                    bestBid: priceData.bestBid,
+                });
             }
         } catch (error) {
             console.error(`[${this.marketIdentifier}] Erro ao processar mensagem:`, error);

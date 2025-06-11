@@ -3,6 +3,7 @@ import { useCallback, useState, useEffect, useRef, useMemo } from "react";
 import { Play, RefreshCw, AlertTriangle, CheckCircle2, Clock } from 'lucide-react'; // Ícones
 import { useArbitrageWebSocket } from './useArbitrageWebSocket';
 import MaxSpreadCell from './MaxSpreadCell'; // Importar o novo componente
+import React from 'react';
 
 const EXCHANGES = [
   { value: "gateio", label: "Gate.io" },
@@ -93,6 +94,50 @@ function getTrackerParams(opportunity: Opportunity): {
 
 const POLLING_INTERVAL_MS = 5000; // Intervalo de polling: 5 segundos
 
+// ✅ 6. A renderização deve ser otimizada com React.memo
+const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSpreadDisplayClass, calcularLucro, handleExecuteArbitrage }: any) => {
+    
+    // ✅ 4. Na renderização de cada linha da tabela, ao exibir os preços:
+    const getLivePrice = (originalPrice: number, marketTypeStr: string, side: 'buy' | 'sell') => {
+        const liveData = livePrices[opportunity.symbol];
+        if (!liveData) return originalPrice;
+
+        const marketType = marketTypeStr.toLowerCase().includes('spot') ? 'spot' : 'futures';
+        
+        if (liveData[marketType]) {
+            return side === 'buy' ? liveData[marketType].bestAsk : liveData[marketType].bestBid;
+        }
+        return originalPrice;
+    };
+
+    const compraPreco = getLivePrice(opportunity.compraPreco, opportunity.compraExchange, 'buy');
+    const vendaPreco = getLivePrice(opportunity.vendaPreco, opportunity.vendaExchange, 'sell');
+
+    return (
+        <tr className="border-b border-gray-700 hover:bg-gray-800">
+            <td className="py-4 px-6 whitespace-nowrap text-sm font-semibold">{opportunity.symbol}</td>
+            <td className="py-4 px-6 whitespace-nowrap text-sm">{opportunity.compraExchange} <br /> <span className="font-bold">{formatPrice(compraPreco)}</span></td>
+            <td className="py-4 px-6 whitespace-nowrap text-sm">{opportunity.vendaExchange} <br /> <span className="font-bold">{formatPrice(vendaPreco)}</span></td>
+            <td className={`py-4 px-6 whitespace-nowrap text-sm font-bold ${getSpreadDisplayClass(opportunity.spread)}`}>
+              {opportunity.spread.toFixed(2)}%
+            </td>
+            <td className="py-4 px-6 whitespace-nowrap text-sm">
+              <MaxSpreadCell symbol={opportunity.symbol} />
+            </td>
+            <td className="py-4 px-6 whitespace-nowrap text-sm">{calcularLucro(opportunity.spread)}</td>
+            <td className="py-4 px-6 whitespace-nowrap text-center text-sm">
+              <button 
+                onClick={() => handleExecuteArbitrage(opportunity as Opportunity)}
+                className="flex items-center justify-center bg-custom-cyan hover:bg-custom-cyan/90 text-black font-bold py-2 px-3 rounded-md transition-colors text-sm"
+              >
+                <Play className="h-4 w-4" />
+              </button>
+            </td>
+        </tr>
+    );
+});
+OpportunityRow.displayName = 'OpportunityRow';
+
 export default function ArbitrageTable() {
   const [arbitrageType, setArbitrageType] = useState<'intra'|'inter'>('inter');
   const [direction, setDirection] = useState<'SPOT_TO_FUTURES' | 'FUTURES_TO_SPOT' | 'ALL'>('ALL');
@@ -105,7 +150,8 @@ export default function ArbitrageTable() {
   // Novo estado para o ranking dinâmico
   const [rankedOpportunities, setRankedOpportunities] = useState<Opportunity[]>([]);
   
-  const opportunitiesRaw = useArbitrageWebSocket();
+  // 1. Obter livePrices do hook
+  const { opportunities: opportunitiesRaw, livePrices } = useArbitrageWebSocket();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string|null>(null);
   const [successMessage, setSuccessMessage] = useState<string|null>(null);
@@ -339,27 +385,16 @@ export default function ArbitrageTable() {
               ) : rankedOpportunities.length === 0 && !error ? (
                 <tr><td colSpan={8} className="text-center text-gray-400 py-8">Nenhuma oportunidade encontrada para os filtros selecionados.</td></tr>
               ) : (
-                rankedOpportunities.map((opportunity, index) => (
-                  <tr key={index} className="border-b border-gray-700 hover:bg-gray-800">
-                    <td className="py-4 px-6 whitespace-nowrap text-sm font-semibold">{opportunity.symbol}</td>
-                    <td className="py-4 px-6 whitespace-nowrap text-sm">{opportunity.compraExchange} <br /> <span className="font-bold">{formatPrice(opportunity.compraPreco)}</span></td>
-                    <td className="py-4 px-6 whitespace-nowrap text-sm">{opportunity.vendaExchange} <br /> <span className="font-bold">{formatPrice(opportunity.vendaPreco)}</span></td>
-                    <td className={`py-4 px-6 whitespace-nowrap text-sm font-bold ${getSpreadDisplayClass(opportunity.spread)}`}>
-                      {opportunity.spread.toFixed(2)}%
-                    </td>
-                    <td className="py-4 px-6 whitespace-nowrap text-sm">
-                      <MaxSpreadCell symbol={opportunity.symbol} />
-                    </td>
-                    <td className="py-4 px-6 whitespace-nowrap text-sm">{calcularLucro(opportunity.spread)}</td>
-                    <td className="py-4 px-6 whitespace-nowrap text-center text-sm">
-                      <button 
-                        onClick={() => handleExecuteArbitrage(opportunity as Opportunity)}
-                        className="flex items-center justify-center bg-custom-cyan hover:bg-custom-cyan/90 text-black font-bold py-2 px-3 rounded-md transition-colors text-sm"
-                      >
-                        <Play className="h-4 w-4" />
-                      </button>
-                    </td>
-                  </tr>
+                rankedOpportunities.map((opportunity) => (
+                  <OpportunityRow 
+                    key={`${opportunity.symbol}-${opportunity.directionApi}`} 
+                    opportunity={opportunity}
+                    livePrices={livePrices}
+                    formatPrice={formatPrice}
+                    getSpreadDisplayClass={getSpreadDisplayClass}
+                    calcularLucro={calcularLucro}
+                    handleExecuteArbitrage={handleExecuteArbitrage}
+                  />
                 ))
               )}
             </tbody>
