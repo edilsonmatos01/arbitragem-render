@@ -1,6 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { LineChart as ChartIcon } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import SpreadHistoryChart from './SpreadHistoryChart'; // Importando o componente do gráfico
 
 interface MaxSpreadCellProps {
   symbol: string;
@@ -18,6 +27,7 @@ const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutos
 export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
   const [stats, setStats] = useState<SpreadStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -60,9 +70,26 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
   }
 
   return (
-    <div className="flex flex-col">
-      <span className="font-bold text-green-400">{stats.spMax.toFixed(2)}%</span>
-      <span className="text-xs text-gray-500">({stats.crosses} ocorrências)</span>
+    <div className="flex items-center justify-between">
+      <div className="flex flex-col">
+        <span className="font-bold text-green-400">{stats.spMax.toFixed(2)}%</span>
+        <span className="text-xs text-gray-500">({stats.crosses} ocorrências)</span>
+      </div>
+      
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogTrigger asChild>
+          <button className="ml-2 p-1 text-gray-400 hover:text-white transition-colors">
+            <ChartIcon className="h-5 w-5" />
+          </button>
+        </DialogTrigger>
+        <DialogContent className="max-w-3xl bg-dark-card border-gray-700 text-white">
+          <DialogHeader>
+            <DialogTitle>Histórico de Spread para {symbol}</DialogTitle>
+          </DialogHeader>
+          {/* Renderiza o gráfico apenas se o modal estiver aberto */}
+          {isModalOpen && <SpreadHistoryChart symbol={symbol} />}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 
