@@ -20,10 +20,10 @@ export async function GET(req: NextRequest) {
         timestamp: {
           gte: twentyFourHoursAgo,
         },
-        // Adicionando filtros para garantir que estamos pegando os dados corretos
-        exchangeBuy: 'gate',
+        // Correção: Alinhando os valores com o que é salvo pelo websocket-server
+        exchangeBuy: 'gateio',
         exchangeSell: 'mexc',
-        direction: 'spot-futures',
+        direction: 'spot_to_futures',
       },
       orderBy: {
         timestamp: 'asc',
