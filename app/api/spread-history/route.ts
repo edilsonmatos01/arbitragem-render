@@ -36,22 +36,22 @@ export async function GET(req: NextRequest) {
 
     // Lógica de agregação para intervalos de 30 minutos
     const thirtyMinutesInMs = 30 * 60 * 1000;
-    const aggregatedData: { [key: number]: { totalSpread: number; count: number } } = {};
+    // A estrutura agora armazena o spread máximo para cada balde de tempo.
+    const aggregatedData: { [key: number]: number } = {};
 
     for (const record of rawHistory) {
       const bucketTimestamp = Math.floor(record.timestamp.getTime() / thirtyMinutesInMs) * thirtyMinutesInMs;
       
-      if (!aggregatedData[bucketTimestamp]) {
-        aggregatedData[bucketTimestamp] = { totalSpread: 0, count: 0 };
+      // Se o balde não existir, ou se o spread do registro atual for maior
+      // que o máximo já armazenado para esse balde, atualize-o.
+      if (!aggregatedData[bucketTimestamp] || record.spread > aggregatedData[bucketTimestamp]) {
+        aggregatedData[bucketTimestamp] = record.spread;
       }
-      
-      aggregatedData[bucketTimestamp].totalSpread += record.spread;
-      aggregatedData[bucketTimestamp].count += 1;
     }
 
-    const formattedHistory = Object.entries(aggregatedData).map(([timestamp, data]) => ({
+    const formattedHistory = Object.entries(aggregatedData).map(([timestamp, maxSpread]) => ({
       timestamp: new Date(parseInt(timestamp)).toISOString(),
-      spread: data.totalSpread / data.count,
+      spread: maxSpread, // Agora o valor do spread é o máximo do intervalo
     }));
 
     return NextResponse.json(formattedHistory);
