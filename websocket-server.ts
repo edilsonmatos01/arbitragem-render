@@ -207,7 +207,7 @@ function getNormalizedData(symbol: string): { baseSymbol: string, factor: number
 }
 
 async function findAndBroadcastArbitrage() {
-    const opportunities: Omit<ArbitrageOpportunity, 'spMax' | 'spMin' | 'crosses'>[] = [];
+    // Não precisamos mais de um array local, processaremos uma a uma
     const exchangeIdentifiers = Object.keys(marketPrices);
     if (exchangeIdentifiers.length < 2) return;
 
@@ -229,7 +229,6 @@ async function findAndBroadcastArbitrage() {
             if (futuresSymbol) {
                 const futuresData = getNormalizedData(futuresSymbol);
                 
-                // Normaliza os preços para uma base comum antes de calcular
                 const buyPriceSpot = spotPrices[spotSymbol].bestAsk * (futuresData.factor / spotData.factor);
                 const sellPriceFutures = futuresPrices[futuresSymbol].bestBid;
                 
@@ -240,51 +239,44 @@ async function findAndBroadcastArbitrage() {
                     continue;
                 }
                 
-                // --- Filtro de Sanidade e Spread (Spot -> Futures) ---
                 const ratioSpotToFutures = sellPriceFutures > buyPriceSpot ? sellPriceFutures / buyPriceSpot : buyPriceSpot / sellPriceFutures;
-                if (ratioSpotToFutures <= 20) { // 1. Verifica a compatibilidade de escala de preço
+                if (ratioSpotToFutures <= 20) {
                     const spread = ((sellPriceFutures - buyPriceSpot) / buyPriceSpot) * 100;
-                    if (spread >= 0.1 && spread <= 10) { // 2. Filtra o spread para o range de confiança
-                        opportunities.push({
+                    if (spread >= 0.1 && spread <= 10) {
+                        const opportunity: ArbitrageOpportunity = {
                             type: 'arbitrage',
                             baseSymbol: spotData.baseSymbol,
+                            buyAt: { exchange: spotId.split('_')[0], marketType: 'spot', price: buyPriceSpot },
+                            sellAt: { exchange: futuresId.split('_')[0], marketType: 'futures', price: sellPriceFutures },
+                            arbitrageType: 'spot_to_futures',
                             profitPercentage: spread,
-                            buyAt: { exchange: spotId, price: buyPriceSpot, marketType: 'spot', originalSymbol: spotSymbol },
-                            sellAt: { exchange: futuresId, price: sellPriceFutures, marketType: 'futures', originalSymbol: futuresSymbol },
-                            arbitrageType: 'spot_to_futures_inter',
                             timestamp: Date.now()
-                        });
+                        };
+                        // Agora chamamos as duas funções para cada oportunidade
+                        await recordSpread(opportunity);
+                        broadcastOpportunity(opportunity);
                     }
                 }
                 
-                // --- Filtro de Sanidade e Spread (Futures -> Spot) ---
                 const ratioFuturesToSpot = sellPriceSpot > buyPriceFutures ? sellPriceSpot / buyPriceFutures : buyPriceFutures / sellPriceSpot;
-                if (ratioFuturesToSpot <= 20) { // 1. Verifica a compatibilidade de escala de preço
+                if (ratioFuturesToSpot <= 20) {
                     const spread = ((sellPriceSpot - buyPriceFutures) / buyPriceFutures) * 100;
-                    if (spread >= 0.1 && spread <= 10) { // 2. Filtra o spread para o range de confiança
-                        opportunities.push({
+                    if (spread >= 0.1 && spread <= 10) {
+                        const opportunity: ArbitrageOpportunity = {
                             type: 'arbitrage',
                             baseSymbol: spotData.baseSymbol,
+                            buyAt: { exchange: futuresId.split('_')[0], marketType: 'futures', price: buyPriceFutures },
+                            sellAt: { exchange: spotId.split('_')[0], marketType: 'spot', price: sellPriceSpot },
+                            arbitrageType: 'futures_to_spot',
                             profitPercentage: spread,
-                            buyAt: { exchange: futuresId, price: buyPriceFutures, marketType: 'futures', originalSymbol: futuresSymbol },
-                            sellAt: { exchange: spotId, price: sellPriceSpot, marketType: 'spot', originalSymbol: spotSymbol },
-                            arbitrageType: 'futures_to_spot_inter',
                             timestamp: Date.now()
-                        });
+                        };
+                        // E aqui também
+                        await recordSpread(opportunity);
+                        broadcastOpportunity(opportunity);
                     }
                 }
             }
-        }
-    }
-    
-    if (opportunities.length > 0) {
-        opportunities.sort((a, b) => b.profitPercentage - a.profitPercentage);
-        
-        for (const op of opportunities) {
-            // Apenas grava no banco e transmite a oportunidade.
-            // O frontend buscará as estatísticas separadamente.
-            await recordSpread(op as ArbitrageOpportunity);
-            broadcast({ ...op, type: 'arbitrage' });
         }
     }
 }
