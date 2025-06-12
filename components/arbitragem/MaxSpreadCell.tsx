@@ -31,7 +31,6 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
 
   useEffect(() => {
     const fetchStats = async () => {
-      // Verifica o cache primeiro
       const cached = cache.get(symbol);
       if (cached && (Date.now() - cached.timestamp < CACHE_DURATION_MS)) {
         setStats(cached.data);
@@ -39,7 +38,6 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
         return;
       }
 
-      // Se não estiver no cache ou o cache estiver expirado, busca na API
       setIsLoading(true);
       try {
         const response = await fetch(`/api/spreads/${encodeURIComponent(symbol)}/max`);
@@ -48,17 +46,17 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
         }
         const data: SpreadStats = await response.json();
         
-        // Garante que o spread está em porcentagem
-        if (data.spMax !== null && data.spMax < 1) {
-          data.spMax *= 100;
+        // Se não houver dados suficientes, mostra N/D
+        if (data.spMax === null || data.crosses < 2) {
+          setStats({ spMax: null, crosses: data.crosses });
+        } else {
+          setStats(data);
         }
         
-        setStats(data);
-        // Armazena no cache
         cache.set(symbol, { data, timestamp: Date.now() });
       } catch (error) {
         console.error(`Erro ao buscar spread máximo para ${symbol}:`, error);
-        setStats(null); // Limpa em caso de erro
+        setStats(null);
       } finally {
         setIsLoading(false);
       }
@@ -71,15 +69,15 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
     return <span className="text-gray-500">Carregando...</span>;
   }
 
-  if (!stats || stats.spMax === null) {
-    return <span className="text-gray-400">N/A</span>;
+  if (!stats || stats.spMax === null || stats.crosses < 2) {
+    return <span className="text-gray-400">N/D</span>;
   }
 
   return (
     <div className="flex items-center justify-between">
       <div className="flex flex-col">
         <span className="font-bold text-green-400">{stats.spMax.toFixed(2)}%</span>
-        <span className="text-xs text-gray-500">({stats.crosses} ocorrências)</span>
+        <span className="text-xs text-gray-500">({stats.crosses} registros)</span>
       </div>
       
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>

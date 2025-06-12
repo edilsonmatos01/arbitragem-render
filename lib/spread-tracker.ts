@@ -9,25 +9,26 @@ interface SpreadSample {
   exchangeBuy: string
   exchangeSell: string
   direction: 'spot-to-future' | 'future-to-spot'
-  spread: number // This should be the raw spread value (e.g., 0.005 for 0.5%)
+  spread: number // Valor em porcentagem (ex: 1.5 para 1.5%)
 }
 
 export async function recordSpread(sample: SpreadSample): Promise<void> {
   try {
+    // Garante que o spread está em porcentagem
+    const spreadValue = Math.abs(sample.spread);
+    
     await prisma.spreadHistory.create({
       data: {
         symbol: sample.symbol,
         exchangeBuy: sample.exchangeBuy,
         exchangeSell: sample.exchangeSell,
         direction: sample.direction,
-        spread: sample.spread, // raw spread value
+        spread: spreadValue,
         timestamp: new Date()
       }
-    })
-    // console.log('Spread recorded:', sample);
+    });
   } catch (error) {
     console.error("Error recording spread:", error);
-    // Consider more robust error handling or re-throwing if needed
   }
 }
 
@@ -48,20 +49,18 @@ export async function getAverageSpread24h(
         direction,
         timestamp: { gte: since }
       },
-      select: { // Only select the spread field for efficiency
+      select: {
         spread: true
       }
     })
 
-    if (records.length === 0) return null
+    if (records.length < 2) return null;
 
-    const average =
-      records.reduce((sum: number, r: { spread: number }) => sum + r.spread, 0) / records.length
-
-    return parseFloat(average.toFixed(8)); // Using more precision for average
+    const average = records.reduce((sum, r) => sum + r.spread, 0) / records.length;
+    return parseFloat(average.toFixed(2));
   } catch (error) {
     console.error("Error getting average spread:", error);
-    return null; // Or re-throw
+    return null;
   }
 }
 

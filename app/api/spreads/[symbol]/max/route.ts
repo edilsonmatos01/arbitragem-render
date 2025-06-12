@@ -28,14 +28,17 @@ export async function GET(
       },
     });
 
-    if (records.length === 0) {
+    if (records.length < 2) {
       return NextResponse.json({ spMax: null, crosses: 0 });
     }
 
     const spreads = records.map(r => r.spread);
     const maxSpread = Math.max(...spreads);
 
-    return NextResponse.json({ spMax: maxSpread, crosses: records.length });
+    return NextResponse.json({
+      spMax: maxSpread,
+      crosses: records.length
+    });
 
   } catch (error) {
     console.error(`Erro ao buscar estatísticas para o símbolo ${symbol}:`, error);
