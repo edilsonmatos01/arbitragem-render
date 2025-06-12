@@ -72,7 +72,7 @@ export async function GET() {
         // Oportunidade 1: Comprar Spot, Vender Futuros (Spot -> Futuros)
         // Queremos que futuresBidPrice (o que recebemos vendendo futuros) seja maior que spotAskPrice (o que pagamos comprando spot)
         if (spotAskPrice && futuresBidPrice && spotAskPrice > 0 && futuresBidPrice > 0) {
-          const percentDiffSpotToFutures = (futuresBidPrice - spotAskPrice) / spotAskPrice;
+          const percentDiffSpotToFutures = ((futuresBidPrice - spotAskPrice) / spotAskPrice) * 100;
           
           if (percentDiffSpotToFutures > 0) { // Só registrar se for uma oportunidade lucrativa (antes de taxas)
             const opportunity = {
@@ -99,7 +99,7 @@ export async function GET() {
         // Oportunidade 2: Comprar Futuros, Vender Spot (Futuros -> Spot)
         // Queremos que spotBidPrice (o que recebemos vendendo spot) seja maior que futuresAskPrice (o que pagamos comprando futuros)
         if (futuresAskPrice && spotBidPrice && futuresAskPrice > 0 && spotBidPrice > 0) {
-          const percentDiffFuturesToSpot = (spotBidPrice - futuresAskPrice) / futuresAskPrice;
+          const percentDiffFuturesToSpot = ((spotBidPrice - futuresAskPrice) / futuresAskPrice) * 100;
 
           if (percentDiffFuturesToSpot > 0) { // Só registrar se for uma oportunidade lucrativa (antes de taxas)
             const opportunity = {
@@ -107,7 +107,7 @@ export async function GET() {
               spotPrice: spotBidPrice.toString(),        // Preço de venda spot
               futuresPrice: futuresAskPrice.toString(),    // Preço de compra futuros
               direction: 'FUTURES_TO_SPOT',
-              fundingRate: fundingRate, // Taxa de financiamento ainda é relevante
+              fundingRate: fundingRate,
               percentDiff: percentDiffFuturesToSpot.toString(),
             };
             opportunities.push(opportunity);

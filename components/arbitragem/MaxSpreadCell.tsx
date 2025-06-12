@@ -47,6 +47,12 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
           throw new Error('Falha ao buscar dados');
         }
         const data: SpreadStats = await response.json();
+        
+        // Garante que o spread está em porcentagem
+        if (data.spMax !== null && data.spMax < 1) {
+          data.spMax *= 100;
+        }
+        
         setStats(data);
         // Armazena no cache
         cache.set(symbol, { data, timestamp: Date.now() });

@@ -118,7 +118,7 @@ export async function GET() {
 
         // Oportunidade 1: Comprar Spot, Vender Futuros (Spot -> Futuros)
         if (spotAskPrice && futuresBidPrice && spotAskPrice > 0 && futuresBidPrice > 0) {
-          const percentDiffSpotToFutures = (futuresBidPrice - spotAskPrice) / spotAskPrice;
+          const percentDiffSpotToFutures = ((futuresBidPrice - spotAskPrice) / spotAskPrice) * 100;
           
           if (percentDiffSpotToFutures > 0) {
             const opportunity = {
@@ -144,7 +144,7 @@ export async function GET() {
 
         // Oportunidade 2: Comprar Futuros, Vender Spot (Futuros -> Spot)
         if (futuresAskPrice && spotBidPrice && futuresAskPrice > 0 && spotBidPrice > 0) {
-          const percentDiffFuturesToSpot = (spotBidPrice - futuresAskPrice) / futuresAskPrice;
+          const percentDiffFuturesToSpot = ((spotBidPrice - futuresAskPrice) / futuresAskPrice) * 100;
 
           if (percentDiffFuturesToSpot > 0) {
             const opportunity = {

@@ -126,8 +126,8 @@ export async function POST(req: Request) {
             return null;
         }
 
-        const percentDiff = (futuresBid - spotAsk) / spotAsk;
-        const calculatedApiDirection = percentDiff > 0 ? 'FUTURES_TO_SPOT' : 'SPOT_TO_FUTURES';
+        const percentDiff = ((futuresBid - spotAsk) / spotAsk) * 100;
+        const calculatedApiDirection = percentDiff > 0 ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT';
 
         if (requestedDirection && requestedDirection !== 'ALL' && calculatedApiDirection !== requestedDirection) {
           return null;
