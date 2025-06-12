@@ -20,10 +20,9 @@ export async function GET(req: NextRequest) {
         timestamp: {
           gte: twentyFourHoursAgo,
         },
-        // Correção: Alinhando os valores com o que é salvo pelo websocket-server
-        exchangeBuy: 'gateio',
-        exchangeSell: 'mexc',
-        direction: 'spot_to_futures',
+        // FILTROS REMOVIDOS: A busca agora é mais genérica e robusta.
+        // Pega todos os registros para o símbolo nas últimas 24h,
+        // independentemente da exchange ou direção.
       },
       orderBy: {
         timestamp: 'asc',
