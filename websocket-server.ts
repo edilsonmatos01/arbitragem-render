@@ -233,46 +233,26 @@ async function findAndBroadcastArbitrage() {
                 // Normalizar preços se necessário
                 const normalizedSpotMid = spotMidPrice * (futuresData.factor / spotData.factor);
                 
-                // Log dos preços normalizados para debug
-                console.log(`[DEBUG] Preços normalizados para ${spotSymbol}:`, {
-                    spotMidPrice,
-                    futuresMidPrice,
-                    normalizedSpotMid,
-                    factor: futuresData.factor / spotData.factor
-                });
-                
                 // Fórmula simplificada: Spread (%) = ((Futures - Spot) / Spot) × 100
                 const spread = ((futuresMidPrice - normalizedSpotMid) / normalizedSpotMid) * 100;
                 
                 // Só processar se o spread for significativo e dentro dos limites
                 if (Math.abs(spread) >= 0.1 && Math.abs(spread) <= 10) {
-                    if (spread > 0) {
-                        // Futures > Spot: Comprar Spot, Vender Futures
-                        const opportunity: ArbitrageOpportunity = {
-                            type: 'arbitrage',
-                            baseSymbol: spotData.baseSymbol,
-                            buyAt: { exchange: spotId.split('_')[0], marketType: 'spot', price: normalizedSpotMid },
-                            sellAt: { exchange: futuresId.split('_')[0], marketType: 'futures', price: futuresMidPrice },
-                            arbitrageType: 'spot_to_futures',
-                            profitPercentage: spread,
-                            timestamp: Date.now()
-                        };
-                        await recordSpread(opportunity);
-                        broadcastOpportunity(opportunity);
-                    } else {
-                        // Spot > Futures: Comprar Futures, Vender Spot
-                        const opportunity: ArbitrageOpportunity = {
-                            type: 'arbitrage',
-                            baseSymbol: spotData.baseSymbol,
-                            buyAt: { exchange: futuresId.split('_')[0], marketType: 'futures', price: futuresMidPrice },
-                            sellAt: { exchange: spotId.split('_')[0], marketType: 'spot', price: normalizedSpotMid },
-                            arbitrageType: 'futures_to_spot',
-                            profitPercentage: Math.abs(spread),
-                            timestamp: Date.now()
-                        };
-                        await recordSpread(opportunity);
-                        broadcastOpportunity(opportunity);
-                    }
+                    const opportunity: ArbitrageOpportunity = {
+                        type: 'arbitrage',
+                        baseSymbol: spotData.baseSymbol,
+                        buyAt: spread > 0 
+                            ? { exchange: spotId.split('_')[0], marketType: 'spot', price: normalizedSpotMid }
+                            : { exchange: futuresId.split('_')[0], marketType: 'futures', price: futuresMidPrice },
+                        sellAt: spread > 0
+                            ? { exchange: futuresId.split('_')[0], marketType: 'futures', price: futuresMidPrice }
+                            : { exchange: spotId.split('_')[0], marketType: 'spot', price: normalizedSpotMid },
+                        arbitrageType: spread > 0 ? 'spot_to_futures' : 'futures_to_spot',
+                        profitPercentage: spread, // Não usar Math.abs aqui
+                        timestamp: Date.now()
+                    };
+                    await recordSpread(opportunity);
+                    broadcastOpportunity(opportunity);
                 } else {
                     console.log(`[DEBUG] Spread fora dos limites para ${spotSymbol}: ${spread.toFixed(2)}%`);
                 }

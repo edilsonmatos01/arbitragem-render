@@ -119,7 +119,7 @@ const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSp
             <td className="py-4 px-6 whitespace-nowrap text-sm">{opportunity.compraExchange} <br /> <span className="font-bold">{formatPrice(compraPreco)}</span></td>
             <td className="py-4 px-6 whitespace-nowrap text-sm">{opportunity.vendaExchange} <br /> <span className="font-bold">{formatPrice(vendaPreco)}</span></td>
             <td className={`py-4 px-6 whitespace-nowrap text-sm font-bold ${getSpreadDisplayClass(opportunity.spread)}`}>
-              {opportunity.spread.toFixed(2)}%
+              {opportunity.spread < 0 ? '-' : ''}{Math.abs(opportunity.spread).toFixed(2)}%
             </td>
             <td className="py-4 px-6 whitespace-nowrap text-sm">
               <MaxSpreadCell symbol={opportunity.symbol} />
