@@ -147,13 +147,20 @@ function broadcastOpportunity(opportunity: ArbitrageOpportunity) {
 }
 
 async function recordSpread(opportunity: ArbitrageOpportunity) {
+    console.log(`[DEBUG] Tentando gravar spread para ${opportunity.baseSymbol}:`, {
+        profitPercentage: opportunity.profitPercentage,
+        buyAt: opportunity.buyAt,
+        sellAt: opportunity.sellAt,
+        arbitrageType: opportunity.arbitrageType
+    });
+
     if (typeof opportunity.profitPercentage !== 'number' || !isFinite(opportunity.profitPercentage)) {
         console.warn(`[Prisma] Spread inválido para ${opportunity.baseSymbol}, gravação ignorada.`);
         return;
     }
 
     try {
-        await prisma.spreadHistory.create({
+        const result = await prisma.spreadHistory.create({
             data: {
                 symbol: opportunity.baseSymbol,
                 exchangeBuy: opportunity.buyAt.exchange,
@@ -162,6 +169,7 @@ async function recordSpread(opportunity: ArbitrageOpportunity) {
                 spread: opportunity.profitPercentage,
             },
         });
+        console.log(`[DEBUG] Spread gravado com sucesso para ${opportunity.baseSymbol}:`, result);
     } catch (error) {
         console.error(`[Prisma] Erro ao gravar spread para ${opportunity.baseSymbol}:`, error);
     }
@@ -236,6 +244,12 @@ async function findAndBroadcastArbitrage() {
                 const sellPriceSpot = spotPrices[spotSymbol].bestBid * (futuresData.factor / spotData.factor);
 
                 if (buyPriceSpot <= 0 || sellPriceFutures <= 0 || buyPriceFutures <= 0 || sellPriceSpot <= 0) {
+                    console.warn(`[DEBUG] Preços inválidos para ${spotSymbol}:`, {
+                        buyPriceSpot,
+                        sellPriceFutures,
+                        buyPriceFutures,
+                        sellPriceSpot
+                    });
                     continue;
                 }
                 
@@ -245,6 +259,14 @@ async function findAndBroadcastArbitrage() {
                 
                 // Normalizar preços se necessário
                 const normalizedSpotMid = spotMidPrice * (futuresData.factor / spotData.factor);
+                
+                // Log dos preços normalizados para debug
+                console.log(`[DEBUG] Preços normalizados para ${spotSymbol}:`, {
+                    spotMidPrice,
+                    futuresMidPrice,
+                    normalizedSpotMid,
+                    factor: futuresData.factor / spotData.factor
+                });
                 
                 // Fórmula simplificada: Spread (%) = ((Futures - Spot) / Spot) × 100
                 const spread = ((futuresMidPrice - normalizedSpotMid) / normalizedSpotMid) * 100;
@@ -278,6 +300,8 @@ async function findAndBroadcastArbitrage() {
                         await recordSpread(opportunity);
                         broadcastOpportunity(opportunity);
                     }
+                } else {
+                    console.log(`[DEBUG] Spread fora dos limites para ${spotSymbol}: ${spread.toFixed(2)}%`);
                 }
             }
         }

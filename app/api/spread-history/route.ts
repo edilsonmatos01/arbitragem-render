@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
   }
 
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  console.log(`[DEBUG] Buscando histórico de spreads para ${symbol} desde ${twentyFourHoursAgo}`);
 
   try {
     const rawHistory = await prisma.spreadHistory.findMany({
@@ -27,10 +28,17 @@ export async function GET(req: NextRequest) {
       select: {
         timestamp: true,
         spread: true,
+        exchangeBuy: true,
+        exchangeSell: true,
+        direction: true,
       },
     });
 
+    console.log(`[DEBUG] Encontrados ${rawHistory.length} registros para ${symbol}:`, 
+      rawHistory.length > 0 ? rawHistory[0] : 'Nenhum registro');
+
     if (rawHistory.length === 0) {
+      console.log(`[DEBUG] Nenhum registro encontrado para ${symbol}`);
       return NextResponse.json([]);
     }
 

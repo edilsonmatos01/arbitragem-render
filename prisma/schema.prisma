@@ -1,8 +1,5 @@
-// schema.prisma
-// Definição da tabela para histórico de spreads
-
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
@@ -18,7 +15,9 @@ model SpreadHistory {
   exchangeSell String
   direction    String
   spread       Float
+  spotPrice    Float    @default(0)
+  futuresPrice Float    @default(0)
   timestamp    DateTime @default(now())
 
   @@index([symbol, exchangeBuy, exchangeSell, direction])
-} 
+}
