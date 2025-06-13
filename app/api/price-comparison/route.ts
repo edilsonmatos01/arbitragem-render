@@ -42,7 +42,7 @@ export async function GET(request: Request) {
     }
 
     // Agrupar dados por intervalos de 30 minutos
-    const groupedData = new Map<string, { spot: number; futures: number; timestamp: string }>();
+    const groupedData = new Map<string, { spot: number; futures: number; timestamp: string; fullDate: Date }>();
     
     records.forEach(record => {
       // Arredondar timestamp para intervalos de 30 minutos
@@ -52,7 +52,12 @@ export async function GET(request: Request) {
       date.setMinutes(roundedMinutes, 0, 0);
       
       const timeKey = date.toISOString();
-      const timeLabel = date.toLocaleTimeString('pt-BR', { 
+      
+      // Formato brasileiro: DD/MM HH:mm
+      const timeLabel = date.toLocaleDateString('pt-BR', { 
+        day: '2-digit', 
+        month: '2-digit' 
+      }) + ' ' + date.toLocaleTimeString('pt-BR', { 
         hour: '2-digit', 
         minute: '2-digit' 
       });
@@ -78,6 +83,7 @@ export async function GET(request: Request) {
           spot: spotPrice,
           futures: futuresPrice,
           timestamp: timeLabel,
+          fullDate: date,
         });
       } else {
         // Se já existe dados para este intervalo, fazer média
@@ -89,7 +95,7 @@ export async function GET(request: Request) {
 
     // Converter para array e ordenar por timestamp
     const chartData = Array.from(groupedData.values())
-      .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+      .sort((a, b) => a.fullDate.getTime() - b.fullDate.getTime())
       .map(item => ({
         timestamp: item.timestamp,
         spot: Number(item.spot.toFixed(2)),

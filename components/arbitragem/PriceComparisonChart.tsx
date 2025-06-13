@@ -26,7 +26,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
       <div className="p-3 bg-gray-800 border border-gray-700 rounded-md shadow-lg">
-        <p className="label text-white font-semibold mb-2">{`Horário: ${label}`}</p>
+        <p className="label text-white font-semibold mb-2">{`${label}`}</p>
         {payload.map((entry: any, index: number) => (
           <p key={index} className={`text-${entry.color === '#86EFAC' ? 'green' : 'blue'}-400`}>
             {`${entry.name}: $${entry.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
@@ -118,14 +118,18 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
             top: 5,
             right: 30,
             left: 20,
-            bottom: 5,
+            bottom: 60, // Aumentado para acomodar labels de data/hora
           }}
         >
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
           <XAxis 
             dataKey="timestamp" 
             stroke="#9CA3AF" 
-            tick={{ fontSize: 12 }}
+            tick={{ fontSize: 10 }}
+            angle={-45}
+            textAnchor="end"
+            height={60}
+            interval={Math.max(0, Math.floor(data.length / 8))} // Mostra no máximo 8 labels
           />
           <YAxis 
             stroke="#9CA3AF" 
