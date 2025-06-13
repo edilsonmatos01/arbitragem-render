@@ -9,7 +9,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import SpreadHistoryChart from './SpreadHistoryChart'; // Importando o componente do gráfico
+import SpreadHistoryChart from './SpreadHistoryChart';
+import PriceComparisonChart from './PriceComparisonChart';
 
 interface MaxSpreadCellProps {
   symbol: string;
@@ -28,6 +29,7 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
   const [stats, setStats] = useState<SpreadStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [chartType, setChartType] = useState<'spread' | 'comparison'>('spread');
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -63,7 +65,14 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
     };
 
     fetchStats();
-  }, [symbol]); // O efeito é re-executado se o símbolo mudar
+  }, [symbol]);
+
+  // Reset chart type when modal closes
+  useEffect(() => {
+    if (!isModalOpen) {
+      setChartType('spread');
+    }
+  }, [isModalOpen]);
 
   if (isLoading) {
     return <span className="text-gray-500">Carregando...</span>;
@@ -86,12 +95,57 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
             <ChartIcon className="h-5 w-5" />
           </button>
         </DialogTrigger>
-        <DialogContent className="max-w-3xl bg-dark-card border-gray-700 text-white">
+        <DialogContent className="max-w-4xl bg-dark-card border-gray-700 text-white">
           <DialogHeader>
-            <DialogTitle>Histórico de Spread para {symbol}</DialogTitle>
+            <div className="flex items-center justify-between">
+              <DialogTitle>Análise de {symbol}</DialogTitle>
+              <div className="flex bg-gray-800 rounded-lg p-1">
+                <button
+                  onClick={() => setChartType('spread')}
+                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                    chartType === 'spread'
+                      ? 'bg-custom-cyan text-black font-semibold'
+                      : 'text-gray-300 hover:text-white'
+                  }`}
+                >
+                  Spread 24h
+                </button>
+                <button
+                  onClick={() => setChartType('comparison')}
+                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                    chartType === 'comparison'
+                      ? 'bg-custom-cyan text-black font-semibold'
+                      : 'text-gray-300 hover:text-white'
+                  }`}
+                >
+                  Spot vs Futures
+                </button>
+              </div>
+            </div>
           </DialogHeader>
-          {/* Renderiza o gráfico apenas se o modal estiver aberto */}
-          {isModalOpen && <SpreadHistoryChart symbol={symbol} />}
+          
+          <div className="mt-4">
+            {/* Renderiza o gráfico apenas se o modal estiver aberto */}
+            {isModalOpen && (
+              <>
+                {chartType === 'spread' ? (
+                  <div>
+                    <div className="mb-3 text-sm text-gray-400">
+                      Histórico de spread máximo das últimas 24 horas
+                    </div>
+                    <SpreadHistoryChart symbol={symbol} />
+                  </div>
+                ) : (
+                  <div>
+                    <div className="mb-3 text-sm text-gray-400">
+                      Comparação de preços spot vs futures (pontos a cada 30 min)
+                    </div>
+                    <PriceComparisonChart symbol={symbol} />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
