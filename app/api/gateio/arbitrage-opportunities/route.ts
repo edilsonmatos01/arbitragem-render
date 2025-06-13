@@ -67,58 +67,47 @@ export async function GET() {
         const spotBidPrice = spotTicker.bid;       // Preço para VENDER no SPOT
         const futuresAskPrice = futuresTicker.ask;   // Preço para COMPRAR em FUTUROS
         const futuresBidPrice = futuresTicker.bid;   // Preço para VENDER em FUTUROS
-        const fundingRate = futuresTicker.info?.funding_rate || '0'; // Pega do ticker de futuros
+        const fundingRate = futuresTicker.info?.fundingRate || futuresTicker.info?.funding_rate || '0';
+        // Pega do ticker de futuros
 
-        // Oportunidade 1: Comprar Spot, Vender Futuros (Spot -> Futuros)
-        // Queremos que futuresBidPrice (o que recebemos vendendo futuros) seja maior que spotAskPrice (o que pagamos comprando spot)
-        if (spotAskPrice && futuresBidPrice && spotAskPrice > 0 && futuresBidPrice > 0) {
-          const percentDiffSpotToFutures = ((futuresBidPrice - spotAskPrice) / spotAskPrice) * 100;
-          
-          if (percentDiffSpotToFutures > 0) { // Só registrar se for uma oportunidade lucrativa (antes de taxas)
-            const opportunity = {
-              symbol: spotSymbol,
-              spotPrice: spotAskPrice.toString(),      // Preço de compra spot
-              futuresPrice: futuresBidPrice.toString(),  // Preço de venda futuros
-              direction: 'SPOT_TO_FUTURES',
-              fundingRate: fundingRate,
-              percentDiff: percentDiffSpotToFutures.toString(),
-            };
-            opportunities.push(opportunity);
-            recordSpread({
-              symbol: spotSymbol,
-              exchangeBuy: EXCHANGE_ID, 
-              exchangeSell: EXCHANGE_ID, 
-              direction: 'spot-to-future', // Comprando no spot, vendendo em futuros
-              spread: percentDiffSpotToFutures 
-            }).catch(err => {
-              console.error(`${EXCHANGE_NAME_FOR_LOG} - Failed to record spread (S->F) for ${spotSymbol}:`, err);
-            });
-          }
+        // Verificar se todos os preços estão disponíveis
+        if (!spotAskPrice || !spotBidPrice || !futuresAskPrice || !futuresBidPrice || 
+            spotAskPrice <= 0 || spotBidPrice <= 0 || futuresAskPrice <= 0 || futuresBidPrice <= 0) {
+          continue;
         }
 
-        // Oportunidade 2: Comprar Futuros, Vender Spot (Futuros -> Spot)
-        // Queremos que spotBidPrice (o que recebemos vendendo spot) seja maior que futuresAskPrice (o que pagamos comprando futuros)
-        if (futuresAskPrice && spotBidPrice && futuresAskPrice > 0 && spotBidPrice > 0) {
-          const percentDiffFuturesToSpot = ((spotBidPrice - futuresAskPrice) / futuresAskPrice) * 100;
+        // Calcular preços médios para comparação mais justa
+        const spotMidPrice = (spotAskPrice + spotBidPrice) / 2;
+        const futuresMidPrice = (futuresAskPrice + futuresBidPrice) / 2;
 
-          if (percentDiffFuturesToSpot > 0) { // Só registrar se for uma oportunidade lucrativa (antes de taxas)
+        // Fórmula simplificada: Spread (%) = ((Futures - Spot) / Spot) × 100
+        if (spotMidPrice > 0 && futuresMidPrice > 0) {
+          const spread = ((futuresMidPrice - spotMidPrice) / spotMidPrice) * 100;
+          
+          // Só registrar se houver spread significativo (positivo ou negativo)
+          if (Math.abs(spread) >= 0.01) { // Mínimo de 0.01% para evitar ruído
             const opportunity = {
               symbol: spotSymbol,
-              spotPrice: spotBidPrice.toString(),        // Preço de venda spot
-              futuresPrice: futuresAskPrice.toString(),    // Preço de compra futuros
-              direction: 'FUTURES_TO_SPOT',
+              spotPrice: spotMidPrice.toString(),
+              futuresPrice: futuresMidPrice.toString(),
+              direction: spread > 0 ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT',
               fundingRate: fundingRate,
-              percentDiff: percentDiffFuturesToSpot.toString(),
+              percentDiff: Math.abs(spread).toString(), // Sempre positivo para compatibilidade
             };
-            opportunities.push(opportunity);
+            
+            // Só adicionar às oportunidades se for lucrativo (spread positivo significa futures > spot)
+            if (spread > 0) {
+              opportunities.push(opportunity);
+            }
+            
             recordSpread({
               symbol: spotSymbol,
               exchangeBuy: EXCHANGE_ID, 
               exchangeSell: EXCHANGE_ID, 
-              direction: 'future-to-spot', // Comprando em futuros, vendendo no spot
-              spread: percentDiffFuturesToSpot
+              direction: spread > 0 ? 'spot-to-future' : 'future-to-spot',
+              spread: Math.abs(spread)
             }).catch(err => {
-              console.error(`${EXCHANGE_NAME_FOR_LOG} - Failed to record spread (F->S) for ${spotSymbol}:`, err);
+              console.error(`${EXCHANGE_NAME_FOR_LOG} - Failed to record spread for ${spotSymbol}:`, err);
             });
           }
         }

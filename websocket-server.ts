@@ -239,39 +239,42 @@ async function findAndBroadcastArbitrage() {
                     continue;
                 }
                 
-                const ratioSpotToFutures = sellPriceFutures > buyPriceSpot ? sellPriceFutures / buyPriceSpot : buyPriceSpot / sellPriceFutures;
-                if (ratioSpotToFutures <= 20) {
-                    const spread = ((sellPriceFutures - buyPriceSpot) / buyPriceSpot) * 100;
-                    if (spread >= 0.1 && spread <= 10) {
+                // Calcular preços médios para comparação mais justa
+                const spotMidPrice = (spotPrices[spotSymbol].bestAsk + spotPrices[spotSymbol].bestBid) / 2;
+                const futuresMidPrice = (futuresPrices[futuresSymbol].bestAsk + futuresPrices[futuresSymbol].bestBid) / 2;
+                
+                // Normalizar preços se necessário
+                const normalizedSpotMid = spotMidPrice * (futuresData.factor / spotData.factor);
+                
+                // Fórmula simplificada: Spread (%) = ((Futures - Spot) / Spot) × 100
+                const spread = ((futuresMidPrice - normalizedSpotMid) / normalizedSpotMid) * 100;
+                
+                // Só processar se o spread for significativo e dentro dos limites
+                if (Math.abs(spread) >= 0.1 && Math.abs(spread) <= 10) {
+                    if (spread > 0) {
+                        // Futures > Spot: Comprar Spot, Vender Futures
                         const opportunity: ArbitrageOpportunity = {
                             type: 'arbitrage',
                             baseSymbol: spotData.baseSymbol,
-                            buyAt: { exchange: spotId.split('_')[0], marketType: 'spot', price: buyPriceSpot },
-                            sellAt: { exchange: futuresId.split('_')[0], marketType: 'futures', price: sellPriceFutures },
+                            buyAt: { exchange: spotId.split('_')[0], marketType: 'spot', price: normalizedSpotMid },
+                            sellAt: { exchange: futuresId.split('_')[0], marketType: 'futures', price: futuresMidPrice },
                             arbitrageType: 'spot_to_futures',
                             profitPercentage: spread,
                             timestamp: Date.now()
                         };
-                        // Agora chamamos as duas funções para cada oportunidade
                         await recordSpread(opportunity);
                         broadcastOpportunity(opportunity);
-                    }
-                }
-                
-                const ratioFuturesToSpot = sellPriceSpot > buyPriceFutures ? sellPriceSpot / buyPriceFutures : buyPriceFutures / sellPriceSpot;
-                if (ratioFuturesToSpot <= 20) {
-                    const spread = ((sellPriceSpot - buyPriceFutures) / buyPriceFutures) * 100;
-                    if (spread >= 0.1 && spread <= 10) {
+                    } else {
+                        // Spot > Futures: Comprar Futures, Vender Spot
                         const opportunity: ArbitrageOpportunity = {
                             type: 'arbitrage',
                             baseSymbol: spotData.baseSymbol,
-                            buyAt: { exchange: futuresId.split('_')[0], marketType: 'futures', price: buyPriceFutures },
-                            sellAt: { exchange: spotId.split('_')[0], marketType: 'spot', price: sellPriceSpot },
+                            buyAt: { exchange: futuresId.split('_')[0], marketType: 'futures', price: futuresMidPrice },
+                            sellAt: { exchange: spotId.split('_')[0], marketType: 'spot', price: normalizedSpotMid },
                             arbitrageType: 'futures_to_spot',
-                            profitPercentage: spread,
+                            profitPercentage: Math.abs(spread),
                             timestamp: Date.now()
                         };
-                        // E aqui também
                         await recordSpread(opportunity);
                         broadcastOpportunity(opportunity);
                     }

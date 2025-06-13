@@ -119,14 +119,22 @@ export async function POST(req: Request) {
         }
 
         const spotAsk = spotTicker.ask;
+        const spotBid = spotTicker.bid;
+        const futuresAsk = futuresTicker.ask;
         const futuresBid = futuresTicker.bid;
 
-        if (!spotAsk || !futuresBid || spotAsk <=0 || futuresBid <=0) {
-            console.warn(`Inter-Exchange - Preços ask/bid ausentes para ${pairInfo.marketSymbol} (Spot ${spotExchangeId}) ou (Futures ${futuresExchangeId})`);
+        if (!spotAsk || !spotBid || !futuresAsk || !futuresBid || 
+            spotAsk <= 0 || spotBid <= 0 || futuresAsk <= 0 || futuresBid <= 0) {
+            console.warn(`Inter-Exchange - Preços ausentes para ${pairInfo.marketSymbol} (Spot ${spotExchangeId}) ou (Futures ${futuresExchangeId})`);
             return null;
         }
 
-        const percentDiff = ((futuresBid - spotAsk) / spotAsk) * 100;
+        // Calcular preços médios para comparação mais justa
+        const spotMidPrice = (spotAsk + spotBid) / 2;
+        const futuresMidPrice = (futuresAsk + futuresBid) / 2;
+
+        // Fórmula simplificada: Spread (%) = ((Futures - Spot) / Spot) × 100
+        const percentDiff = ((futuresMidPrice - spotMidPrice) / spotMidPrice) * 100;
         const calculatedApiDirection = percentDiff > 0 ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT';
 
         if (requestedDirection && requestedDirection !== 'ALL' && calculatedApiDirection !== requestedDirection) {
@@ -150,11 +158,11 @@ export async function POST(req: Request) {
           symbol: pairInfo.marketSymbol, // Assuming marketSymbol is the full pair (e.g., BTC/USDT)
           spotExchange: spotExchangeId,
           futuresExchange: futuresExchangeId,
-          spotPrice: spotAsk.toString(),
-          futuresPrice: futuresBid.toString(),
+          spotPrice: spotMidPrice.toString(),
+          futuresPrice: futuresMidPrice.toString(),
           direction: calculatedApiDirection,
           fundingRate: fundingRate,
-          percentDiff: percentDiff.toString(),
+          percentDiff: Math.abs(percentDiff).toString(), // Sempre positivo para compatibilidade
         };
       } catch (error) {
         console.error(`Inter-Exchange - Erro ao buscar dados para ${pairInfo.marketSymbol} (Spot ${spotExchangeId}, Futures ${futuresExchangeId}):`, error instanceof Error ? error.message : String(error));

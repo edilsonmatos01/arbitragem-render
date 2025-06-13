@@ -116,54 +116,44 @@ export async function GET() {
         // Para MEXC, a taxa de financiamento pode estar em ticker.info.fundingRate ou ticker.info.funding_rate
         const fundingRate = futuresTicker.info?.fundingRate || futuresTicker.info?.funding_rate || '0';
 
-        // Oportunidade 1: Comprar Spot, Vender Futuros (Spot -> Futuros)
-        if (spotAskPrice && futuresBidPrice && spotAskPrice > 0 && futuresBidPrice > 0) {
-          const percentDiffSpotToFutures = ((futuresBidPrice - spotAskPrice) / spotAskPrice) * 100;
-          
-          if (percentDiffSpotToFutures > 0) {
-            const opportunity = {
-              symbol: spotSymbol,
-              spotPrice: spotAskPrice.toString(),
-              futuresPrice: futuresBidPrice.toString(),
-              direction: 'SPOT_TO_FUTURES',
-              fundingRate: fundingRate,
-              percentDiff: percentDiffSpotToFutures.toString(),
-            };
-            opportunities.push(opportunity);
-            recordSpread({
-              symbol: spotSymbol,
-              exchangeBuy: EXCHANGE_ID,
-              exchangeSell: EXCHANGE_ID,
-              direction: 'spot-to-future',
-              spread: percentDiffSpotToFutures
-            }).catch(err => {
-              console.error(`${EXCHANGE_NAME_FOR_LOG} - Failed to record spread (S->F) for ${spotSymbol}:`, err);
-            });
-          }
+        // Verificar se todos os preços estão disponíveis
+        if (!spotAskPrice || !spotBidPrice || !futuresAskPrice || !futuresBidPrice || 
+            spotAskPrice <= 0 || spotBidPrice <= 0 || futuresAskPrice <= 0 || futuresBidPrice <= 0) {
+          continue;
         }
 
-        // Oportunidade 2: Comprar Futuros, Vender Spot (Futuros -> Spot)
-        if (futuresAskPrice && spotBidPrice && futuresAskPrice > 0 && spotBidPrice > 0) {
-          const percentDiffFuturesToSpot = ((spotBidPrice - futuresAskPrice) / futuresAskPrice) * 100;
+        // Calcular preços médios para comparação mais justa
+        const spotMidPrice = (spotAskPrice + spotBidPrice) / 2;
+        const futuresMidPrice = (futuresAskPrice + futuresBidPrice) / 2;
 
-          if (percentDiffFuturesToSpot > 0) {
+        // Fórmula simplificada: Spread (%) = ((Futures - Spot) / Spot) × 100
+        if (spotMidPrice > 0 && futuresMidPrice > 0) {
+          const spread = ((futuresMidPrice - spotMidPrice) / spotMidPrice) * 100;
+          
+          // Só registrar se houver spread significativo (positivo ou negativo)
+          if (Math.abs(spread) >= 0.01) { // Mínimo de 0.01% para evitar ruído
             const opportunity = {
               symbol: spotSymbol,
-              spotPrice: spotBidPrice.toString(),
-              futuresPrice: futuresAskPrice.toString(),
-              direction: 'FUTURES_TO_SPOT',
+              spotPrice: spotMidPrice.toString(),
+              futuresPrice: futuresMidPrice.toString(),
+              direction: spread > 0 ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT',
               fundingRate: fundingRate,
-              percentDiff: percentDiffFuturesToSpot.toString(),
+              percentDiff: Math.abs(spread).toString(), // Sempre positivo para compatibilidade
             };
-            opportunities.push(opportunity);
+            
+            // Só adicionar às oportunidades se for lucrativo (spread positivo significa futures > spot)
+            if (spread > 0) {
+              opportunities.push(opportunity);
+            }
+            
             recordSpread({
               symbol: spotSymbol,
               exchangeBuy: EXCHANGE_ID,
               exchangeSell: EXCHANGE_ID,
-              direction: 'future-to-spot',
-              spread: percentDiffFuturesToSpot
+              direction: spread > 0 ? 'spot-to-future' : 'future-to-spot',
+              spread: Math.abs(spread)
             }).catch(err => {
-              console.error(`${EXCHANGE_NAME_FOR_LOG} - Failed to record spread (F->S) for ${spotSymbol}:`, err);
+              console.error(`${EXCHANGE_NAME_FOR_LOG} - Failed to record spread for ${spotSymbol}:`, err);
             });
           }
         }
