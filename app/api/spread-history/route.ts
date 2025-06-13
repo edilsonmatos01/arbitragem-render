@@ -37,22 +37,38 @@ export async function GET(req: NextRequest) {
     // Lógica de agregação para intervalos de 30 minutos
     const thirtyMinutesInMs = 30 * 60 * 1000;
     // A estrutura agora armazena o spread máximo para cada balde de tempo.
-    const aggregatedData: { [key: number]: number } = {};
+    const aggregatedData: { [key: number]: { maxSpread: number; date: Date } } = {};
 
     for (const record of rawHistory) {
       const bucketTimestamp = Math.floor(record.timestamp.getTime() / thirtyMinutesInMs) * thirtyMinutesInMs;
       
       // Se o balde não existir, ou se o spread do registro atual for maior
       // que o máximo já armazenado para esse balde, atualize-o.
-      if (!aggregatedData[bucketTimestamp] || record.spread > aggregatedData[bucketTimestamp]) {
-        aggregatedData[bucketTimestamp] = record.spread;
+      if (!aggregatedData[bucketTimestamp] || record.spread > aggregatedData[bucketTimestamp].maxSpread) {
+        aggregatedData[bucketTimestamp] = {
+          maxSpread: record.spread,
+          date: new Date(bucketTimestamp)
+        };
       }
     }
 
-    const formattedHistory = Object.entries(aggregatedData).map(([timestamp, maxSpread]) => ({
-      timestamp: new Date(parseInt(timestamp)).toISOString(),
-      spread: maxSpread, // Agora o valor do spread é o máximo do intervalo
-    }));
+    const formattedHistory = Object.entries(aggregatedData)
+      .sort(([a], [b]) => parseInt(a) - parseInt(b))
+      .map(([timestamp, data]) => {
+        // Formato brasileiro: DD/MM HH:mm
+        const timeLabel = data.date.toLocaleDateString('pt-BR', { 
+          day: '2-digit', 
+          month: '2-digit' 
+        }) + ' ' + data.date.toLocaleTimeString('pt-BR', { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        });
+
+        return {
+          timestamp: timeLabel,
+          spread: data.maxSpread,
+        };
+      });
 
     return NextResponse.json(formattedHistory);
   } catch (error) {

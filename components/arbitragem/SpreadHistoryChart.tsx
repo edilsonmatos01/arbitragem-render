@@ -16,8 +16,8 @@ interface SpreadData {
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
-      <div className="p-2 bg-gray-800 border border-gray-700 rounded-md shadow-lg">
-        <p className="label text-white font-semibold">{`${label}`}</p>
+      <div className="p-3 bg-gray-800 border border-gray-700 rounded-md shadow-lg">
+        <p className="label text-white font-semibold mb-2">{`${label}`}</p>
         <p className="intro text-green-400">{`Spread (%): ${payload[0].value.toFixed(2)}`}</p>
       </div>
     );
@@ -41,18 +41,8 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
         }
         const rawData: SpreadData[] = await response.json();
         
-        const formattedData = rawData.map(item => ({
-          ...item,
-          // 2. Onde é ilustrado a hora, acrescente também a data(Dia/Mês).
-          timestamp: new Date(item.timestamp).toLocaleTimeString('pt-BR', {
-            day: '2-digit',
-            month: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-        }));
-
-        setData(formattedData);
+        // A API já retorna o timestamp formatado, não precisamos reformatar
+        setData(rawData);
       } catch (err: any) {
         setError(err.message || 'Ocorreu um erro.');
       } finally {
@@ -86,13 +76,20 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
                 top: 5,
                 right: 30,
                 left: 20,
-                bottom: 5,
+                bottom: 60, // Aumentado para acomodar labels de data/hora
             }}
             >
             <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-            <XAxis dataKey="timestamp" stroke="#9CA3AF" />
+            <XAxis 
+              dataKey="timestamp" 
+              stroke="#9CA3AF" 
+              tick={{ fontSize: 10 }}
+              angle={-45}
+              textAnchor="end"
+              height={60}
+              interval={Math.max(0, Math.floor(data.length / 8))} // Mostra no máximo 8 labels
+            />
             <YAxis stroke="#9CA3AF" domain={['auto', 'auto']} tickFormatter={(value) => `${value.toFixed(2)}%`} />
-            {/* 1. arrendo o percentual do spread para nao mostrar números quebrados */}
             <Tooltip content={<CustomTooltip />} />
             <Legend wrapperStyle={{ color: '#9CA3AF' }}/>
             <Line type="monotone" dataKey="spread" stroke="#86EFAC" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 8 }} name="Spread (%)" />
