@@ -15,8 +15,6 @@ model SpreadHistory {
   exchangeSell String
   direction    String
   spread       Float
-  spotPrice    Float    @default(0)
-  futuresPrice Float    @default(0)
   timestamp    DateTime @default(now())
 
   @@index([symbol, exchangeBuy, exchangeSell, direction])

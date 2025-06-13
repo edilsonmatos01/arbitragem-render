@@ -23,7 +23,7 @@ let clients: CustomWebSocket[] = []; // Usamos o tipo estendido
 
 // ✅ Nova função centralizadora para lidar com todas as atualizações de preço
 function handlePriceUpdate(update: { type: string, symbol: string, marketType: string, bestAsk: number, bestBid: number, identifier: string }) {
-    const { identifier, symbol, priceData, marketType, bestAsk, bestBid } = update as any;
+    const { identifier, symbol, marketType, bestAsk, bestBid } = update;
 
     // 1. Atualiza o estado central de preços
     if (!marketPrices[identifier]) {
@@ -45,10 +45,10 @@ export function startWebSocketServer(httpServer: Server) {
     const wss = new WebSocketServer({ server: httpServer });
 
     wss.on('connection', (ws: CustomWebSocket, req: IncomingMessage) => {
-        ws.isAlive = true; // A conexão está viva ao ser estabelecida
+        ws.isAlive = true;
 
         ws.on('pong', () => {
-          ws.isAlive = true; // O cliente respondeu ao nosso ping, então está vivo
+          ws.isAlive = true;
         });
         
         const clientIp = req.socket.remoteAddress || req.headers['x-forwarded-for'];
@@ -65,38 +65,28 @@ export function startWebSocketServer(httpServer: Server) {
         });
     });
     
-    // Intervalo para verificar conexões e mantê-las vivas
     const interval = setInterval(() => {
         wss.clients.forEach(client => {
             const ws = client as CustomWebSocket;
-
-            // Se o cliente não respondeu ao PING do ciclo anterior, encerre.
             if (ws.isAlive === false) {
                 console.log('[WS Server] Conexão inativa terminada.');
                 return ws.terminate();
             }
-
-            // Marque como inativo e envie um PING. A resposta 'pong' marcará como vivo novamente.
-            ws.isAlive = false; 
-            ws.ping(() => {}); // A função de callback vazia é necessária.
+            ws.isAlive = false;
+            ws.ping(() => {});
         });
-    }, 30000); // A cada 30 segundos
+    }, 30000);
 
     wss.on('close', () => {
-        clearInterval(interval); // Limpa o intervalo quando o servidor é fechado
+        clearInterval(interval);
     });
 
     console.log(`Servidor WebSocket iniciado e anexado ao servidor HTTP.`);
     startFeeds();
 }
 
-// --- Início: Adição para Servidor Standalone ---
-
-// Esta função cria e inicia um servidor HTTP que usa a nossa lógica WebSocket.
 function initializeStandaloneServer() {
     const httpServer = createServer((req, res) => {
-        // O servidor HTTP básico não fará nada além de fornecer uma base para o WebSocket.
-        // Podemos adicionar um endpoint de health check simples.
         if (req.url === '/health') {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ status: 'ok', message: 'WebSocket server is running' }));
@@ -106,7 +96,6 @@ function initializeStandaloneServer() {
         }
     });
 
-    // Anexa a lógica do WebSocket ao nosso servidor HTTP.
     startWebSocketServer(httpServer);
 
     httpServer.listen(PORT, () => {
@@ -114,15 +103,9 @@ function initializeStandaloneServer() {
     });
 }
 
-// Inicia o servidor standalone.
-// O `require.main === module` garante que este código só rode quando
-// o arquivo é executado diretamente (ex: `node dist/websocket-server.js`),
-// mas não quando é importado por outro arquivo (como o `server.js` em dev).
 if (require.main === module) {
     initializeStandaloneServer();
 }
-
-// --- Fim: Adição para Servidor Standalone ---
 
 function broadcast(data: any) {
     const serializedData = JSON.stringify(data);
@@ -133,7 +116,6 @@ function broadcast(data: any) {
     });
 }
 
-// Versão corrigida da função com logs de depuração
 function broadcastOpportunity(opportunity: ArbitrageOpportunity) {
     console.log(`[DEBUG] Verificando ${opportunity.baseSymbol} | Spread: ${opportunity.profitPercentage.toFixed(2)}%`);
 
@@ -147,20 +129,13 @@ function broadcastOpportunity(opportunity: ArbitrageOpportunity) {
 }
 
 async function recordSpread(opportunity: ArbitrageOpportunity) {
-    console.log(`[DEBUG] Tentando gravar spread para ${opportunity.baseSymbol}:`, {
-        profitPercentage: opportunity.profitPercentage,
-        buyAt: opportunity.buyAt,
-        sellAt: opportunity.sellAt,
-        arbitrageType: opportunity.arbitrageType
-    });
-
     if (typeof opportunity.profitPercentage !== 'number' || !isFinite(opportunity.profitPercentage)) {
         console.warn(`[Prisma] Spread inválido para ${opportunity.baseSymbol}, gravação ignorada.`);
         return;
     }
 
     try {
-        const result = await prisma.spreadHistory.create({
+        await prisma.spreadHistory.create({
             data: {
                 symbol: opportunity.baseSymbol,
                 exchangeBuy: opportunity.buyAt.exchange,
@@ -169,7 +144,6 @@ async function recordSpread(opportunity: ArbitrageOpportunity) {
                 spread: opportunity.profitPercentage,
             },
         });
-        console.log(`[DEBUG] Spread gravado com sucesso para ${opportunity.baseSymbol}:`, result);
     } catch (error) {
         console.error(`[Prisma] Erro ao gravar spread para ${opportunity.baseSymbol}:`, error);
     }
@@ -215,7 +189,6 @@ function getNormalizedData(symbol: string): { baseSymbol: string, factor: number
 }
 
 async function findAndBroadcastArbitrage() {
-    // Não precisamos mais de um array local, processaremos uma a uma
     const exchangeIdentifiers = Object.keys(marketPrices);
     if (exchangeIdentifiers.length < 2) return;
 
