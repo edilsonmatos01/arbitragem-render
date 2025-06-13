@@ -202,22 +202,21 @@ export default function ArbitrageTable() {
     // 1. Mapeia as novas oportunidades recebidas do WebSocket
     const newOpportunities = opportunitiesRaw
       .map((opp): Opportunity | null => {
-        // Confia nos dados do backend, sem recálculo de spread ou normalização de preços.
         if (opp.buyAt.price <= 0) return null;
+
+        // Calcula o spread usando a fórmula correta: ((Futures - Spot) / Spot) × 100
+        const spread = ((opp.sellAt.price - opp.buyAt.price) / opp.buyAt.price) * 100;
 
         const newOpp: Opportunity = {
           symbol: opp.baseSymbol,
-          compraExchange: `${opp.buyAt.exchange} (${opp.buyAt.marketType})`,
-          vendaExchange: `${opp.sellAt.exchange} (${opp.sellAt.marketType})`,
-          compraPreco: opp.buyAt.price,
-          vendaPreco: opp.sellAt.price,
-          spread: opp.profitPercentage,
-          lucroEstimado: ((opp.profitPercentage / 100) * amount).toFixed(2),
-          status: 'available',
-          tipo: opp.buyAt.exchange !== opp.sellAt.exchange ? 'inter' : 'intra',
-          directionApi: opp.arbitrageType.startsWith('spot_') ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT',
-          maxSpread24h: null, // Será preenchido pelo MaxSpreadCell
+          compraExchange: opp.buyAt.exchange,
+          compraPrice: opp.buyAt.price,
+          vendaExchange: opp.sellAt.exchange,
+          vendaPrice: opp.sellAt.price,
+          spread: spread,
+          timestamp: opp.timestamp,
         };
+
         return newOpp;
       })
       .filter((o): o is Opportunity => o !== null);
