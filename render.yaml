@@ -5,11 +5,24 @@ databases:
   user: arbitragem_banco_user
   plan: free
   region: oregon
-  ipAllowList:
-  - source: 0.0.0.0/0
-    description: everywhere
-  postgresMajorVersion: "16"
+  ipAllowList: []
 services:
+- type: web
+  name: arbitragem-bot
+  env: node
+  region: oregon
+  plan: free
+  branch: main
+  buildCommand: npm install --production=false
+  startCommand: npm run start
+  preDeployCommand: node scripts/fix-production-migrations.js && npx prisma migrate deploy
+  envVars:
+  - key: NODE_ENV
+    value: production
+  - key: DATABASE_URL
+    fromDatabase:
+      name: arbitragem-banco
+      property: connectionString
 - type: web
   name: robo-de-arbitragem
   env: node

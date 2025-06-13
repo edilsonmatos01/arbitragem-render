@@ -17,62 +17,87 @@ async function fixProductionMigrations() {
     }
     
     // Criar tabela _prisma_migrations se não existir
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
-        "id" VARCHAR(36) PRIMARY KEY NOT NULL,
-        "checksum" VARCHAR(64) NOT NULL,
-        "finished_at" TIMESTAMP WITH TIME ZONE,
-        "migration_name" VARCHAR(255) NOT NULL,
-        "logs" TEXT,
-        "rolled_back_at" TIMESTAMP WITH TIME ZONE,
-        "started_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-        "applied_steps_count" INTEGER NOT NULL DEFAULT 0
-      );
-    `);
-    console.log('✅ Tabela _prisma_migrations verificada/criada');
+    try {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
+          "id" VARCHAR(36) PRIMARY KEY NOT NULL,
+          "checksum" VARCHAR(64) NOT NULL,
+          "finished_at" TIMESTAMP WITH TIME ZONE,
+          "migration_name" VARCHAR(255) NOT NULL,
+          "logs" TEXT,
+          "rolled_back_at" TIMESTAMP WITH TIME ZONE,
+          "started_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+          "applied_steps_count" INTEGER NOT NULL DEFAULT 0
+        );
+      `);
+      console.log('✅ Tabela _prisma_migrations verificada/criada');
+    } catch (e) {
+      console.error('❌ Erro ao criar tabela _prisma_migrations:', e);
+      throw e;
+    }
     
     // Dropar a tabela SpreadHistory se existir
-    await prisma.$executeRawUnsafe('DROP TABLE IF EXISTS "SpreadHistory" CASCADE;');
-    console.log('✅ Tabela SpreadHistory removida (se existia)');
+    try {
+      await prisma.$executeRawUnsafe('DROP TABLE IF EXISTS "SpreadHistory" CASCADE;');
+      console.log('✅ Tabela SpreadHistory removida (se existia)');
+    } catch (e) {
+      console.error('❌ Erro ao dropar tabela SpreadHistory:', e);
+      // Não vamos lançar o erro aqui, pois não é crítico
+    }
     
     // Criar tabela SpreadHistory
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE "SpreadHistory" (
-        "id" TEXT NOT NULL,
-        "symbol" TEXT NOT NULL,
-        "exchangeBuy" TEXT NOT NULL,
-        "exchangeSell" TEXT NOT NULL,
-        "direction" TEXT NOT NULL,
-        "spread" DOUBLE PRECISION NOT NULL,
-        "timestamp" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT "SpreadHistory_pkey" PRIMARY KEY ("id")
-      );
-    `);
-    console.log('✅ Tabela SpreadHistory criada');
+    try {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE "SpreadHistory" (
+          "id" TEXT NOT NULL,
+          "symbol" TEXT NOT NULL,
+          "exchangeBuy" TEXT NOT NULL,
+          "exchangeSell" TEXT NOT NULL,
+          "direction" TEXT NOT NULL,
+          "spread" DOUBLE PRECISION NOT NULL,
+          "timestamp" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "SpreadHistory_pkey" PRIMARY KEY ("id")
+        );
+      `);
+      console.log('✅ Tabela SpreadHistory criada');
+    } catch (e) {
+      console.error('❌ Erro ao criar tabela SpreadHistory:', e);
+      throw e;
+    }
     
     // Criar índice para SpreadHistory
-    await prisma.$executeRawUnsafe(`
-      CREATE INDEX "SpreadHistory_symbol_exchangeBuy_exchangeSell_direction_idx" 
-      ON "SpreadHistory"("symbol", "exchangeBuy", "exchangeSell", "direction");
-    `);
-    console.log('✅ Índice criado para SpreadHistory');
+    try {
+      await prisma.$executeRawUnsafe(`
+        CREATE INDEX "SpreadHistory_symbol_exchangeBuy_exchangeSell_direction_idx" 
+        ON "SpreadHistory"("symbol", "exchangeBuy", "exchangeSell", "direction");
+      `);
+      console.log('✅ Índice criado para SpreadHistory');
+    } catch (e) {
+      console.error('❌ Erro ao criar índice para SpreadHistory:', e);
+      throw e;
+    }
     
     // Registrar a migração na tabela _prisma_migrations como concluída
-    const migrationId = '20250613164152_init';
-    const checksum = 'a1b2c3d4e5f6g7h8i9j0'; // Checksum arbitrário
-    
-    await prisma.$executeRaw`
-      INSERT INTO "_prisma_migrations" 
-      ("id", "checksum", "finished_at", "migration_name", "logs", "rolled_back_at", "started_at", "applied_steps_count")
-      VALUES (${migrationId}, ${checksum}, NOW(), ${migrationId}, 'Applied manually via fix script', NULL, NOW(), 1)
-      ON CONFLICT ("id") DO UPDATE 
-      SET 
-        "finished_at" = NOW(),
-        "rolled_back_at" = NULL,
-        "applied_steps_count" = 1,
-        "logs" = 'Re-applied manually via fix script';
-    `;
-    console.log('✅ Migração registrada com sucesso');
+    try {
+      const migrationId = '20250613164152_init';
+      const checksum = 'a1b2c3d4e5f6g7h8i9j0'; // Checksum arbitrário
+      
+      await prisma.$executeRaw`
+        INSERT INTO "_prisma_migrations" 
+        ("id", "checksum", "finished_at", "migration_name", "logs", "rolled_back_at", "started_at", "applied_steps_count")
+        VALUES (${migrationId}, ${checksum}, NOW(), ${migrationId}, 'Applied manually via fix script', NULL, NOW(), 1)
+        ON CONFLICT ("id") DO UPDATE 
+        SET 
+          "finished_at" = NOW(),
+          "rolled_back_at" = NULL,
+          "applied_steps_count" = 1,
+          "logs" = 'Re-applied manually via fix script';
+      `;
+      console.log('✅ Migração registrada com sucesso');
+    } catch (e) {
+      console.error('❌ Erro ao registrar migração:', e);
+      throw e;
+    }
     
     console.log('🎉 Correção das migrações concluída com sucesso!');
     
