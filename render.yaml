@@ -16,7 +16,7 @@ services:
   region: oregon
   plan: free
   branch: main
-  buildCommand: npm install && npm run prisma:deploy && npm run build
+  buildCommand: npm install && npm run fix:migrations && npm run prisma:deploy && npm run build
   startCommand: npm run start:next
   envVars:
   - key: DATABASE_URL

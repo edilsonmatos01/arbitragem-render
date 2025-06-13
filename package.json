@@ -14,7 +14,8 @@
     "prisma:dev": "dotenv -- prisma",
     "prisma:deploy": "prisma generate && prisma migrate deploy",
     "postinstall": "prisma generate",
-    "clean:spread": "ts-node scripts/cleanSpreadData.ts"
+    "clean:spread": "ts-node scripts/cleanSpreadData.ts",
+    "fix:migrations": "node scripts/fix-production-migrations.js"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",
