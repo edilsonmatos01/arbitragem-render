@@ -1,0 +1,57 @@
+# Exported from Render on 2025-06-10T21:42:54Z
+databases:
+- name: arbitragem-banco
+  databaseName: arbitragem_banco
+  user: arbitragem_banco_user
+  plan: free
+  region: oregon
+  ipAllowList:
+  - source: 0.0.0.0/0
+    description: everywhere
+  postgresMajorVersion: "16"
+services:
+- type: web
+  name: robo-de-arbitragem
+  env: node
+  region: oregon
+  plan: free
+  branch: main
+  buildCommand: npm install && npm run fix:migrations && npm run prisma:deploy && npm run build
+  startCommand: npm run start:next
+  envVars:
+  - key: DATABASE_URL
+    fromDatabase:
+      name: arbitragem-banco
+      property: connectionString
+  - key: NEXT_PUBLIC_WEBSOCKET_URL
+    value: wss://robo-de-arbitragem-tracker.onrender.com
+  - key: GATEIO_API_KEY
+    sync: false
+  - key: GATEIO_SECRET
+    sync: false
+  - key: MEXC_API_KEY
+    sync: false
+  - key: MEXC_SECRET
+    sync: false
+- type: web
+  name: robo-de-arbitragem-tracker
+  env: node
+  region: oregon
+  plan: free
+  branch: main
+  buildCommand: npm install && npm run build:tracker
+  startCommand: npm run start:tracker
+  envVars:
+  - key: DATABASE_URL
+    fromDatabase:
+      name: arbitragem-banco
+      property: connectionString
+  - key: GATEIO_API_KEY
+    sync: false
+  - key: GATEIO_SECRET
+    sync: false
+  - key: MEXC_API_KEY
+    sync: false
+  - key: MEXC_SECRET
+    sync: false
+version: "1"
