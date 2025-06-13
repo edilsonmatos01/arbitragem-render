@@ -7,39 +7,35 @@ async function fixProductionMigrations() {
     console.log('🔧 Iniciando correção das migrações...');
     
     // Primeiro, vamos limpar qualquer migração com falha
-    await prisma.$executeRawUnsafe(`
-      DELETE FROM "_prisma_migrations" 
-      WHERE finished_at IS NULL 
-      OR rolled_back_at IS NOT NULL 
-      OR applied_steps_count = 0;
-    `).catch(() => console.log('Tabela _prisma_migrations ainda não existe'));
-    
-    console.log('✅ Limpeza de migrações com falha concluída');
+    try {
+      await prisma.$executeRawUnsafe(
+        'DELETE FROM "_prisma_migrations" WHERE finished_at IS NULL OR rolled_back_at IS NOT NULL OR applied_steps_count = 0;'
+      );
+      console.log('✅ Limpeza de migrações com falha concluída');
+    } catch (e) {
+      console.log('Tabela _prisma_migrations ainda não existe');
+    }
     
     // Criar tabela _prisma_migrations se não existir
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
-        "id"                    VARCHAR(36) PRIMARY KEY NOT NULL,
-        "checksum"             VARCHAR(64) NOT NULL,
-        "finished_at"          TIMESTAMP WITH TIME ZONE,
-        "migration_name"       VARCHAR(255) NOT NULL,
-        "logs"                 TEXT,
-        "rolled_back_at"       TIMESTAMP WITH TIME ZONE,
-        "started_at"           TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-        "applied_steps_count"  INTEGER NOT NULL DEFAULT 0
+        "id" VARCHAR(36) PRIMARY KEY NOT NULL,
+        "checksum" VARCHAR(64) NOT NULL,
+        "finished_at" TIMESTAMP WITH TIME ZONE,
+        "migration_name" VARCHAR(255) NOT NULL,
+        "logs" TEXT,
+        "rolled_back_at" TIMESTAMP WITH TIME ZONE,
+        "started_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+        "applied_steps_count" INTEGER NOT NULL DEFAULT 0
       );
     `);
-    
     console.log('✅ Tabela _prisma_migrations verificada/criada');
     
-    // Dropar a tabela SpreadHistory se existir (para recriar limpa)
-    await prisma.$executeRawUnsafe(`
-      DROP TABLE IF EXISTS "SpreadHistory" CASCADE;
-    `);
-    
+    // Dropar a tabela SpreadHistory se existir
+    await prisma.$executeRawUnsafe('DROP TABLE IF EXISTS "SpreadHistory" CASCADE;');
     console.log('✅ Tabela SpreadHistory removida (se existia)');
     
-    // Criar tabela SpreadHistory do zero
+    // Criar tabela SpreadHistory
     await prisma.$executeRawUnsafe(`
       CREATE TABLE "SpreadHistory" (
         "id" TEXT NOT NULL,
@@ -51,12 +47,15 @@ async function fixProductionMigrations() {
         "timestamp" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT "SpreadHistory_pkey" PRIMARY KEY ("id")
       );
-      
+    `);
+    console.log('✅ Tabela SpreadHistory criada');
+    
+    // Criar índice para SpreadHistory
+    await prisma.$executeRawUnsafe(`
       CREATE INDEX "SpreadHistory_symbol_exchangeBuy_exchangeSell_direction_idx" 
       ON "SpreadHistory"("symbol", "exchangeBuy", "exchangeSell", "direction");
     `);
-    
-    console.log('✅ Tabela SpreadHistory recriada com sucesso');
+    console.log('✅ Índice criado para SpreadHistory');
     
     // Registrar a migração na tabela _prisma_migrations como concluída
     const migrationId = '20250613164152_init';
@@ -73,6 +72,7 @@ async function fixProductionMigrations() {
         "applied_steps_count" = 1,
         "logs" = 'Re-applied manually via fix script';
     `;
+    console.log('✅ Migração registrada com sucesso');
     
     console.log('🎉 Correção das migrações concluída com sucesso!');
     
