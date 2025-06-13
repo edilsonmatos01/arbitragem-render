@@ -35,7 +35,7 @@ export default function Sidebar({ user, navItems }: SidebarProps) {
         <ProfileImageUpload
           currentImage={currentImage}
           onImageChange={handleImageChange}
-          userName="Edilson V03"
+          userName="Edilson.V03"
         />
       </div>
       <nav className="flex-1">

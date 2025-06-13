@@ -26,7 +26,7 @@ export default function ArbitragemPage() {
     <div className="flex min-h-screen bg-dark-bg text-white">
       <Sidebar
         user={{ 
-          name: 'Edilson V03',
+          name: 'Edilson.V03',
           imageUrl: '/images/avatar.png.png'
         }}
         navItems={sidebarNavItems}
