@@ -148,7 +148,7 @@ export async function POST(req: Request) {
             exchangeBuy: calculatedApiDirection === 'FUTURES_TO_SPOT' ? spotExchangeId : futuresExchangeId,
             exchangeSell: calculatedApiDirection === 'FUTURES_TO_SPOT' ? futuresExchangeId : spotExchangeId,
             direction: mapDirectionToTracker(calculatedApiDirection),
-            spread: percentDiff
+            spread: Math.abs(percentDiff)
           }).catch(err => {
             console.error(`Inter-Exchange - Failed to record spread for ${pairInfo.marketSymbol}:`, err);
           });

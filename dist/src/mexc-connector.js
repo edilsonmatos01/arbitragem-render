@@ -7,13 +7,13 @@ exports.MexcConnector = void 0;
 const ws_1 = __importDefault(require("ws"));
 const MEXC_FUTURES_WS_URL = 'wss://contract.mexc.com/edge';
 class MexcConnector {
-    constructor(identifier, marketPrices, onConnected) {
+    constructor(identifier, priceUpdateCallback, onConnected) {
         this.ws = null;
         this.subscriptions = new Set();
         this.pingInterval = null;
         this.isConnected = false;
         this.marketIdentifier = identifier;
-        this.marketPrices = marketPrices;
+        this.priceUpdateCallback = priceUpdateCallback;
         this.onConnectedCallback = onConnected;
         console.log(`[${this.marketIdentifier}] Conector instanciado.`);
     }
@@ -61,14 +61,20 @@ class MexcConnector {
             if (message.channel === 'push.ticker' && message.data) {
                 const ticker = message.data;
                 const pair = ticker.symbol.replace('_', '/');
-                if (!this.marketPrices[this.marketIdentifier]) {
-                    this.marketPrices[this.marketIdentifier] = {};
-                }
-                this.marketPrices[this.marketIdentifier][pair] = {
+                const priceData = {
                     bestAsk: parseFloat(ticker.ask1),
                     bestBid: parseFloat(ticker.bid1),
-                    timestamp: ticker.timestamp,
                 };
+                if (!priceData.bestAsk || !priceData.bestBid)
+                    return;
+                // Chama o callback centralizado no servidor
+                this.priceUpdateCallback({
+                    identifier: this.marketIdentifier,
+                    symbol: pair,
+                    marketType: 'futures',
+                    bestAsk: priceData.bestAsk,
+                    bestBid: priceData.bestBid,
+                });
             }
         }
         catch (error) {

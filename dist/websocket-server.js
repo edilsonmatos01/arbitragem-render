@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.startWebSocketServer = startWebSocketServer;
 require('dotenv').config();
 const ws_1 = require("ws");
 const http_1 = require("http");
@@ -7,25 +8,95 @@ const gateio_connector_1 = require("./src/gateio-connector");
 const mexc_connector_1 = require("./src/mexc-connector");
 const client_1 = require("@prisma/client");
 const prisma = new client_1.PrismaClient();
-const PORT = process.env.PORT || 8888;
+const PORT = process.env.PORT || 10000;
 const MIN_PROFIT_PERCENTAGE = 0.1;
 let marketPrices = {};
 let targetPairs = [];
-const server = (0, http_1.createServer)();
-const wss = new ws_1.WebSocketServer({ server });
-let clients = [];
-wss.on('connection', (ws, req) => {
-    const clientIp = req.socket.remoteAddress || req.headers['x-forwarded-for'];
-    clients.push(ws);
-    console.log(`[WS Server] Cliente conectado: ${clientIp}. Total: ${clients.length}`);
-    if (Object.keys(marketPrices).length > 0) {
-        ws.send(JSON.stringify({ type: 'full_book', data: marketPrices }));
+let clients = []; // Usamos o tipo estendido
+// ✅ Nova função centralizadora para lidar com todas as atualizações de preço
+function handlePriceUpdate(update) {
+    const { identifier, symbol, priceData, marketType, bestAsk, bestBid } = update;
+    // 1. Atualiza o estado central de preços
+    if (!marketPrices[identifier]) {
+        marketPrices[identifier] = {};
     }
-    ws.on('close', () => {
-        clients = clients.filter(c => c !== ws);
-        console.log(`[WS Server] Cliente desconectado: ${clientIp}. Total: ${clients.length}`);
+    marketPrices[identifier][symbol] = { bestAsk, bestBid, timestamp: Date.now() };
+    // 2. Transmite a atualização para todos os clientes
+    broadcast({
+        type: 'price-update',
+        symbol,
+        marketType,
+        bestAsk,
+        bestBid
     });
-});
+}
+function startWebSocketServer(httpServer) {
+    const wss = new ws_1.WebSocketServer({ server: httpServer });
+    wss.on('connection', (ws, req) => {
+        ws.isAlive = true; // A conexão está viva ao ser estabelecida
+        ws.on('pong', () => {
+            ws.isAlive = true; // O cliente respondeu ao nosso ping, então está vivo
+        });
+        const clientIp = req.socket.remoteAddress || req.headers['x-forwarded-for'];
+        clients.push(ws);
+        console.log(`[WS Server] Cliente conectado: ${clientIp}. Total: ${clients.length}`);
+        if (Object.keys(marketPrices).length > 0) {
+            ws.send(JSON.stringify({ type: 'full_book', data: marketPrices }));
+        }
+        ws.on('close', () => {
+            clients = clients.filter(c => c !== ws);
+            console.log(`[WS Server] Cliente desconectado: ${clientIp}. Total: ${clients.length}`);
+        });
+    });
+    // Intervalo para verificar conexões e mantê-las vivas
+    const interval = setInterval(() => {
+        wss.clients.forEach(client => {
+            const ws = client;
+            // Se o cliente não respondeu ao PING do ciclo anterior, encerre.
+            if (ws.isAlive === false) {
+                console.log('[WS Server] Conexão inativa terminada.');
+                return ws.terminate();
+            }
+            // Marque como inativo e envie um PING. A resposta 'pong' marcará como vivo novamente.
+            ws.isAlive = false;
+            ws.ping(() => { }); // A função de callback vazia é necessária.
+        });
+    }, 30000); // A cada 30 segundos
+    wss.on('close', () => {
+        clearInterval(interval); // Limpa o intervalo quando o servidor é fechado
+    });
+    console.log(`Servidor WebSocket iniciado e anexado ao servidor HTTP.`);
+    startFeeds();
+}
+// --- Início: Adição para Servidor Standalone ---
+// Esta função cria e inicia um servidor HTTP que usa a nossa lógica WebSocket.
+function initializeStandaloneServer() {
+    const httpServer = (0, http_1.createServer)((req, res) => {
+        // O servidor HTTP básico não fará nada além de fornecer uma base para o WebSocket.
+        // Podemos adicionar um endpoint de health check simples.
+        if (req.url === '/health') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'ok', message: 'WebSocket server is running' }));
+        }
+        else {
+            res.writeHead(404);
+            res.end();
+        }
+    });
+    // Anexa a lógica do WebSocket ao nosso servidor HTTP.
+    startWebSocketServer(httpServer);
+    httpServer.listen(PORT, () => {
+        console.log(`[Servidor Standalone] Servidor HTTP e WebSocket escutando na porta ${PORT}`);
+    });
+}
+// Inicia o servidor standalone.
+// O `require.main === module` garante que este código só rode quando
+// o arquivo é executado diretamente (ex: `node dist/websocket-server.js`),
+// mas não quando é importado por outro arquivo (como o `server.js` em dev).
+if (require.main === module) {
+    initializeStandaloneServer();
+}
+// --- Fim: Adição para Servidor Standalone ---
 function broadcast(data) {
     const serializedData = JSON.stringify(data);
     clients.forEach(client => {
@@ -92,107 +163,104 @@ async function getSpreadStats(opportunity) {
         return { spMax: null, spMin: null, crosses: 0 };
     }
 }
-function getNormalizedData(symbol, price) {
+function getNormalizedData(symbol) {
     const match = symbol.match(/^(\d+)(.+)$/);
     if (match) {
         const factor = parseInt(match[1], 10);
         const baseSymbol = match[2];
-        return { baseSymbol, normalizedPrice: price / factor };
+        return { baseSymbol, factor };
     }
-    return { baseSymbol: symbol, normalizedPrice: price };
+    return { baseSymbol: symbol, factor: 1 };
 }
 async function findAndBroadcastArbitrage() {
-    const opportunities = [];
+    // Não precisamos mais de um array local, processaremos uma a uma
     const exchangeIdentifiers = Object.keys(marketPrices);
     if (exchangeIdentifiers.length < 2)
         return;
-    for (let i = 0; i < exchangeIdentifiers.length; i++) {
-        for (let j = i + 1; j < exchangeIdentifiers.length; j++) {
-            const idA = exchangeIdentifiers[i];
-            const idB = exchangeIdentifiers[j];
-            const pricesA = marketPrices[idA];
-            const pricesB = marketPrices[idB];
-            const marketTypeA = idA.toUpperCase().includes('FUTURES') ? 'futures' : 'spot';
-            const marketTypeB = idB.toUpperCase().includes('FUTURES') ? 'futures' : 'spot';
-            if (marketTypeA === marketTypeB)
-                continue;
-            const spotId = marketTypeA === 'spot' ? idA : idB;
-            const futuresId = marketTypeA === 'futures' ? idA : idB;
-            const spotPrices = marketTypeA === 'spot' ? pricesA : pricesB;
-            const futuresPrices = marketTypeA === 'futures' ? pricesA : pricesB;
-            for (const spotSymbol in spotPrices) {
-                const { baseSymbol: normalizedSpotSymbol, normalizedPrice: normalizedSpotAsk } = getNormalizedData(spotSymbol, spotPrices[spotSymbol].bestAsk);
-                const futuresSymbol = Object.keys(futuresPrices).find(fs => getNormalizedData(fs, 0).baseSymbol === normalizedSpotSymbol);
-                if (futuresSymbol && futuresPrices[futuresSymbol]) {
-                    const { normalizedPrice: normalizedFuturesBid } = getNormalizedData(futuresSymbol, futuresPrices[futuresSymbol].bestBid);
-                    const { normalizedPrice: normalizedFuturesAsk } = getNormalizedData(futuresSymbol, futuresPrices[futuresSymbol].bestAsk);
-                    const { normalizedPrice: normalizedSpotBid } = getNormalizedData(spotSymbol, spotPrices[spotSymbol].bestBid);
-                    // Validação de Preços: Ignorar cálculo se algum preço for zero ou negativo.
-                    if (normalizedSpotAsk <= 0 || normalizedFuturesBid <= 0 || normalizedSpotBid <= 0 || normalizedFuturesAsk <= 0) {
-                        continue;
-                    }
-                    const profitSpotToFutures = ((normalizedFuturesBid - normalizedSpotAsk) / normalizedSpotAsk) * 100;
-                    if (profitSpotToFutures >= MIN_PROFIT_PERCENTAGE) {
-                        opportunities.push({
+    for (const spotId of exchangeIdentifiers.filter(id => !id.toUpperCase().includes('FUTURES'))) {
+        const futuresId = exchangeIdentifiers.find(id => id.toUpperCase().includes('FUTURES'));
+        if (!futuresId)
+            continue;
+        const spotPrices = marketPrices[spotId];
+        const futuresPrices = marketPrices[futuresId];
+        for (const spotSymbol in spotPrices) {
+            const spotData = getNormalizedData(spotSymbol);
+            const futuresSymbol = Object.keys(futuresPrices).find(fs => {
+                const futuresData = getNormalizedData(fs);
+                return futuresData.baseSymbol === spotData.baseSymbol;
+            });
+            if (futuresSymbol) {
+                const futuresData = getNormalizedData(futuresSymbol);
+                const buyPriceSpot = spotPrices[spotSymbol].bestAsk * (futuresData.factor / spotData.factor);
+                const sellPriceFutures = futuresPrices[futuresSymbol].bestBid;
+                const buyPriceFutures = futuresPrices[futuresSymbol].bestAsk;
+                const sellPriceSpot = spotPrices[spotSymbol].bestBid * (futuresData.factor / spotData.factor);
+                if (buyPriceSpot <= 0 || sellPriceFutures <= 0 || buyPriceFutures <= 0 || sellPriceSpot <= 0) {
+                    continue;
+                }
+                // Calcular preços médios para comparação mais justa
+                const spotMidPrice = (spotPrices[spotSymbol].bestAsk + spotPrices[spotSymbol].bestBid) / 2;
+                const futuresMidPrice = (futuresPrices[futuresSymbol].bestAsk + futuresPrices[futuresSymbol].bestBid) / 2;
+                // Normalizar preços se necessário
+                const normalizedSpotMid = spotMidPrice * (futuresData.factor / spotData.factor);
+                // Fórmula simplificada: Spread (%) = ((Futures - Spot) / Spot) × 100
+                const spread = ((futuresMidPrice - normalizedSpotMid) / normalizedSpotMid) * 100;
+                // Só processar se o spread for significativo e dentro dos limites
+                if (Math.abs(spread) >= 0.1 && Math.abs(spread) <= 10) {
+                    if (spread > 0) {
+                        // Futures > Spot: Comprar Spot, Vender Futures
+                        const opportunity = {
                             type: 'arbitrage',
-                            baseSymbol: normalizedSpotSymbol,
-                            profitPercentage: profitSpotToFutures,
-                            buyAt: { exchange: spotId, price: spotPrices[spotSymbol].bestAsk, marketType: 'spot', originalSymbol: spotSymbol },
-                            sellAt: { exchange: futuresId, price: futuresPrices[futuresSymbol].bestBid, marketType: 'futures', originalSymbol: futuresSymbol },
-                            arbitrageType: 'spot_to_futures_inter',
+                            baseSymbol: spotData.baseSymbol,
+                            buyAt: { exchange: spotId.split('_')[0], marketType: 'spot', price: normalizedSpotMid },
+                            sellAt: { exchange: futuresId.split('_')[0], marketType: 'futures', price: futuresMidPrice },
+                            arbitrageType: 'spot_to_futures',
+                            profitPercentage: spread,
                             timestamp: Date.now()
-                        });
+                        };
+                        await recordSpread(opportunity);
+                        broadcastOpportunity(opportunity);
                     }
-                    const profitFuturesToSpot = ((normalizedSpotBid - normalizedFuturesAsk) / normalizedFuturesAsk) * 100;
-                    if (profitFuturesToSpot >= MIN_PROFIT_PERCENTAGE) {
-                        opportunities.push({
+                    else {
+                        // Spot > Futures: Comprar Futures, Vender Spot
+                        const opportunity = {
                             type: 'arbitrage',
-                            baseSymbol: normalizedSpotSymbol,
-                            profitPercentage: profitFuturesToSpot,
-                            buyAt: { exchange: futuresId, price: futuresPrices[futuresSymbol].bestAsk, marketType: 'futures', originalSymbol: futuresSymbol },
-                            sellAt: { exchange: spotId, price: spotPrices[spotSymbol].bestBid, marketType: 'spot', originalSymbol: spotSymbol },
-                            arbitrageType: 'futures_to_spot_inter',
+                            baseSymbol: spotData.baseSymbol,
+                            buyAt: { exchange: futuresId.split('_')[0], marketType: 'futures', price: futuresMidPrice },
+                            sellAt: { exchange: spotId.split('_')[0], marketType: 'spot', price: normalizedSpotMid },
+                            arbitrageType: 'futures_to_spot',
+                            profitPercentage: Math.abs(spread),
                             timestamp: Date.now()
-                        });
+                        };
+                        await recordSpread(opportunity);
+                        broadcastOpportunity(opportunity);
                     }
                 }
             }
         }
     }
-    if (opportunities.length > 0) {
-        opportunities.sort((a, b) => b.profitPercentage - a.profitPercentage);
-        for (const op of opportunities) {
-            await recordSpread(op);
-            const stats = await getSpreadStats(op);
-            const opportunityWithStats = {
-                ...op,
-                spMax: stats.spMax ?? undefined,
-                spMin: stats.spMin ?? undefined,
-                crosses: stats.crosses,
-            };
-            broadcastOpportunity(opportunityWithStats);
-        }
-    }
 }
 async function startFeeds() {
     console.log("Iniciando feeds de dados...");
-    const gateIoSpotConnector = new gateio_connector_1.GateIoConnector('GATEIO_SPOT', marketPrices);
-    const mexcConnector = new mexc_connector_1.MexcConnector('MEXC_FUTURES', marketPrices, () => {
-        mexcConnector.subscribe(targetPairs);
+    // Passa a função 'handlePriceUpdate' para os conectores
+    const gateIoSpotConnector = new gateio_connector_1.GateIoConnector('GATEIO_SPOT', handlePriceUpdate);
+    const gateIoFuturesConnector = new gateio_connector_1.GateIoConnector('GATEIO_FUTURES', handlePriceUpdate);
+    const mexcConnector = new mexc_connector_1.MexcConnector('MEXC_FUTURES', handlePriceUpdate, () => {
+        const mexcPairs = targetPairs.map(p => p.replace('/', '_'));
+        mexcConnector.subscribe(mexcPairs);
     });
     try {
-        targetPairs = await gateIoSpotConnector.getTradablePairs();
-        console.log(`Gate.io: Encontrados ${targetPairs.length} pares SPOT negociáveis.`);
+        const spotPairs = await gateIoSpotConnector.getTradablePairs();
+        const futuresPairs = await gateIoFuturesConnector.getTradablePairs();
+        targetPairs = spotPairs.filter(p => futuresPairs.includes(p));
+        console.log(`Encontrados ${targetPairs.length} pares em comum.`);
         gateIoSpotConnector.connect(targetPairs);
+        gateIoFuturesConnector.connect(targetPairs);
         mexcConnector.connect();
-        console.log(`Monitorando ${targetPairs.length} pares em Gate.io (Spot) e MEXC (Futures).`);
+        console.log(`Monitorando ${targetPairs.length} pares.`);
         setInterval(findAndBroadcastArbitrage, 5000);
     }
     catch (error) {
         console.error("Erro fatal ao iniciar os feeds:", error);
     }
 }
-server.listen(PORT, () => {
-    console.log(`Servidor WebSocket rodando na porta ${PORT}`);
-    startFeeds();
-});
