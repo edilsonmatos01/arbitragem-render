@@ -205,6 +205,7 @@ export default function ArbitrageTable() {
         if (opp.buyAt.price <= 0) return null;
 
         // Calcula o spread usando a fórmula correta: ((Futures - Spot) / Spot) × 100
+        // Atualizado em: 19/03/2024
         const spread = ((opp.sellAt.price - opp.buyAt.price) / opp.buyAt.price) * 100;
 
         const newOpp: Opportunity = {
