@@ -6,9 +6,21 @@ async function fixProductionMigrations() {
   try {
     console.log('🔧 Iniciando correção das migrações...');
     
-    // Limpar tabela de migrações corrompidas
-    await prisma.$executeRaw`DELETE FROM "_prisma_migrations" WHERE migration_name LIKE '%20250613%';`;
-    console.log('✅ Migrações corrompidas removidas');
+    // Criar tabela _prisma_migrations se não existir
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
+        "id"                    VARCHAR(36) PRIMARY KEY NOT NULL,
+        "checksum"             VARCHAR(64) NOT NULL,
+        "finished_at"          TIMESTAMP WITH TIME ZONE,
+        "migration_name"       VARCHAR(255) NOT NULL,
+        "logs"                 TEXT,
+        "rolled_back_at"       TIMESTAMP WITH TIME ZONE,
+        "started_at"           TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+        "applied_steps_count"  INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+    
+    console.log('✅ Tabela _prisma_migrations verificada/criada');
     
     // Verificar se a tabela SpreadHistory existe
     const tableExists = await prisma.$queryRaw`
@@ -21,8 +33,8 @@ async function fixProductionMigrations() {
     
     if (!tableExists[0].exists) {
       console.log('📋 Criando tabela SpreadHistory...');
-      await prisma.$executeRaw`
-        CREATE TABLE "SpreadHistory" (
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "SpreadHistory" (
           "id" TEXT NOT NULL,
           "symbol" TEXT NOT NULL,
           "exchangeBuy" TEXT NOT NULL,
@@ -32,17 +44,26 @@ async function fixProductionMigrations() {
           "timestamp" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
           CONSTRAINT "SpreadHistory_pkey" PRIMARY KEY ("id")
         );
-      `;
-      
-      await prisma.$executeRaw`
-        CREATE INDEX "SpreadHistory_symbol_exchangeBuy_exchangeSell_direction_idx" 
+        
+        CREATE INDEX IF NOT EXISTS "SpreadHistory_symbol_exchangeBuy_exchangeSell_direction_idx" 
         ON "SpreadHistory"("symbol", "exchangeBuy", "exchangeSell", "direction");
-      `;
+      `);
       
       console.log('✅ Tabela SpreadHistory criada com sucesso');
     } else {
       console.log('✅ Tabela SpreadHistory já existe');
     }
+    
+    // Registrar a migração na tabela _prisma_migrations
+    const migrationId = '20250613164152_init';
+    const checksum = 'a1b2c3d4e5f6g7h8i9j0'; // Checksum arbitrário
+    
+    await prisma.$executeRaw`
+      INSERT INTO "_prisma_migrations" 
+      ("id", "checksum", "finished_at", "migration_name", "logs", "rolled_back_at", "started_at", "applied_steps_count")
+      VALUES (${migrationId}, ${checksum}, NOW(), ${migrationId}, 'Applied manually', NULL, NOW(), 1)
+      ON CONFLICT ("id") DO NOTHING;
+    `;
     
     console.log('🎉 Correção das migrações concluída com sucesso!');
     
