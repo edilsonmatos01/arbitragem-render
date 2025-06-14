@@ -15,24 +15,31 @@ services:
   env: node
   region: oregon
   plan: free
-  branch: main
-  buildCommand: npm install && npm run fix:migrations && npm run prisma:deploy && npm run build
-  startCommand: npm run start:next
+  buildCommand: npm install && npm run build && npm run prisma:deploy
+  startCommand: npm start
   envVars:
-  - key: DATABASE_URL
-    fromDatabase:
-      name: arbitragem-banco
-      property: connectionString
-  - key: NEXT_PUBLIC_WEBSOCKET_URL
-    value: wss://robo-de-arbitragem-tracker.onrender.com
-  - key: GATEIO_API_KEY
-    sync: false
-  - key: GATEIO_SECRET
-    sync: false
-  - key: MEXC_API_KEY
-    sync: false
-  - key: MEXC_SECRET
-    sync: false
+    - key: NODE_ENV
+      value: production
+    - key: DATABASE_URL
+      fromDatabase:
+        name: arbitragem-banco
+        property: connectionString
+    - key: NEXT_PUBLIC_API_URL
+      sync: false
+    - key: BINANCE_API_KEY
+      sync: false
+    - key: BINANCE_SECRET
+      sync: false
+    - key: MEXC_API_KEY
+      sync: false
+    - key: MEXC_SECRET
+      sync: false
+    - key: GATE_API_KEY
+      sync: false
+    - key: GATE_SECRET
+      sync: false
+  autoDeploy: true
+  branch: default
 - type: web
   name: robo-de-arbitragem-tracker
   env: node
