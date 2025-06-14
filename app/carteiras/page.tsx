@@ -27,7 +27,7 @@ export default function CarteirasPage() {
     <div className="flex min-h-screen bg-dark-bg text-white">
       <Sidebar
         user={{ 
-          name: 'Edilson V03', 
+          name: 'Edilson 03', 
           imageUrl: '/images/avatar.png.png'
         }}
         navItems={sidebarNavItems}
