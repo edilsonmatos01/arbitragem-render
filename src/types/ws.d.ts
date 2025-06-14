@@ -35,6 +35,10 @@ declare module 'ws' {
   }
 
   namespace WebSocket {
+    export interface Data {
+      toString(): string;
+    }
+
     export interface ClientOptions {
       protocol?: string;
       handshakeTimeout?: number;
