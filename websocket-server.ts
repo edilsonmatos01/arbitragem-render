@@ -239,16 +239,14 @@ async function findAndBroadcastArbitrage() {
                     continue;
                 }
                 
-                // Calcular preços médios para comparação mais justa
-                const spotMidPrice = (spotPrices[spotSymbol].bestAsk + spotPrices[spotSymbol].bestBid) / 2;
-                const futuresMidPrice = (futuresPrices[futuresSymbol].bestAsk + futuresPrices[futuresSymbol].bestBid) / 2;
-                
                 // Normalizar preços se necessário
-                const normalizedSpotMid = spotMidPrice * (futuresData.factor / spotData.factor);
-                const normalizedFuturesMid = futuresMidPrice * (futuresData.factor / spotData.factor);
+                const normalizedSpotAsk = spotPrices[spotSymbol].bestAsk * (futuresData.factor / spotData.factor);
+                const normalizedSpotBid = spotPrices[spotSymbol].bestBid * (futuresData.factor / spotData.factor);
+                const normalizedFuturesAsk = futuresPrices[futuresSymbol].bestAsk * (futuresData.factor / spotData.factor);
+                const normalizedFuturesBid = futuresPrices[futuresSymbol].bestBid * (futuresData.factor / spotData.factor);
                 
                 // Cálculo do spread para arbitragem spot-to-futures
-                const profitSpotToFutures = ((normalizedFuturesMid - normalizedSpotMid) / normalizedSpotMid) * 100;
+                const profitSpotToFutures = ((normalizedFuturesBid - normalizedSpotAsk) / normalizedSpotAsk) * 100;
                 if (profitSpotToFutures >= MIN_PROFIT_PERCENTAGE) {
                     const opportunity: ArbitrageOpportunity = {
                         type: 'arbitrage',
@@ -264,7 +262,7 @@ async function findAndBroadcastArbitrage() {
                 }
 
                 // Cálculo do spread para arbitragem futures-to-spot
-                const profitFuturesToSpot = ((normalizedSpotMid - normalizedFuturesMid) / normalizedSpotMid) * 100;
+                const profitFuturesToSpot = ((normalizedSpotBid - normalizedFuturesAsk) / normalizedSpotAsk) * 100;
                 if (profitFuturesToSpot >= MIN_PROFIT_PERCENTAGE) {
                     const opportunity: ArbitrageOpportunity = {
                         type: 'arbitrage',
