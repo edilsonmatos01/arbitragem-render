@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-import { WebSocket, WebSocketServer } from 'ws';
+import WebSocket from 'ws';
 import { createServer, IncomingMessage, Server } from 'http';
 import { GateIoConnector } from './src/gateio-connector';
 import { MexcConnector } from './src/mexc-connector';
@@ -42,7 +42,7 @@ function handlePriceUpdate(update: { type: string, symbol: string, marketType: s
 }
 
 export function startWebSocketServer(httpServer: Server) {
-    const wss = new WebSocketServer({ server: httpServer });
+    const wss = new WebSocket.Server({ server: httpServer });
 
     wss.on('connection', (ws: CustomWebSocket, req: IncomingMessage) => {
         ws.isAlive = true; // A conexão está viva ao ser estabelecida
