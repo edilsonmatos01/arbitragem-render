@@ -95,7 +95,7 @@ function getTrackerParams(opportunity: Opportunity): {
 const POLLING_INTERVAL_MS = 5000; // Intervalo de polling: 5 segundos
 
 // ✅ 6. A renderização deve ser otimizada com React.memo
-const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSpreadDisplayClass, calcularLucro, handleExecuteArbitrage }: any) => {
+const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSpreadDisplayClass, calcularLucro, handleExecuteArbitrage, formatSpread }: any) => {
     
     // ✅ 4. Na renderização de cada linha da tabela, ao exibir os preços:
     const getLivePrice = (originalPrice: number, marketTypeStr: string, side: 'buy' | 'sell') => {
@@ -119,7 +119,7 @@ const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSp
             <td className="py-4 px-6 whitespace-nowrap text-sm">{opportunity.compraExchange} <br /> <span className="font-bold">{formatPrice(compraPreco)}</span></td>
             <td className="py-4 px-6 whitespace-nowrap text-sm">{opportunity.vendaExchange} <br /> <span className="font-bold">{formatPrice(vendaPreco)}</span></td>
             <td className={`py-4 px-6 whitespace-nowrap text-sm font-bold ${getSpreadDisplayClass(opportunity.spread)}`}>
-              {opportunity.spread.toFixed(2)}%
+              {formatSpread(opportunity.spread)}%
             </td>
             <td className="py-4 px-6 whitespace-nowrap text-sm">
               <MaxSpreadCell symbol={opportunity.symbol} />
@@ -193,6 +193,18 @@ export default function ArbitrageTable() {
       return 'text-red-400';
     }
     return '';
+  };
+
+  // Função para formatar o spread com arredondamento para cima
+  const formatSpread = (spread: number): string => {
+    // Multiplica por 100 para mover 2 casas decimais
+    const scaledUp = spread * 100;
+    // Arredonda para cima
+    const roundedUp = Math.ceil(scaledUp);
+    // Divide por 100 para voltar às casas decimais originais
+    const result = roundedUp / 100;
+    // Formata com 2 casas decimais fixas
+    return result.toFixed(2);
   };
 
   // Lógica de Ranking Dinâmico
@@ -394,6 +406,7 @@ export default function ArbitrageTable() {
                     getSpreadDisplayClass={getSpreadDisplayClass}
                     calcularLucro={calcularLucro}
                     handleExecuteArbitrage={handleExecuteArbitrage}
+                    formatSpread={formatSpread}
                   />
                 ))
               )}
