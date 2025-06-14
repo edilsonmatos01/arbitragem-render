@@ -57,11 +57,28 @@ services:
 - type: web
   name: arbitragem-render
   env: node
-  buildCommand: npm install && npm run build
+  plan: free
+  buildCommand: npm install && npm run build && npm run prisma:deploy
   startCommand: npm start
   envVars:
     - key: NODE_ENV
       value: production
+    - key: DATABASE_URL
+      sync: false
+    - key: NEXT_PUBLIC_API_URL
+      sync: false
+    - key: BINANCE_API_KEY
+      sync: false
+    - key: BINANCE_SECRET
+      sync: false
+    - key: MEXC_API_KEY
+      sync: false
+    - key: MEXC_SECRET
+      sync: false
+    - key: GATE_API_KEY
+      sync: false
+    - key: GATE_SECRET
+      sync: false
   autoDeploy: true
   branch: default
 version: "1"
