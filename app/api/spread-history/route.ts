@@ -3,6 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const prisma = new PrismaClient();
 
+// Função auxiliar para converter UTC para horário de Brasília
+function convertToBrasiliaTime(date: Date): Date {
+  return new Date(date.getTime() - 3 * 60 * 60 * 1000); // UTC-3
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const symbol = searchParams.get('symbol');
@@ -40,7 +45,9 @@ export async function GET(req: NextRequest) {
     const aggregatedData: { [key: number]: { maxSpread: number; date: Date } } = {};
 
     for (const record of rawHistory) {
-      const bucketTimestamp = Math.floor(record.timestamp.getTime() / thirtyMinutesInMs) * thirtyMinutesInMs;
+      // Converter o timestamp para horário de Brasília antes de processar
+      const brasiliaTimestamp = convertToBrasiliaTime(record.timestamp);
+      const bucketTimestamp = Math.floor(brasiliaTimestamp.getTime() / thirtyMinutesInMs) * thirtyMinutesInMs;
       
       // Se o balde não existir, ou se o spread do registro atual for maior
       // que o máximo já armazenado para esse balde, atualize-o.
@@ -58,10 +65,12 @@ export async function GET(req: NextRequest) {
         // Formato brasileiro: DD/MM HH:mm
         const timeLabel = data.date.toLocaleDateString('pt-BR', { 
           day: '2-digit', 
-          month: '2-digit' 
+          month: '2-digit',
+          timeZone: 'America/Sao_Paulo'
         }) + ' ' + data.date.toLocaleTimeString('pt-BR', { 
           hour: '2-digit', 
-          minute: '2-digit' 
+          minute: '2-digit',
+          timeZone: 'America/Sao_Paulo'
         });
 
         return {

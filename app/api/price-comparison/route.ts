@@ -3,6 +3,17 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+interface SpreadRecord {
+  timestamp: Date;
+  direction: string;
+  spread: number;
+}
+
+// Função auxiliar para converter UTC para horário de Brasília
+function convertToBrasiliaTime(date: Date): Date {
+  return new Date(date.getTime() - 3 * 60 * 60 * 1000); // UTC-3
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const symbol = searchParams.get('symbol');
@@ -44,22 +55,25 @@ export async function GET(request: Request) {
     // Agrupar dados por intervalos de 30 minutos
     const groupedData = new Map<string, { spot: number; futures: number; timestamp: string; fullDate: Date }>();
     
-    records.forEach(record => {
+    records.forEach((record: SpreadRecord) => {
+      // Converter para horário de Brasília antes de processar
+      const brasiliaDate = convertToBrasiliaTime(new Date(record.timestamp));
       // Arredondar timestamp para intervalos de 30 minutos
-      const date = new Date(record.timestamp);
-      const minutes = date.getMinutes();
+      const minutes = brasiliaDate.getMinutes();
       const roundedMinutes = Math.floor(minutes / 30) * 30;
-      date.setMinutes(roundedMinutes, 0, 0);
+      brasiliaDate.setMinutes(roundedMinutes, 0, 0);
       
-      const timeKey = date.toISOString();
+      const timeKey = brasiliaDate.toISOString();
       
       // Formato brasileiro: DD/MM HH:mm
-      const timeLabel = date.toLocaleDateString('pt-BR', { 
+      const timeLabel = brasiliaDate.toLocaleDateString('pt-BR', { 
         day: '2-digit', 
-        month: '2-digit' 
-      }) + ' ' + date.toLocaleTimeString('pt-BR', { 
+        month: '2-digit',
+        timeZone: 'America/Sao_Paulo'
+      }) + ' ' + brasiliaDate.toLocaleTimeString('pt-BR', { 
         hour: '2-digit', 
-        minute: '2-digit' 
+        minute: '2-digit',
+        timeZone: 'America/Sao_Paulo'
       });
 
       // Simular preços baseados no spread
@@ -83,7 +97,7 @@ export async function GET(request: Request) {
           spot: spotPrice,
           futures: futuresPrice,
           timestamp: timeLabel,
-          fullDate: date,
+          fullDate: brasiliaDate,
         });
       } else {
         // Se já existe dados para este intervalo, fazer média
