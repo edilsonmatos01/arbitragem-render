@@ -10,7 +10,12 @@
 
 body {
   color: rgb(var(--foreground-rgb));
-  background: rgb(var(--background-start-rgb));
+  background: linear-gradient(
+    to bottom,
+    rgb(var(--background-start-rgb)),
+    rgb(var(--background-end-rgb))
+  );
+  min-height: 100vh;
   /* Vamos usar as cores personalizadas definidas no tailwind.config.ts para melhor controle */
   @apply bg-dark-bg text-gray-100;
   /* Você pode adicionar estilos globais ao body aqui, se necessário */
