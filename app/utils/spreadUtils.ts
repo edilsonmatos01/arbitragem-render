@@ -1,8 +1,5 @@
 import Decimal from 'decimal.js';
 
-// Configura o Decimal.js para máxima precisão
-Decimal.set({ precision: 20, rounding: Decimal.ROUND_HALF_UP });
-
 /**
  * Calcula o spread percentual entre preço de venda e compra
  * @param sellPrice Preço de venda
@@ -39,7 +36,7 @@ export function calculateSpread(sellPrice: number | string, buyPrice: number | s
 
     // Arredonda para 4 casas decimais apenas no final
     // Usamos 4 casas para ter mais precisão no cálculo e exibição
-    return percentageSpread.toDecimalPlaces(4).toString();
+    return percentageSpread.toDecimalPlaces(4, Decimal.ROUND_HALF_UP).toString();
   } catch (error) {
     console.error('Erro ao calcular spread:', error);
     return null;
@@ -84,7 +81,7 @@ export function formatValue(value: string | number, minDecimals: number = 2, max
       maxDecimals
     );
 
-    return decimal.toDecimalPlaces(significantDecimals).toString();
+    return decimal.toDecimalPlaces(significantDecimals, Decimal.ROUND_HALF_UP).toString();
   } catch {
     return '0';
   }
@@ -114,7 +111,7 @@ export function isValidSpread(spread: string | null): boolean {
   if (!spread) return false;
   try {
     const value = new Decimal(spread.trim());
-    return value.isPositive() && value.isFinite() && !value.isZero();
+    return !value.isNegative() && value.isFinite() && !value.isZero();
   } catch {
     return false;
   }
