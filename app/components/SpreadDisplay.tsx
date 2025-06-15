@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { TradingPair, calculateSpread, mockTradingPairs } from '../utils/spreadCalculator';
+import Decimal from 'decimal.js';
 
 export default function SpreadDisplay() {
   const [pairs, setPairs] = useState<TradingPair[]>([]);
@@ -14,6 +15,14 @@ export default function SpreadDisplay() {
     }));
     setPairs(pairsWithSpread);
   }, []);
+
+  const formatValue = (value: string, decimals: number = 4): string => {
+    try {
+      return new Decimal(value).toDecimalPlaces(decimals).toString();
+    } catch {
+      return '0';
+    }
+  };
 
   return (
     <div className="p-6">
@@ -29,12 +38,12 @@ export default function SpreadDisplay() {
               <h3 className="text-lg font-semibold mb-2 text-white">{pair.symbol}</h3>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div className="text-gray-400">Compra:</div>
-                <div className="text-white">{pair.buyPrice.toFixed(4)}</div>
+                <div className="text-white">{formatValue(pair.buyPrice)}</div>
                 <div className="text-gray-400">Venda:</div>
-                <div className="text-white">{pair.sellPrice.toFixed(4)}</div>
+                <div className="text-white">{formatValue(pair.sellPrice)}</div>
                 <div className="text-gray-400">Spread:</div>
-                <div className={`font-medium ${pair.spread && pair.spread >= 0.5 ? 'text-green-400' : 'text-white'}`}>
-                  {pair.spread?.toFixed(4)}%
+                <div className={`font-medium ${pair.spread && new Decimal(pair.spread).gte('0.5') ? 'text-green-400' : 'text-white'}`}>
+                  {pair.spread}%
                 </div>
               </div>
             </div>
