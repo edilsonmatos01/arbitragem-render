@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { TradingPair, calculateSpread, mockTradingPairs } from '../utils/spreadCalculator';
+import { formatValue, isValidSpread } from '../utils/spreadUtils';
 import Decimal from 'decimal.js';
 
 export default function SpreadDisplay() {
@@ -16,7 +17,7 @@ export default function SpreadDisplay() {
 
     // Ordena os pares por spread (maior para menor)
     const sortedPairs = pairsWithSpread
-      .filter(pair => pair.spread !== null)
+      .filter(pair => isValidSpread(pair.spread))
       .sort((a, b) => {
         const spreadA = new Decimal(a.spread || '0');
         const spreadB = new Decimal(b.spread || '0');
@@ -25,15 +26,6 @@ export default function SpreadDisplay() {
 
     setPairs(sortedPairs);
   }, []);
-
-  const formatValue = (value: string): string => {
-    try {
-      // Mantém a precisão original do valor
-      return new Decimal(value).toString();
-    } catch {
-      return '0';
-    }
-  };
 
   return (
     <div className="p-6">
@@ -47,12 +39,12 @@ export default function SpreadDisplay() {
             <h3 className="text-lg font-semibold mb-2 text-white">{pair.symbol}</h3>
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div className="text-gray-400">Gate.io (spot):</div>
-              <div className="text-white">{formatValue(pair.buyPrice)}</div>
+              <div className="text-white">{formatValue(pair.buyPrice, 4, 8)}</div>
               <div className="text-gray-400">MEXC (futures):</div>
-              <div className="text-white">{formatValue(pair.sellPrice)}</div>
+              <div className="text-white">{formatValue(pair.sellPrice, 4, 8)}</div>
               <div className="text-gray-400">Spread:</div>
               <div className={`font-medium ${pair.spread && new Decimal(pair.spread).gte('0.5') ? 'text-green-400' : 'text-white'}`}>
-                {pair.spread}%
+                {formatValue(pair.spread || '0', 4, 4)}%
               </div>
             </div>
           </div>

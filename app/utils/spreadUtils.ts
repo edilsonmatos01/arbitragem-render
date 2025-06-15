@@ -1,19 +1,24 @@
 import Decimal from 'decimal.js';
 
+// Configura o Decimal.js para máxima precisão
+Decimal.set({ precision: 20, rounding: Decimal.ROUND_HALF_UP });
+
 /**
  * Calcula o spread percentual entre preço de venda e compra
  * @param sellPrice Preço de venda
  * @param buyPrice Preço de compra
- * @returns Spread percentual com 2 casas decimais ou null se inválido
+ * @returns Spread percentual com 4 casas decimais ou null se inválido
  */
 export function calculateSpread(sellPrice: number | string, buyPrice: number | string): string | null {
   try {
-    // Converte os valores para string e cria novos Decimals com precisão máxima
-    const sell = new Decimal(sellPrice.toString());
-    const buy = new Decimal(buyPrice.toString());
+    // Garante que os valores são strings para evitar erros de precisão do JavaScript
+    const sell = new Decimal(sellPrice.toString().trim());
+    const buy = new Decimal(buyPrice.toString().trim());
 
-    // Validações iniciais
-    if (buy.isZero() || buy.isNegative() || sell.isNegative()) {
+    // Validações rigorosas
+    if (buy.isZero() || buy.isNegative() || sell.isNegative() || 
+        !buy.isFinite() || !sell.isFinite() ||
+        buy.equals(0) || sell.equals(0)) {
       return null;
     }
 
@@ -22,20 +27,19 @@ export function calculateSpread(sellPrice: number | string, buyPrice: number | s
       return null;
     }
 
-    // Cálculo do spread com máxima precisão:
-    // ((venda - compra) / compra) * 100
-    const spread = sell
-      .minus(buy)           // (venda - compra)
-      .dividedBy(buy)       // / compra
-      .times(100);         // * 100
+    // Cálculo do spread mantendo precisão máxima em cada etapa
+    const difference = sell.minus(buy);
+    const ratio = difference.dividedBy(buy);
+    const percentageSpread = ratio.times(100);
 
-    // Se o spread for negativo ou zero, retorna null
-    if (spread.isNegative() || spread.isZero()) {
+    // Validação do resultado
+    if (percentageSpread.isNegative() || percentageSpread.isZero() || !percentageSpread.isFinite()) {
       return null;
     }
 
-    // Arredonda para 2 casas decimais apenas no final e converte para string
-    return spread.toDecimalPlaces(2).toString();
+    // Arredonda para 4 casas decimais apenas no final
+    // Usamos 4 casas para ter mais precisão no cálculo e exibição
+    return percentageSpread.toDecimalPlaces(4).toString();
   } catch (error) {
     console.error('Erro ao calcular spread:', error);
     return null;
@@ -63,8 +67,31 @@ export function normalizeSpread(spread: number | string): string | null {
 }
 
 /**
- * Compara dois valores de spread
- * @returns -1 se a < b, 0 se iguais, 1 se a > b
+ * Formata um valor para exibição mantendo precisão significativa
+ * @param value Valor a ser formatado
+ * @param minDecimals Mínimo de casas decimais
+ * @param maxDecimals Máximo de casas decimais
+ */
+export function formatValue(value: string | number, minDecimals: number = 2, maxDecimals: number = 8): string {
+  try {
+    const decimal = new Decimal(value.toString().trim());
+    
+    // Determina o número de casas decimais significativas
+    const stringValue = decimal.toString();
+    const decimalPart = stringValue.split('.')[1] || '';
+    const significantDecimals = Math.min(
+      Math.max(decimalPart.length, minDecimals),
+      maxDecimals
+    );
+
+    return decimal.toDecimalPlaces(significantDecimals).toString();
+  } catch {
+    return '0';
+  }
+}
+
+/**
+ * Compara dois valores de spread com precisão
  */
 export function compareSpread(a: string | null, b: string | null): number {
   if (a === null && b === null) return 0;
@@ -72,10 +99,23 @@ export function compareSpread(a: string | null, b: string | null): number {
   if (b === null) return 1;
 
   try {
-    const decimalA = new Decimal(a);
-    const decimalB = new Decimal(b);
+    const decimalA = new Decimal(a.trim());
+    const decimalB = new Decimal(b.trim());
     return decimalA.comparedTo(decimalB);
   } catch {
     return 0;
+  }
+}
+
+/**
+ * Verifica se um spread é válido e significativo
+ */
+export function isValidSpread(spread: string | null): boolean {
+  if (!spread) return false;
+  try {
+    const value = new Decimal(spread.trim());
+    return value.isPositive() && value.isFinite() && !value.isZero();
+  } catch {
+    return false;
   }
 } 
