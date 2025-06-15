@@ -195,21 +195,21 @@ export default function ArbitrageTable() {
     return '';
   };
 
-  // Função para formatar o spread com arredondamento específico
+  // Função para formatar o spread com arredondamento específico para exibição
   const formatSpread = (spread: number): string => {
-    // Multiplica por 100 para trabalhar com porcentagem
-    const spreadPercentage = spread * 100;
+    // O spread já vem calculado corretamente, só precisamos formatar para exibição
+    // Não multiplicamos por 100 pois o spread já está em porcentagem
     
     // Obtém as casas decimais
-    const decimalPart = spreadPercentage % 1;
+    const decimalPart = spread % 1;
     const thirdDecimal = Math.floor((decimalPart * 1000) % 10);
     
     if (thirdDecimal <= 5) {
       // Se a terceira casa decimal for <= 5, trunca para duas casas
-      return (Math.floor(spreadPercentage * 100) / 100).toFixed(2);
+      return (Math.floor(spread * 100) / 100).toFixed(2);
     } else {
       // Se a terceira casa decimal for > 5, arredonda para cima
-      return (Math.ceil(spreadPercentage * 100) / 100).toFixed(2);
+      return (Math.ceil(spread * 100) / 100).toFixed(2);
     }
   };
 
