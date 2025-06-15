@@ -195,16 +195,22 @@ export default function ArbitrageTable() {
     return '';
   };
 
-  // Função para formatar o spread com arredondamento para cima
+  // Função para formatar o spread com arredondamento específico
   const formatSpread = (spread: number): string => {
-    // Multiplica por 100 para mover 2 casas decimais
-    const scaledUp = spread * 100;
-    // Arredonda para cima
-    const roundedUp = Math.ceil(scaledUp);
-    // Divide por 100 para voltar às casas decimais originais
-    const result = roundedUp / 100;
-    // Formata com 2 casas decimais fixas
-    return result.toFixed(2);
+    // Multiplica por 100 para trabalhar com porcentagem
+    const spreadPercentage = spread * 100;
+    
+    // Obtém as casas decimais
+    const decimalPart = spreadPercentage % 1;
+    const thirdDecimal = Math.floor((decimalPart * 1000) % 10);
+    
+    if (thirdDecimal <= 5) {
+      // Se a terceira casa decimal for <= 5, trunca para duas casas
+      return (Math.floor(spreadPercentage * 100) / 100).toFixed(2);
+    } else {
+      // Se a terceira casa decimal for > 5, arredonda para cima
+      return (Math.ceil(spreadPercentage * 100) / 100).toFixed(2);
+    }
   };
 
   // Lógica de Ranking Dinâmico
