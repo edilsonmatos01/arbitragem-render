@@ -197,26 +197,23 @@ export default function ArbitrageTable() {
 
   // Função para formatar o spread com arredondamento específico para exibição
   const formatSpread = (spread: number): string => {
-    // O spread já vem calculado em porcentagem e com o sinal correto
-    // Vamos manter o sinal para o arredondamento
-    const isNegative = spread < 0;
-    const absSpread = Math.abs(spread);
+    // Se o spread for negativo ou zero, retorna vazio
+    if (spread <= 0) return '';
     
-    // Obtém as casas decimais do valor absoluto
-    const decimalPart = absSpread % 1;
+    // Obtém as casas decimais
+    const decimalPart = spread % 1;
     const thirdDecimal = Math.floor((decimalPart * 1000) % 10);
     
     let roundedSpread: number;
     if (thirdDecimal <= 5) {
       // Se a terceira casa decimal for <= 5, trunca para duas casas
-      roundedSpread = Math.floor(absSpread * 100) / 100;
+      roundedSpread = Math.floor(spread * 100) / 100;
     } else {
       // Se a terceira casa decimal for > 5, arredonda para cima
-      roundedSpread = Math.ceil(absSpread * 100) / 100;
+      roundedSpread = Math.ceil(spread * 100) / 100;
     }
-
-    // Reaplica o sinal original
-    return ((isNegative ? -roundedSpread : roundedSpread).toFixed(2));
+    
+    return roundedSpread.toFixed(2);
   };
 
   // Lógica de Ranking Dinâmico

@@ -238,12 +238,12 @@ async function findAndBroadcastArbitrage() {
             // Cálculo do spread apenas para arbitragem spot-to-futures
             const spread = ((normalizedFuturesBid - normalizedSpotAsk) / normalizedSpotAsk) * 100;
             
-            // Só processa se houver oportunidade (spread positivo)
-            if (spread >= MIN_PROFIT_PERCENTAGE) {
+            // Só processa se houver oportunidade real (spread positivo e acima do mínimo)
+            if (spread > 0 && spread >= MIN_PROFIT_PERCENTAGE) {
                 const opportunity: ArbitrageOpportunity = {
                     type: 'arbitrage',
                     baseSymbol: spotData.baseSymbol,
-                    profitPercentage: spread, // Mantém o sinal original
+                    profitPercentage: spread,
                     buyAt: { 
                         exchange: spotId, 
                         price: spotPrices[spotSymbol].bestAsk, 
