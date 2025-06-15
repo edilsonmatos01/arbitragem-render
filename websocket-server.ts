@@ -206,6 +206,36 @@ function getNormalizedData(symbol: string): { baseSymbol: string, factor: number
     return { baseSymbol: symbol, factor: 1 };
 }
 
+// Função centralizada para cálculo do spread
+function calculateSpread(
+    spotAsk: number,
+    futuresBid: number,
+    spotFactor: number = 1,
+    futuresFactor: number = 1
+): number | null {
+    // Validação rigorosa dos inputs
+    if (!spotAsk || !futuresBid || 
+        spotAsk <= 0 || futuresBid <= 0 ||
+        !isFinite(spotAsk) || !isFinite(futuresBid) ||
+        isNaN(spotAsk) || isNaN(futuresBid)) {
+        return null;
+    }
+
+    // Normalização dos preços
+    const normalizedSpotAsk = spotAsk * (futuresFactor / spotFactor);
+    const normalizedFuturesBid = futuresBid * (futuresFactor / spotFactor);
+
+    // Cálculo do spread
+    const spread = ((normalizedFuturesBid - normalizedSpotAsk) / normalizedSpotAsk) * 100;
+
+    // Validação do resultado
+    if (!isFinite(spread) || isNaN(spread) || spread <= 0) {
+        return null;
+    }
+
+    return spread;
+}
+
 async function findAndBroadcastArbitrage() {
     const exchangeIdentifiers = Object.keys(marketPrices);
     if (exchangeIdentifiers.length < 2) return;
@@ -229,36 +259,37 @@ async function findAndBroadcastArbitrage() {
 
             const futuresData = getNormalizedData(futuresSymbol);
             
-            // Normalizar preços para comparação
-            const normalizedSpotAsk = spotPrices[spotSymbol].bestAsk * (futuresData.factor / spotData.factor);
-            const normalizedFuturesBid = futuresPrices[futuresSymbol].bestBid * (futuresData.factor / spotData.factor);
+            const spotAsk = spotPrices[spotSymbol].bestAsk;
+            const futuresBid = futuresPrices[futuresSymbol].bestBid;
 
-            if (normalizedSpotAsk <= 0 || normalizedFuturesBid <= 0) continue;
+            const spread = calculateSpread(
+                spotAsk,
+                futuresBid,
+                spotData.factor,
+                futuresData.factor
+            );
 
-            // Cálculo do spread apenas para arbitragem spot-to-futures
-            const spread = ((normalizedFuturesBid - normalizedSpotAsk) / normalizedSpotAsk) * 100;
-            
-            // Só processa se houver oportunidade real (spread positivo e acima do mínimo)
-            if (spread > 0 && spread >= MIN_PROFIT_PERCENTAGE) {
+            if (spread !== null && spread >= MIN_PROFIT_PERCENTAGE && spread < 10) {
                 const opportunity: ArbitrageOpportunity = {
                     type: 'arbitrage',
                     baseSymbol: spotData.baseSymbol,
                     profitPercentage: spread,
                     buyAt: { 
                         exchange: spotId, 
-                        price: spotPrices[spotSymbol].bestAsk, 
+                        price: spotAsk,
                         marketType: 'spot', 
                         originalSymbol: spotSymbol 
                     },
                     sellAt: { 
                         exchange: futuresId, 
-                        price: futuresPrices[futuresSymbol].bestBid, 
+                        price: futuresBid,
                         marketType: 'futures', 
                         originalSymbol: futuresSymbol 
                     },
                     arbitrageType: 'spot_to_futures_inter',
                     timestamp: Date.now()
                 };
+
                 await recordSpread(opportunity);
                 const stats = await getSpreadStats(opportunity);
                 const opportunityWithStats = {

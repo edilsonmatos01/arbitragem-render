@@ -25,6 +25,27 @@ function mapDirectionToTracker(apiDirection: 'FUTURES_TO_SPOT' | 'SPOT_TO_FUTURE
   return apiDirection === 'FUTURES_TO_SPOT' ? 'spot-to-future' : 'future-to-spot';
 }
 
+// Função centralizada para cálculo do spread
+function calculateSpread(spotAsk: number, futuresBid: number): number | null {
+    // Validação rigorosa dos inputs
+    if (!spotAsk || !futuresBid || 
+        spotAsk <= 0 || futuresBid <= 0 ||
+        !isFinite(spotAsk) || !isFinite(futuresBid) ||
+        isNaN(spotAsk) || isNaN(futuresBid)) {
+        return null;
+    }
+
+    // Cálculo do spread
+    const spread = ((futuresBid - spotAsk) / spotAsk) * 100;
+
+    // Validação do resultado
+    if (!isFinite(spread) || isNaN(spread) || spread <= 0) {
+        return null;
+    }
+
+    return spread;
+}
+
 export async function GET() {
   try {
     const exchange = new ccxt.gateio({
@@ -36,80 +57,57 @@ export async function GET() {
     await exchange.loadMarkets();
     const opportunities = [];
 
-    for (const spotSymbol of TARGET_PAIRS) { // Renomeado 'symbol' para 'spotSymbol' para clareza
-      const futuresSymbol = `${spotSymbol}:USDT`; // Assumindo futuros lineares USDT-margined
+    for (const spotSymbol of TARGET_PAIRS) {
+      const futuresSymbol = `${spotSymbol}:USDT`;
 
       try {
-        // Certifique-se de que os mercados existem
         const spotMarket = exchange.markets[spotSymbol];
         const futuresMarket = exchange.markets[futuresSymbol];
 
-        if (!spotMarket) {
-          // console.warn(`${EXCHANGE_NAME_FOR_LOG} - Mercado spot ${spotSymbol} não encontrado.`);
+        if (!spotMarket || !futuresMarket || !futuresMarket.active) {
           continue;
         }
-        if (!futuresMarket) {
-          // console.warn(`${EXCHANGE_NAME_FOR_LOG} - Mercado de futuros ${futuresSymbol} não encontrado.`);
-          continue;
-        }
-        if (!futuresMarket.active) {
-          // console.warn(`${EXCHANGE_NAME_FOR_LOG} - Mercado de futuros ${futuresSymbol} não está ativo.`);
-          continue;
-        }
-
 
         const [spotTicker, futuresTicker] = await Promise.all([
           exchange.fetchTicker(spotSymbol),
           exchange.fetchTicker(futuresSymbol)
         ]);
 
-        const spotAskPrice = spotTicker.ask;       // Preço para COMPRAR no SPOT
-        const spotBidPrice = spotTicker.bid;       // Preço para VENDER no SPOT
-        const futuresAskPrice = futuresTicker.ask;   // Preço para COMPRAR em FUTUROS
-        const futuresBidPrice = futuresTicker.bid;   // Preço para VENDER em FUTUROS
-        const fundingRate = futuresTicker.info?.fundingRate || futuresTicker.info?.funding_rate || '0';
-        // Pega do ticker de futuros
-
-        // Verificar se todos os preços estão disponíveis
-        if (!spotAskPrice || !spotBidPrice || !futuresAskPrice || !futuresBidPrice || 
-            spotAskPrice <= 0 || spotBidPrice <= 0 || futuresAskPrice <= 0 || futuresBidPrice <= 0) {
+        const spotAsk = spotTicker?.ask;
+        const futuresBid = futuresTicker?.bid;
+        
+        // Se algum dos preços for undefined, pula
+        if (spotAsk === undefined || futuresBid === undefined) {
           continue;
         }
 
-        // Calcular preços médios para comparação mais justa
-        const spotMidPrice = (spotAskPrice + spotBidPrice) / 2;
-        const futuresMidPrice = (futuresAskPrice + futuresBidPrice) / 2;
+        const fundingRate = futuresTicker.info?.fundingRate || futuresTicker.info?.funding_rate || '0';
 
-        // Fórmula simplificada: Spread (%) = ((Futures - Spot) / Spot) × 100
-        if (spotMidPrice > 0 && futuresMidPrice > 0) {
-          const spread = ((futuresMidPrice - spotMidPrice) / spotMidPrice) * 100;
+        const spread = calculateSpread(spotAsk, futuresBid);
+
+        if (spread !== null && spread >= 0.01 && spread < 10) {
+          const opportunity = {
+            symbol: spotSymbol,
+            spotPrice: spotAsk.toString(),
+            futuresPrice: futuresBid.toString(),
+            direction: 'SPOT_TO_FUTURES',
+            fundingRate: fundingRate,
+            percentDiff: spread.toString(),
+          };
           
-          // Só registrar se houver spread positivo e significativo (Spot → Futures)
-          if (spread > 0 && spread >= 0.01) { // Mínimo de 0.01% para evitar ruído
-            const opportunity = {
-              symbol: spotSymbol,
-              spotPrice: spotMidPrice.toString(),
-              futuresPrice: futuresMidPrice.toString(),
-              direction: 'SPOT_TO_FUTURES',
-              fundingRate: fundingRate,
-              percentDiff: spread.toString(),
-            };
-            
-            opportunities.push(opportunity);
-            
-            recordSpread({
-              symbol: spotSymbol,
-              exchangeBuy: EXCHANGE_ID,
-              exchangeSell: EXCHANGE_ID,
-              direction: 'spot-to-future',
-              spread: spread
-            }).catch(err => {
-              console.error(`${EXCHANGE_NAME_FOR_LOG} - Failed to record spread for ${spotSymbol}:`, err);
-            });
-          }
+          opportunities.push(opportunity);
+          
+          recordSpread({
+            symbol: spotSymbol,
+            exchangeBuy: EXCHANGE_ID,
+            exchangeSell: EXCHANGE_ID,
+            direction: 'spot-to-future',
+            spread: spread
+          }).catch(err => {
+            console.error(`${EXCHANGE_NAME_FOR_LOG} - Failed to record spread for ${spotSymbol}:`, err);
+          });
         }
       } catch (e) {
-        // console.warn(`${EXCHANGE_NAME_FOR_LOG} - Erro ao processar par ${spotSymbol} / ${futuresSymbol}:`, e instanceof Error ? e.message : String(e));
         continue;
       }
     }

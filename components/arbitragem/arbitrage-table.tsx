@@ -197,21 +197,27 @@ export default function ArbitrageTable() {
 
   // Função para formatar o spread com arredondamento específico para exibição
   const formatSpread = (spread: number): string => {
-    // Se o spread for negativo ou zero, retorna vazio
-    if (spread <= 0) return '';
+    // Validações rigorosas
+    if (spread <= 0 || !isFinite(spread) || isNaN(spread)) return '';
+    
+    // Garantir que estamos trabalhando com no máximo 4 casas decimais para evitar problemas de precisão
+    const spreadFixed = parseFloat(spread.toFixed(4));
     
     // Obtém as casas decimais
-    const decimalPart = spread % 1;
+    const decimalPart = spreadFixed % 1;
     const thirdDecimal = Math.floor((decimalPart * 1000) % 10);
     
     let roundedSpread: number;
     if (thirdDecimal <= 5) {
       // Se a terceira casa decimal for <= 5, trunca para duas casas
-      roundedSpread = Math.floor(spread * 100) / 100;
+      roundedSpread = Math.floor(spreadFixed * 100) / 100;
     } else {
       // Se a terceira casa decimal for > 5, arredonda para cima
-      roundedSpread = Math.ceil(spread * 100) / 100;
+      roundedSpread = Math.ceil(spreadFixed * 100) / 100;
     }
+    
+    // Validação final do resultado
+    if (roundedSpread <= 0 || !isFinite(roundedSpread) || isNaN(roundedSpread)) return '';
     
     return roundedSpread.toFixed(2);
   };
