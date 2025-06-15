@@ -28,10 +28,8 @@ export default function SpreadDisplay() {
 
   const formatValue = (value: string): string => {
     try {
-      // Mantém todas as casas decimais significativas do valor original
-      const decimal = new Decimal(value);
-      const numDecimals = value.split('.')[1]?.length || 0;
-      return decimal.toDecimalPlaces(numDecimals).toString();
+      // Mantém a precisão original do valor
+      return new Decimal(value).toString();
     } catch {
       return '0';
     }

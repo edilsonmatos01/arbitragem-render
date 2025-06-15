@@ -184,16 +184,19 @@ function calculateSpread(spotAsk, futuresBid, spotFactor = 1, futuresFactor = 1)
         isNaN(spotAsk) || isNaN(futuresBid)) {
         return null;
     }
+
     // Normalização dos preços
     const normalizedSpotAsk = spotAsk * (futuresFactor / spotFactor);
     const normalizedFuturesBid = futuresBid * (futuresFactor / spotFactor);
-    // Cálculo do spread
-    const spread = ((normalizedFuturesBid - normalizedSpotAsk) / normalizedSpotAsk) * 100;
-    // Validação do resultado
-    if (!isFinite(spread) || isNaN(spread) || spread <= 0) {
+
+    try {
+        // Importa a função de cálculo de spread do utilitário central
+        const { calculateSpread } = require('../app/utils/spreadUtils');
+        return calculateSpread(normalizedFuturesBid.toString(), normalizedSpotAsk.toString());
+    } catch (error) {
+        console.error('Erro ao calcular spread:', error);
         return null;
     }
-    return spread;
 }
 async function findAndBroadcastArbitrage() {
     const exchangeIdentifiers = Object.keys(marketPrices);

@@ -2,13 +2,13 @@ import Decimal from 'decimal.js';
 
 /**
  * Calcula o spread percentual entre preço de venda e compra
- * @param sellPrice Preço de venda (MEXC)
- * @param buyPrice Preço de compra (Gate.io)
+ * @param sellPrice Preço de venda
+ * @param buyPrice Preço de compra
  * @returns Spread percentual com 2 casas decimais ou null se inválido
  */
 export function calculateSpread(sellPrice: number | string, buyPrice: number | string): string | null {
   try {
-    // Garante que estamos usando os valores com máxima precisão
+    // Converte os valores para string e cria novos Decimals com precisão máxima
     const sell = new Decimal(sellPrice.toString());
     const buy = new Decimal(buyPrice.toString());
 
@@ -42,26 +42,40 @@ export function calculateSpread(sellPrice: number | string, buyPrice: number | s
   }
 }
 
-// Tipo para representar um par de trading
-export interface TradingPair {
-  symbol: string;
-  buyPrice: string;  // Gate.io (spot)
-  sellPrice: string; // MEXC (futures)
-  spread?: string | null;
+/**
+ * Normaliza um valor de spread para garantir precisão
+ * @param spread Valor do spread em porcentagem
+ * @returns Spread normalizado com 2 casas decimais ou null se inválido
+ */
+export function normalizeSpread(spread: number | string): string | null {
+  try {
+    const decimalSpread = new Decimal(spread.toString());
+    
+    if (decimalSpread.isNegative() || decimalSpread.isZero() || !decimalSpread.isFinite()) {
+      return null;
+    }
+
+    return decimalSpread.toDecimalPlaces(2).toString();
+  } catch (error) {
+    console.error('Erro ao normalizar spread:', error);
+    return null;
+  }
 }
 
-// Dados mockados atualizados com os casos de teste mencionados
-export const mockTradingPairs: TradingPair[] = [
-  // Casos de teste específicos
-  { symbol: 'PRAI/USDT', buyPrice: '0.02477', sellPrice: '0.02486' },
-  { symbol: 'MEMEFI/USDT', buyPrice: '0.0014388', sellPrice: '0.001441' },
-  { symbol: 'SOLO/USDT', buyPrice: '0.24571', sellPrice: '0.2462' },
-  { symbol: 'OMNI/USDT', buyPrice: '1.88', sellPrice: '1.88' },
-  // Outros pares
-  { symbol: 'MOVE/USDT', buyPrice: '0.14182', sellPrice: '0.1431' },
-  { symbol: 'BLZ/USDT', buyPrice: '0.03394', sellPrice: '0.03413' },
-  { symbol: 'LOKA/USDT', buyPrice: '0.053', sellPrice: '0.0532' },
-  { symbol: 'FB/USDT', buyPrice: '0.466', sellPrice: '0.4667' },
-  { symbol: 'MAVIA/USDT', buyPrice: '0.1628', sellPrice: '0.1629' },
-  { symbol: 'VELODROME/USDT', buyPrice: '0.04993', sellPrice: '0.05' },
-]; 
+/**
+ * Compara dois valores de spread
+ * @returns -1 se a < b, 0 se iguais, 1 se a > b
+ */
+export function compareSpread(a: string | null, b: string | null): number {
+  if (a === null && b === null) return 0;
+  if (a === null) return -1;
+  if (b === null) return 1;
+
+  try {
+    const decimalA = new Decimal(a);
+    const decimalB = new Decimal(b);
+    return decimalA.comparedTo(decimalB);
+  } catch {
+    return 0;
+  }
+} 

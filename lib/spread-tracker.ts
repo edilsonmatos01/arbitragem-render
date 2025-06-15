@@ -2,6 +2,8 @@
 // Lógica para salvar histórico de spreads e calcular a média nas últimas 24h
 
 import { PrismaClient } from '@prisma/client'
+import { normalizeSpread } from '../app/utils/spreadUtils';
+
 const prisma = new PrismaClient()
 
 interface SpreadSample {
@@ -14,16 +16,21 @@ interface SpreadSample {
 
 export async function recordSpread(sample: SpreadSample): Promise<void> {
   try {
-    // Garante que o spread está em porcentagem
-    const spreadValue = Math.abs(sample.spread);
+    // Normaliza o spread usando a função utilitária
+    const normalizedSpread = normalizeSpread(sample.spread);
     
+    if (normalizedSpread === null) {
+      console.warn('Spread inválido, registro ignorado:', sample);
+      return;
+    }
+
     await prisma.spreadHistory.create({
       data: {
         symbol: sample.symbol,
         exchangeBuy: sample.exchangeBuy,
         exchangeSell: sample.exchangeSell,
         direction: sample.direction,
-        spread: spreadValue,
+        spread: parseFloat(normalizedSpread),
         timestamp: new Date()
       }
     });
@@ -56,8 +63,12 @@ export async function getAverageSpread24h(
 
     if (records.length < 2) return null;
 
-    const average = records.reduce((sum, r) => sum + r.spread, 0) / records.length;
-    return parseFloat(average.toFixed(2));
+    // Usa Decimal.js para calcular a média com precisão
+    const { Decimal } = require('decimal.js');
+    const total = records.reduce((sum, r) => sum.plus(r.spread), new Decimal(0));
+    const average = total.dividedBy(records.length);
+    
+    return parseFloat(average.toDecimalPlaces(2).toString());
   } catch (error) {
     console.error("Error getting average spread:", error);
     return null;
