@@ -130,28 +130,25 @@ export async function GET() {
         if (spotMidPrice > 0 && futuresMidPrice > 0) {
           const spread = ((futuresMidPrice - spotMidPrice) / spotMidPrice) * 100;
           
-          // Só registrar se houver spread significativo (positivo ou negativo)
-          if (Math.abs(spread) >= 0.01) { // Mínimo de 0.01% para evitar ruído
+          // Só registrar se houver spread significativo e positivo (Spot → Futures)
+          if (spread >= 0.01) { // Mínimo de 0.01% para evitar ruído
             const opportunity = {
               symbol: spotSymbol,
               spotPrice: spotMidPrice.toString(),
               futuresPrice: futuresMidPrice.toString(),
-              direction: spread > 0 ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT',
+              direction: 'SPOT_TO_FUTURES',
               fundingRate: fundingRate,
-              percentDiff: Math.abs(spread).toString(), // Sempre positivo para compatibilidade
+              percentDiff: spread.toString(), // Mantém o sinal original
             };
             
-            // Só adicionar às oportunidades se for lucrativo (spread positivo significa futures > spot)
-            if (spread > 0) {
-              opportunities.push(opportunity);
-            }
+            opportunities.push(opportunity);
             
             recordSpread({
               symbol: spotSymbol,
               exchangeBuy: EXCHANGE_ID,
               exchangeSell: EXCHANGE_ID,
-              direction: spread > 0 ? 'spot-to-future' : 'future-to-spot',
-              spread: Math.abs(spread)
+              direction: 'spot-to-future',
+              spread: spread // Mantém o sinal original
             }).catch(err => {
               console.error(`${EXCHANGE_NAME_FOR_LOG} - Failed to record spread for ${spotSymbol}:`, err);
             });
