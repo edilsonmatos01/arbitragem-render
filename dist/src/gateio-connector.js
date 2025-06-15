@@ -12,7 +12,7 @@ const GATEIO_WS_URL = 'wss://api.gateio.ws/ws/v4/';
  * Pode ser configurado para SPOT ou FUTURES.
  */
 class GateIoConnector {
-    constructor(identifier, marketPrices) {
+    constructor(identifier, priceUpdateCallback) {
         this.ws = null;
         this.subscriptionQueue = [];
         this.isConnected = false;
@@ -20,7 +20,7 @@ class GateIoConnector {
         this.reconnectTimeout = null;
         this.marketIdentifier = identifier;
         this.marketType = identifier.includes('_SPOT') ? 'spot' : 'futures';
-        this.marketPrices = marketPrices;
+        this.priceUpdateCallback = priceUpdateCallback;
         console.log(`[${this.marketIdentifier}] Conector inicializado.`);
     }
     async getTradablePairs() {
@@ -91,14 +91,17 @@ class GateIoConnector {
         const priceData = {
             bestAsk: parseFloat(ticker.lowest_ask || ticker.ask1),
             bestBid: parseFloat(ticker.highest_bid || ticker.bid1),
-            timestamp: Date.now()
         };
         if (!priceData.bestAsk || !priceData.bestBid)
             return;
-        if (!this.marketPrices[this.marketIdentifier]) {
-            this.marketPrices[this.marketIdentifier] = {};
-        }
-        this.marketPrices[this.marketIdentifier][pair] = priceData;
+        // Chama o callback centralizado no servidor
+        this.priceUpdateCallback({
+            identifier: this.marketIdentifier,
+            symbol: pair,
+            marketType: this.marketType,
+            bestAsk: priceData.bestAsk,
+            bestBid: priceData.bestBid,
+        });
     }
     processSubscriptionQueue() {
         if (!this.ws || this.ws.readyState !== ws_1.default.OPEN || this.subscriptionQueue.length === 0) {

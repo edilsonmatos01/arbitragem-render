@@ -7,7 +7,7 @@ import ArbitrageHistoryChart from '@/components/dashboard/arbitrage-history-char
 import AccumulatedPercentageGauge from '@/components/dashboard/accumulated-percentage-gauge';
 import TotalBalanceCard from '@/components/dashboard/total-balance-card';
 import { LayoutDashboard, Repeat, Wallet, History, Settings, AlertCircle, RefreshCw } from 'lucide-react';
-import SpreadDisplay from '@/components/SpreadDisplay';
+import SpreadDisplay from '../components/SpreadDisplay';
 
 // Ícones Lucide com estilo
 const iconProps = { className: "h-5 w-5" };
