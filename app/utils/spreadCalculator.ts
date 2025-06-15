@@ -2,13 +2,13 @@ import Decimal from 'decimal.js';
 
 /**
  * Calcula o spread percentual entre preço de venda e compra
- * @param sellPrice Preço de venda
- * @param buyPrice Preço de compra
+ * @param sellPrice Preço de venda (MEXC)
+ * @param buyPrice Preço de compra (Gate.io)
  * @returns Spread percentual com 2 casas decimais ou null se inválido
  */
 export function calculateSpread(sellPrice: number | string, buyPrice: number | string): string | null {
   try {
-    // Converte os valores para string antes de criar o Decimal para evitar imprecisões
+    // Converte os valores para string e cria novos Decimals com precisão máxima
     const sell = new Decimal(sellPrice.toString());
     const buy = new Decimal(buyPrice.toString());
 
@@ -18,19 +18,25 @@ export function calculateSpread(sellPrice: number | string, buyPrice: number | s
     }
 
     // Cálculo do spread: ((venda - compra) / compra) * 100
-    // Mantém como Decimal até o último momento possível
-    const spread = sell.minus(buy)
-      .dividedBy(buy)
-      .times(100)
-      .toDecimalPlaces(2);
+    // 1. Primeiro calcula a diferença (venda - compra)
+    const difference = sell.minus(buy);
+    
+    // 2. Divide pela compra
+    const ratio = difference.dividedBy(buy);
+    
+    // 3. Multiplica por 100 para obter a porcentagem
+    const spreadPercent = ratio.times(100);
+    
+    // 4. Arredonda para 2 casas decimais apenas no final
+    const finalSpread = spreadPercent.toDecimalPlaces(2);
 
-    // Retorna null se spread for negativo
-    if (spread.isNegative()) {
+    // Se o spread for zero ou negativo, retorna null
+    if (finalSpread.isNegative() || finalSpread.isZero()) {
       return null;
     }
 
     // Retorna o spread como string para manter a precisão
-    return spread.toString();
+    return finalSpread.toString();
   } catch (error) {
     console.error('Erro ao calcular spread:', error);
     return null;
@@ -40,19 +46,19 @@ export function calculateSpread(sellPrice: number | string, buyPrice: number | s
 // Tipo para representar um par de trading
 export interface TradingPair {
   symbol: string;
-  buyPrice: string;  // Alterado para string para manter precisão
-  sellPrice: string; // Alterado para string para manter precisão
+  buyPrice: string;  // Gate.io (spot)
+  sellPrice: string; // MEXC (futures)
   spread?: string | null;
 }
 
 // Dados mockados para teste com valores como strings para manter precisão
 export const mockTradingPairs: TradingPair[] = [
-  { symbol: 'CATS/USDT', buyPrice: '1.2000', sellPrice: '1.2100' },
-  { symbol: 'MOVE/USDT', buyPrice: '0.5000', sellPrice: '0.5030' },
-  { symbol: 'DOGE/USDT', buyPrice: '0.1000', sellPrice: '0.0990' }, // Spread negativo
-  { symbol: 'BTC/USDT', buyPrice: '45000', sellPrice: '45300' },
-  { symbol: 'ETH/USDT', buyPrice: '2500', sellPrice: '2515' },
-  { symbol: 'XRP/USDT', buyPrice: '0.5500', sellPrice: '0.5530' },
-  { symbol: 'SOL/USDT', buyPrice: '100', sellPrice: '100.8' },
-  { symbol: 'ADA/USDT', buyPrice: '0.4000', sellPrice: '0.4020' },
+  { symbol: 'MOVE/USDT', buyPrice: '0.14182', sellPrice: '0.1431' },
+  { symbol: 'BLZ/USDT', buyPrice: '0.03394', sellPrice: '0.03413' },
+  { symbol: 'LOKA/USDT', buyPrice: '0.053', sellPrice: '0.0532' },
+  { symbol: 'PRAI/USDT', buyPrice: '0.02488', sellPrice: '0.02495' },
+  { symbol: 'FB/USDT', buyPrice: '0.466', sellPrice: '0.4667' },
+  { symbol: 'ZKJ/USDT', buyPrice: '0.3227', sellPrice: '0.3227' },
+  { symbol: 'MAVIA/USDT', buyPrice: '0.1628', sellPrice: '0.1629' },
+  { symbol: 'VELODROME/USDT', buyPrice: '0.04993', sellPrice: '0.05' },
 ]; 
