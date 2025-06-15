@@ -7,6 +7,7 @@ import ArbitrageHistoryChart from '@/components/dashboard/arbitrage-history-char
 import AccumulatedPercentageGauge from '@/components/dashboard/accumulated-percentage-gauge';
 import TotalBalanceCard from '@/components/dashboard/total-balance-card';
 import { LayoutDashboard, Repeat, Wallet, History, Settings, AlertCircle, RefreshCw } from 'lucide-react';
+import SpreadDisplay from '@/components/SpreadDisplay';
 
 // Ícones Lucide com estilo
 const iconProps = { className: "h-5 w-5" };
@@ -120,7 +121,7 @@ export default function DashboardPage() {
         </div>
 
         <section>
-          {/* A seção de oportunidades foi removida para centralizar a lógica na página de Arbitragem */}
+          <SpreadDisplay />
         </section>
       </main>
     </div>
