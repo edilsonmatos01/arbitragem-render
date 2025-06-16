@@ -95,8 +95,37 @@ function getTrackerParams(opportunity: Opportunity): {
 
 const POLLING_INTERVAL_MS = 5000; // Intervalo de polling: 5 segundos
 
-// ✅ 6. A renderização deve ser otimizada com React.memo
-const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSpreadDisplayClass, calcularLucro, handleExecuteArbitrage, formatSpread }: any) => {
+// Interface para as props do OpportunityRow
+interface OpportunityRowProps {
+  opportunity: Opportunity;
+  livePrices: {
+    [symbol: string]: {
+      [marketType: string]: {
+        bestAsk: number;
+        bestBid: number;
+      }
+    }
+  };
+  formatPrice: (price: number) => string;
+  getSpreadDisplayClass: (spread: number) => string;
+  calcularLucro: (spread: number) => string;
+  handleExecuteArbitrage: (opportunity: Opportunity) => void;
+  formatSpread: (spread: number) => string;
+  minSpread: number;
+  onSpreadBelowMin: (symbol: string) => void;
+}
+
+const OpportunityRow = React.memo(({ 
+    opportunity, 
+    livePrices, 
+    formatPrice, 
+    getSpreadDisplayClass, 
+    calcularLucro, 
+    handleExecuteArbitrage, 
+    formatSpread,
+    minSpread,
+    onSpreadBelowMin 
+}: OpportunityRowProps) => {
     
     // ✅ 4. Na renderização de cada linha da tabela, ao exibir os preços:
     const getLivePrice = (originalPrice: number, marketTypeStr: string, side: 'buy' | 'sell') => {
@@ -146,6 +175,13 @@ const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSp
     // Calcula o spread em tempo real com os novos preços
     const liveSpread = calculateLiveSpread(compraPreco, vendaPreco);
 
+    // Verifica se o spread caiu abaixo do mínimo
+    useEffect(() => {
+        if (liveSpread < minSpread) {
+            onSpreadBelowMin(opportunity.symbol);
+        }
+    }, [liveSpread, minSpread, opportunity.symbol, onSpreadBelowMin]);
+
     return (
         <tr className="border-b border-gray-700 hover:bg-gray-800">
             <td className="py-4 px-6 whitespace-nowrap text-sm font-semibold">{opportunity.symbol}</td>
@@ -188,6 +224,11 @@ export default function ArbitrageTable() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string|null>(null);
   const [successMessage, setSuccessMessage] = useState<string|null>(null);
+
+  // Função para remover uma oportunidade quando o spread cair abaixo do mínimo
+  const handleSpreadBelowMin = useCallback((symbol: string) => {
+    setRankedOpportunities(prev => prev.filter(opp => opp.symbol !== symbol));
+  }, []);
 
   function calcularLucro(spreadValue: number) { 
     return ((spreadValue / 100) * amount).toFixed(2);
@@ -445,9 +486,9 @@ export default function ArbitrageTable() {
               ) : rankedOpportunities.length === 0 && !error ? (
                 <tr><td colSpan={8} className="text-center text-gray-400 py-8">Nenhuma oportunidade encontrada para os filtros selecionados.</td></tr>
               ) : (
-                rankedOpportunities.map((opportunity) => (
-                  <OpportunityRow 
-                    key={`${opportunity.symbol}-${opportunity.directionApi}`} 
+                rankedOpportunities.map((opportunity, index) => (
+                  <OpportunityRow
+                    key={`${opportunity.symbol}-${opportunity.directionApi}-${index}`}
                     opportunity={opportunity}
                     livePrices={livePrices}
                     formatPrice={formatPrice}
@@ -455,6 +496,8 @@ export default function ArbitrageTable() {
                     calcularLucro={calcularLucro}
                     handleExecuteArbitrage={handleExecuteArbitrage}
                     formatSpread={formatSpread}
+                    minSpread={minSpread}
+                    onSpreadBelowMin={handleSpreadBelowMin}
                   />
                 ))
               )}
