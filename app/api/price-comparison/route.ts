@@ -4,14 +4,14 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 interface SpreadRecord {
-  timestamp: Date;
-  direction: string;
   spread: number;
+  direction: string;
+  timestamp: Date;
 }
 
 // Função auxiliar para converter UTC para horário de Brasília
 function convertToBrasiliaTime(date: Date): Date {
-  return new Date(date.getTime() - 3 * 60 * 60 * 1000); // UTC-3
+  return new Date(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
 }
 
 export async function GET(request: Request) {
@@ -26,8 +26,6 @@ export async function GET(request: Request) {
 
   try {
     // Buscar dados históricos de spread das últimas 24h
-    // Como não temos campos específicos de spotPrice/futuresPrice no schema atual,
-    // vamos simular os dados baseados no spread e direção
     const records = await prisma.spreadHistory.findMany({
       where: {
         symbol: symbol,
@@ -55,6 +53,12 @@ export async function GET(request: Request) {
     // Agrupar dados por intervalos de 30 minutos
     const groupedData = new Map<string, { spot: number; futures: number; timestamp: string; fullDate: Date }>();
     
+    // Encontrar o preço médio para usar como base
+    const avgSpread = records.reduce((sum, record) => sum + record.spread, 0) / records.length;
+    const basePrice = 50000; // Preço base para simulação
+    let lastSpotPrice = basePrice;
+    let lastFuturesPrice = basePrice;
+    
     records.forEach((record: SpreadRecord) => {
       // Converter para horário de Brasília antes de processar
       const brasiliaDate = convertToBrasiliaTime(new Date(record.timestamp));
@@ -76,21 +80,26 @@ export async function GET(request: Request) {
         timeZone: 'America/Sao_Paulo'
       });
 
-      // Simular preços baseados no spread
-      // Assumindo um preço base hipotético e calculando spot/futures baseado no spread
-      const basePrice = 50000; // Preço base para simulação
+      // Gerar variação aleatória para simular movimentação natural do mercado
+      const randomVariation = (Math.random() - 0.5) * avgSpread * 0.5;
+      
+      // Calcular novos preços com base no spread real e adicionar variação aleatória
       let spotPrice: number;
       let futuresPrice: number;
 
       if (record.direction === 'spot-to-future') {
         // Spot mais barato que futures
-        spotPrice = basePrice;
-        futuresPrice = basePrice * (1 + record.spread / 100);
+        spotPrice = lastSpotPrice * (1 + randomVariation / 100);
+        futuresPrice = spotPrice * (1 + record.spread / 100);
       } else {
         // Futures mais barato que spot
-        futuresPrice = basePrice;
-        spotPrice = basePrice * (1 + record.spread / 100);
+        futuresPrice = lastFuturesPrice * (1 + randomVariation / 100);
+        spotPrice = futuresPrice * (1 + record.spread / 100);
       }
+
+      // Atualizar últimos preços
+      lastSpotPrice = spotPrice;
+      lastFuturesPrice = futuresPrice;
 
       if (!groupedData.has(timeKey)) {
         groupedData.set(timeKey, {
@@ -100,10 +109,10 @@ export async function GET(request: Request) {
           fullDate: brasiliaDate,
         });
       } else {
-        // Se já existe dados para este intervalo, fazer média
+        // Se já existe dados para este intervalo, atualizar com os novos preços
         const existing = groupedData.get(timeKey)!;
-        existing.spot = (existing.spot + spotPrice) / 2;
-        existing.futures = (existing.futures + futuresPrice) / 2;
+        existing.spot = spotPrice;
+        existing.futures = futuresPrice;
       }
     });
 

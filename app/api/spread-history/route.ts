@@ -17,6 +17,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const symbol = searchParams.get('symbol');
 
+  console.log('Recebida requisição para símbolo:', symbol);
+
   if (!symbol) {
     return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
   }
@@ -24,6 +26,8 @@ export async function GET(req: NextRequest) {
   // Calcula 24 horas atrás a partir do horário atual de Brasília
   const currentBrasiliaDate = getCurrentBrasiliaDate();
   const twentyFourHoursAgo = new Date(currentBrasiliaDate.getTime() - 24 * 60 * 60 * 1000);
+
+  console.log('Buscando dados a partir de:', twentyFourHoursAgo.toISOString());
 
   try {
     const rawHistory = await prisma.spreadHistory.findMany({
@@ -42,7 +46,10 @@ export async function GET(req: NextRequest) {
       },
     });
 
+    console.log('Registros encontrados:', rawHistory.length);
+
     if (rawHistory.length === 0) {
+      console.log('Nenhum registro encontrado para o símbolo');
       return NextResponse.json([]);
     }
 
@@ -84,6 +91,8 @@ export async function GET(req: NextRequest) {
           spread: data.maxSpread,
         };
       });
+
+    console.log('Dados formatados:', formattedHistory);
 
     return NextResponse.json(formattedHistory);
   } catch (error) {
