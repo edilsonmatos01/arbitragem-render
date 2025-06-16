@@ -34,8 +34,8 @@ interface SpreadData {
   spread: number;
 }
 
-// Constante para o intervalo de atualização (30 minutos)
-const UPDATE_INTERVAL_MS = 1800000;
+// Constante para o intervalo de atualização (5 minutos para teste)
+const UPDATE_INTERVAL_MS = 300000; // 5 minutos em vez de 30 minutos para teste
 
 export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) {
   const [spreadHistory, setSpreadHistory] = useState<SpreadData[]>([]);
@@ -45,9 +45,11 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
   const fetchSpreadHistory = async () => {
     try {
       setLoading(true);
+      console.log('Buscando dados do histórico:', new Date().toLocaleString());
       const response = await fetch(`/api/spread-history?symbol=${encodeURIComponent(symbol)}`);
       if (!response.ok) throw new Error('Failed to fetch spread history');
       const data = await response.json();
+      console.log('Dados recebidos:', data);
       setSpreadHistory(data);
       setError(null);
     } catch (error) {
@@ -59,9 +61,13 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
   };
 
   useEffect(() => {
+    console.log('Iniciando componente SpreadHistoryChart');
     fetchSpreadHistory();
     const interval = setInterval(fetchSpreadHistory, UPDATE_INTERVAL_MS);
-    return () => clearInterval(interval);
+    return () => {
+      console.log('Limpando intervalo');
+      clearInterval(interval);
+    };
   }, [symbol]);
 
   const formatTime = (timestamp: string) => {

@@ -7,7 +7,12 @@ const prisma = new PrismaClient();
 
 // Função para converter timestamp UTC para horário de Brasília
 function convertToBrasiliaTime(date: Date): Date {
-  return new Date(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  const brasiliaDate = new Date(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  console.log('Convertendo data:', {
+    original: date.toISOString(),
+    brasilia: brasiliaDate.toLocaleString()
+  });
+  return brasiliaDate;
 }
 
 // Função para arredondar data para o intervalo de 30 minutos mais próximo
@@ -20,6 +25,11 @@ function roundToNearestInterval(date: Date, roundDown = true): Date {
   result.setMinutes(roundedMinutes);
   result.setSeconds(0);
   result.setMilliseconds(0);
+  console.log('Arredondando data:', {
+    original: date.toLocaleString(),
+    rounded: result.toLocaleString(),
+    roundDown
+  });
   return result;
 }
 
@@ -45,23 +55,41 @@ export async function GET(req: NextRequest) {
 
     // Calcula o intervalo de tempo
     const now = new Date();
+    console.log('Horário atual UTC:', now.toISOString());
+    
     const brasiliaNow = convertToBrasiliaTime(now);
+    console.log('Horário atual Brasília:', brasiliaNow.toLocaleString());
+    
     // Arredonda para a meia hora anterior
     const lastValidTime = roundToNearestInterval(brasiliaNow, true);
-    const twentyFourHoursAgo = new Date(lastValidTime.getTime() - 24 * 60 * 60 * 1000);
+    console.log('Último horário válido:', lastValidTime.toLocaleString());
     
+    const twentyFourHoursAgo = new Date(lastValidTime.getTime() - 24 * 60 * 60 * 1000);
+    console.log('24 horas atrás:', twentyFourHoursAgo.toLocaleString());
+
+    // Converte as datas para UTC para a consulta no banco
+    const utcLastValidTime = new Date(lastValidTime.getTime() + lastValidTime.getTimezoneOffset() * 60000);
+    const utcTwentyFourHoursAgo = new Date(twentyFourHoursAgo.getTime() + twentyFourHoursAgo.getTimezoneOffset() * 60000);
+    
+    console.log('Intervalo de busca UTC:', {
+      from: utcTwentyFourHoursAgo.toISOString(),
+      to: utcLastValidTime.toISOString()
+    });
+
     const rawHistory = await prisma.spreadHistory.findMany({
       where: {
         symbol: symbol,
         timestamp: {
-          gte: twentyFourHoursAgo,
-          lte: lastValidTime, // Garante que não pegamos dados futuros
+          gte: utcTwentyFourHoursAgo,
+          lte: utcLastValidTime,
         },
       },
       orderBy: {
         timestamp: 'asc',
       },
     });
+
+    console.log('Registros encontrados:', rawHistory.length);
 
     // Agrupa os dados em intervalos de 30 minutos
     const aggregatedData: Record<string, { maxSpread: number; date: Date }> = {};
@@ -72,7 +100,10 @@ export async function GET(req: NextRequest) {
       const roundedDate = roundToNearestInterval(brasiliaDate, true);
       
       // Ignora registros futuros
-      if (roundedDate > lastValidTime) continue;
+      if (roundedDate > lastValidTime) {
+        console.log('Ignorando registro futuro:', roundedDate.toLocaleString());
+        continue;
+      }
       
       const key = roundedDate.getTime().toString();
 
@@ -105,6 +136,8 @@ export async function GET(req: NextRequest) {
         timestamp: formatBrasiliaTime(data.date),
         spread: data.maxSpread,
       }));
+
+    console.log('Último registro formatado:', formattedHistory[formattedHistory.length - 1]);
 
     return NextResponse.json(formattedHistory);
   } catch (error) {
