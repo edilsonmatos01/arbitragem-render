@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { LineChart as ChartIcon } from 'lucide-react';
 import {
   Dialog,
@@ -25,54 +25,104 @@ interface SpreadStats {
 const cache = new Map<string, { data: SpreadStats; timestamp: number }>();
 const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutos
 
+// Componente memoizado para o conteúdo do modal
+const MemoizedModalContent = React.memo(({ 
+  symbol, 
+  chartType 
+}: { 
+  symbol: string; 
+  chartType: 'spread' | 'comparison' 
+}) => {
+  return chartType === 'spread' ? (
+    <div>
+      <div className="mb-3 text-sm text-gray-400">
+        Histórico de spread máximo das últimas 24 horas
+      </div>
+      <SpreadHistoryChart symbol={symbol} />
+    </div>
+  ) : (
+    <div>
+      <div className="mb-3 text-sm text-gray-400">
+        Comparação de preços spot vs futures (pontos a cada 30 min)
+      </div>
+      <PriceComparisonChart symbol={symbol} />
+    </div>
+  );
+});
+
+MemoizedModalContent.displayName = 'MemoizedModalContent';
+
 export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
   const [stats, setStats] = useState<SpreadStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [chartType, setChartType] = useState<'spread' | 'comparison'>('spread');
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      const cached = cache.get(symbol);
-      if (cached && (Date.now() - cached.timestamp < CACHE_DURATION_MS)) {
-        setStats(cached.data);
-        setIsLoading(false);
-        return;
-      }
+  // Memoize a função de busca de estatísticas
+  const fetchStats = useCallback(async () => {
+    const cached = cache.get(symbol);
+    if (cached && (Date.now() - cached.timestamp < CACHE_DURATION_MS)) {
+      setStats(cached.data);
+      setIsLoading(false);
+      return;
+    }
 
-      setIsLoading(true);
-      try {
-        const response = await fetch(`/api/spreads/${encodeURIComponent(symbol)}/max`);
-        if (!response.ok) {
-          throw new Error('Falha ao buscar dados');
-        }
-        const data: SpreadStats = await response.json();
-        
-        // Se não houver dados suficientes, mostra N/D
-        if (data.spMax === null || data.crosses < 2) {
-          setStats({ spMax: null, crosses: data.crosses });
-        } else {
-          setStats(data);
-        }
-        
-        cache.set(symbol, { data, timestamp: Date.now() });
-      } catch (error) {
-        console.error(`Erro ao buscar spread máximo para ${symbol}:`, error);
-        setStats(null);
-      } finally {
-        setIsLoading(false);
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/spreads/${encodeURIComponent(symbol)}/max`);
+      if (!response.ok) {
+        throw new Error('Falha ao buscar dados');
       }
-    };
-
-    fetchStats();
+      const data: SpreadStats = await response.json();
+      
+      // Se não houver dados suficientes, mostra N/D
+      if (data.spMax === null || data.crosses < 2) {
+        setStats({ spMax: null, crosses: data.crosses });
+      } else {
+        setStats(data);
+      }
+      
+      cache.set(symbol, { data, timestamp: Date.now() });
+    } catch (error) {
+      console.error(`Erro ao buscar spread máximo para ${symbol}:`, error);
+      setStats(null);
+    } finally {
+      setIsLoading(false);
+    }
   }, [symbol]);
 
-  // Reset chart type when modal closes
+  // Efeito para buscar dados iniciais e atualizar periodicamente
   useEffect(() => {
-    if (!isModalOpen) {
-      setChartType('spread');
-    }
-  }, [isModalOpen]);
+    fetchStats();
+    const interval = setInterval(fetchStats, CACHE_DURATION_MS);
+    return () => clearInterval(interval);
+  }, [fetchStats]);
+
+  // Memoize os botões de tipo de gráfico para evitar re-renderizações
+  const chartTypeButtons = useMemo(() => (
+    <div className="flex bg-gray-800 rounded-lg p-1">
+      <button
+        onClick={() => setChartType('spread')}
+        className={`px-3 py-1 text-sm rounded-md transition-colors ${
+          chartType === 'spread'
+            ? 'bg-custom-cyan text-black font-semibold'
+            : 'text-gray-300 hover:text-white'
+        }`}
+      >
+        Spread 24h
+      </button>
+      <button
+        onClick={() => setChartType('comparison')}
+        className={`px-3 py-1 text-sm rounded-md transition-colors ${
+          chartType === 'comparison'
+            ? 'bg-custom-cyan text-black font-semibold'
+            : 'text-gray-300 hover:text-white'
+        }`}
+      >
+        Spot vs Futures
+      </button>
+    </div>
+  ), [chartType]);
 
   if (isLoading) {
     return <span className="text-gray-500">Carregando...</span>;
@@ -99,51 +149,13 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
           <DialogHeader>
             <div className="flex items-center justify-between">
               <DialogTitle>Análise de {symbol}</DialogTitle>
-              <div className="flex bg-gray-800 rounded-lg p-1">
-                <button
-                  onClick={() => setChartType('spread')}
-                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                    chartType === 'spread'
-                      ? 'bg-custom-cyan text-black font-semibold'
-                      : 'text-gray-300 hover:text-white'
-                  }`}
-                >
-                  Spread 24h
-                </button>
-                <button
-                  onClick={() => setChartType('comparison')}
-                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                    chartType === 'comparison'
-                      ? 'bg-custom-cyan text-black font-semibold'
-                      : 'text-gray-300 hover:text-white'
-                  }`}
-                >
-                  Spot vs Futures
-                </button>
-              </div>
+              {chartTypeButtons}
             </div>
           </DialogHeader>
           
           <div className="mt-4">
-            {/* Renderiza o gráfico apenas se o modal estiver aberto */}
             {isModalOpen && (
-              <>
-                {chartType === 'spread' ? (
-                  <div>
-                    <div className="mb-3 text-sm text-gray-400">
-                      Histórico de spread máximo das últimas 24 horas
-                    </div>
-                    <SpreadHistoryChart symbol={symbol} />
-                  </div>
-                ) : (
-                  <div>
-                    <div className="mb-3 text-sm text-gray-400">
-                      Comparação de preços spot vs futures (pontos a cada 30 min)
-                    </div>
-                    <PriceComparisonChart symbol={symbol} />
-                  </div>
-                )}
-              </>
+              <MemoizedModalContent symbol={symbol} chartType={chartType} />
             )}
           </div>
         </DialogContent>
