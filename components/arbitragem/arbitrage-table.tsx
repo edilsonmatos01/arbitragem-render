@@ -126,9 +126,16 @@ const OpportunityRow = React.memo(({
     minSpread,
     onSpreadBelowMin 
 }: OpportunityRowProps) => {
-    
-    // ✅ 4. Na renderização de cada linha da tabela, ao exibir os preços:
-    const getLivePrice = (originalPrice: number, marketTypeStr: string, side: 'buy' | 'sell') => {
+    // Memoizar os preços e spread para evitar recálculos desnecessários
+    const { compraPreco, vendaPreco, liveSpread } = useMemo(() => {
+        const compraPreco = getLivePrice(opportunity.compraPreco, opportunity.compraExchange, 'buy');
+        const vendaPreco = getLivePrice(opportunity.vendaPreco, opportunity.vendaExchange, 'sell');
+        const liveSpread = calculateLiveSpread(compraPreco, vendaPreco);
+        return { compraPreco, vendaPreco, liveSpread };
+    }, [opportunity, livePrices]);
+
+    // Memoizar a função getLivePrice
+    const getLivePrice = useCallback((originalPrice: number, marketTypeStr: string, side: 'buy' | 'sell') => {
         const liveData = livePrices[opportunity.symbol];
         if (!liveData) return originalPrice;
 
@@ -138,10 +145,10 @@ const OpportunityRow = React.memo(({
             return side === 'buy' ? liveData[marketType].bestAsk : liveData[marketType].bestBid;
         }
         return originalPrice;
-    };
+    }, [opportunity.symbol, livePrices]);
 
-    // Função para calcular o spread em tempo real usando Decimal.js
-    const calculateLiveSpread = (buyPrice: number, sellPrice: number): number => {
+    // Memoizar a função calculateLiveSpread
+    const calculateLiveSpread = useCallback((buyPrice: number, sellPrice: number): number => {
         if (!buyPrice || !sellPrice || buyPrice <= 0 || sellPrice <= 0) {
             return opportunity.spread;
         }
@@ -167,13 +174,7 @@ const OpportunityRow = React.memo(({
             console.error('Erro ao calcular spread em tempo real:', error);
             return opportunity.spread;
         }
-    };
-
-    const compraPreco = getLivePrice(opportunity.compraPreco, opportunity.compraExchange, 'buy');
-    const vendaPreco = getLivePrice(opportunity.vendaPreco, opportunity.vendaExchange, 'sell');
-    
-    // Calcula o spread em tempo real com os novos preços
-    const liveSpread = calculateLiveSpread(compraPreco, vendaPreco);
+    }, [opportunity.spread]);
 
     // Verifica se o spread caiu abaixo do mínimo
     useEffect(() => {
@@ -181,6 +182,11 @@ const OpportunityRow = React.memo(({
             onSpreadBelowMin(opportunity.symbol);
         }
     }, [liveSpread, minSpread, opportunity.symbol, onSpreadBelowMin]);
+
+    // Memoizar o MaxSpreadCell para evitar re-renderizações
+    const spreadCell = useMemo(() => (
+        <MaxSpreadCell symbol={opportunity.symbol} />
+    ), [opportunity.symbol]);
 
     return (
         <tr className="border-b border-gray-700 hover:bg-gray-800">
@@ -191,7 +197,7 @@ const OpportunityRow = React.memo(({
               {formatSpread(liveSpread)}%
             </td>
             <td className="py-4 px-6 whitespace-nowrap text-sm">
-              <MaxSpreadCell symbol={opportunity.symbol} />
+              {spreadCell}
             </td>
             <td className="py-4 px-6 whitespace-nowrap text-sm">{calcularLucro(liveSpread)}</td>
             <td className="py-4 px-6 whitespace-nowrap text-center text-sm">
@@ -204,7 +210,20 @@ const OpportunityRow = React.memo(({
             </td>
         </tr>
     );
+}, (prevProps, nextProps) => {
+    // Função de comparação personalizada para o memo
+    return (
+        prevProps.opportunity.symbol === nextProps.opportunity.symbol &&
+        prevProps.opportunity.compraExchange === nextProps.opportunity.compraExchange &&
+        prevProps.opportunity.vendaExchange === nextProps.opportunity.vendaExchange &&
+        prevProps.opportunity.compraPreco === nextProps.opportunity.compraPreco &&
+        prevProps.opportunity.vendaPreco === nextProps.opportunity.vendaPreco &&
+        prevProps.minSpread === nextProps.minSpread &&
+        JSON.stringify(prevProps.livePrices[prevProps.opportunity.symbol]) === 
+        JSON.stringify(nextProps.livePrices[nextProps.opportunity.symbol])
+    );
 });
+
 OpportunityRow.displayName = 'OpportunityRow';
 
 export default function ArbitrageTable() {

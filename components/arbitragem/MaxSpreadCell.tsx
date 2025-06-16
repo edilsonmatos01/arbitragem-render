@@ -12,6 +12,9 @@ import {
 import SpreadHistoryChart from './SpreadHistoryChart';
 import PriceComparisonChart from './PriceComparisonChart';
 
+// Estado global para controlar a visibilidade do modal por símbolo
+const modalStates = new Map<string, boolean>();
+
 interface MaxSpreadCellProps {
   symbol: string;
 }
@@ -55,8 +58,16 @@ MemoizedModalContent.displayName = 'MemoizedModalContent';
 export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
   const [stats, setStats] = useState<SpreadStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [chartType, setChartType] = useState<'spread' | 'comparison'>('spread');
+
+  // Usar o estado global do modal
+  const [isModalOpen, setIsModalOpen] = useState(() => modalStates.get(symbol) || false);
+
+  // Atualizar o estado global quando o modal abrir/fechar
+  const handleModalChange = useCallback((open: boolean) => {
+    modalStates.set(symbol, open);
+    setIsModalOpen(open);
+  }, [symbol]);
 
   // Memoize a função de busca de estatísticas
   const fetchStats = useCallback(async () => {
@@ -139,7 +150,7 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
         <span className="text-xs text-gray-500">({stats.crosses} registros)</span>
       </div>
       
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+      <Dialog open={isModalOpen} onOpenChange={handleModalChange}>
         <DialogTrigger asChild>
           <button className="ml-2 p-1 text-gray-400 hover:text-white transition-colors">
             <ChartIcon className="h-5 w-5" />
