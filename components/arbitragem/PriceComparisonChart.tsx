@@ -21,17 +21,19 @@ interface ApiResponse {
   message?: string;
 }
 
-// Componente de Tooltip customizado
+// Componente de Tooltip customizado para formatar os valores
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
       <div className="p-3 bg-gray-800 border border-gray-700 rounded-md shadow-lg">
         <p className="label text-white font-semibold mb-2">{`${label}`}</p>
-        {payload.map((entry: any, index: number) => (
-          <p key={index} className={`text-${entry.color === '#86EFAC' ? 'green' : 'blue'}-400`}>
-            {`${entry.name}: $${entry.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+        <p className="text-green-400">{`Gate.io (spot): $${payload[0].value.toLocaleString('pt-BR', { minimumFractionDigits: 4 })}`}</p>
+        <p className="text-blue-400">{`MEXC (futures): $${payload[1].value.toLocaleString('pt-BR', { minimumFractionDigits: 4 })}`}</p>
+        {payload[0].value !== payload[1].value && (
+          <p className="text-gray-400 text-sm mt-1">
+            {`Diferença: ${((Math.abs(payload[1].value - payload[0].value) / payload[0].value) * 100).toFixed(4)}%`}
           </p>
-        ))}
+        )}
       </div>
     );
   }
@@ -73,6 +75,9 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
     };
 
     fetchData();
+    // Atualiza a cada 30 segundos
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
   }, [symbol]);
 
   if (loading) {
@@ -109,6 +114,16 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
     );
   }
 
+  // Calcular o domínio do eixo Y para manter uma boa proporção visual
+  const allPrices = data.flatMap(item => [item.spot, item.futures]);
+  const minPrice = Math.min(...allPrices);
+  const maxPrice = Math.max(...allPrices);
+  const priceRange = maxPrice - minPrice;
+  const yDomain = [
+    minPrice - (priceRange * 0.1), // 10% abaixo do mínimo
+    maxPrice + (priceRange * 0.1)  // 10% acima do máximo
+  ];
+
   return (
     <div style={{ width: '100%', height: 300 }}>
       <ResponsiveContainer>
@@ -133,8 +148,9 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
           />
           <YAxis 
             stroke="#9CA3AF" 
-            tickFormatter={(value) => `$${value.toLocaleString('pt-BR')}`}
-            tick={{ fontSize: 12 }}
+            domain={yDomain}
+            tickFormatter={(value) => `$${value.toLocaleString('pt-BR', { minimumFractionDigits: 4 })}`}
+            tick={{ fontSize: 10 }}
           />
           <Tooltip content={<CustomTooltip />} />
           <Legend wrapperStyle={{ color: '#9CA3AF' }} />
@@ -143,18 +159,18 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
             dataKey="spot" 
             stroke="#86EFAC" 
             strokeWidth={2} 
-            dot={{ r: 3 }} 
+            dot={{ r: 2 }} 
             activeDot={{ r: 6 }} 
-            name="Preço Spot" 
+            name="Gate.io (spot)" 
           />
           <Line 
             type="monotone" 
             dataKey="futures" 
             stroke="#60A5FA" 
             strokeWidth={2} 
-            dot={{ r: 3 }} 
+            dot={{ r: 2 }} 
             activeDot={{ r: 6 }} 
-            name="Preço Futures" 
+            name="MEXC (futures)" 
           />
         </LineChart>
       </ResponsiveContainer>

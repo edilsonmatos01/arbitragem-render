@@ -18,6 +18,8 @@ model SpreadHistory {
   exchangeSell String
   direction    String
   spread       Float
+  buyPrice     Float
+  sellPrice    Float
   timestamp    DateTime @default(now())
 
   @@index([symbol, exchangeBuy, exchangeSell, direction])
