@@ -85,7 +85,9 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
   return (
     <div className="flex items-center justify-between">
       <div className="flex flex-col">
-        <span className="font-bold text-green-400">{stats.spMax.toFixed(2)}%</span>
+        <span className={`font-bold ${stats.spMax > 0.5 ? 'text-green-400' : 'text-red-400'}`}>
+          {stats.spMax.toFixed(2)}%
+        </span>
         <span className="text-xs text-gray-500">({stats.crosses} registros)</span>
       </div>
       

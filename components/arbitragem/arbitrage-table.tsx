@@ -166,20 +166,30 @@ const OpportunityRow = ({
     return (
         <tr className="border-b border-gray-700">
             <td className="py-4 px-4">{opportunity.symbol}</td>
-            <td className="py-4 px-4">{opportunity.compraExchange}</td>
-            <td className="py-4 px-4">{formatPrice(compraPreco)}</td>
-            <td className="py-4 px-4">{opportunity.vendaExchange}</td>
-            <td className="py-4 px-4">{formatPrice(vendaPreco)}</td>
-            <td className={`py-4 px-4 ${getSpreadDisplayClass(liveSpread)}`}>
-                {formatSpread(liveSpread)}
+            <td className="py-4 px-4">
+                <div>
+                    {opportunity.compraExchange}
+                    <div className="font-bold">{formatPrice(compraPreco)}</div>
+                </div>
             </td>
             <td className="py-4 px-4">
-                <MaxSpreadCell symbol={opportunity.symbol} />
+                <div>
+                    {opportunity.vendaExchange}
+                    <div className="font-bold">{formatPrice(vendaPreco)}</div>
+                </div>
+            </td>
+            <td className={`py-4 px-4 ${getSpreadDisplayClass(liveSpread)}`}>
+                {formatSpread(liveSpread)}%
+            </td>
+            <td className="py-4 px-4">
+                <div className="flex items-center">
+                    <MaxSpreadCell symbol={opportunity.symbol} />
+                </div>
             </td>
             <td className="py-4 px-4 text-right">
                 {calcularLucro(opportunity)}
             </td>
-            <td className="py-4 px-4">
+            <td className="py-4 px-4 text-center">
                 <button
                     onClick={() => handleExecuteArbitrage(opportunity)}
                     className="bg-custom-cyan text-black px-4 py-2 rounded hover:bg-cyan-400 transition-colors"
@@ -259,7 +269,7 @@ export default function ArbitrageTable() {
   // Função para formatar o spread com arredondamento específico para exibição
   const formatSpread = (spread: number): string => {
     // Validações rigorosas
-    if (spread <= 0 || !isFinite(spread) || isNaN(spread)) return '';
+    if (spread <= 0 || !isFinite(spread) || isNaN(spread)) return '0.00';
     
     // Garantir que estamos trabalhando com no máximo 4 casas decimais para evitar problemas de precisão
     const spreadFixed = parseFloat(spread.toFixed(4));
@@ -278,7 +288,7 @@ export default function ArbitrageTable() {
     }
     
     // Validação final do resultado
-    if (roundedSpread <= 0 || !isFinite(roundedSpread) || isNaN(roundedSpread)) return '';
+    if (roundedSpread <= 0 || !isFinite(roundedSpread) || isNaN(roundedSpread)) return '0.00';
     
     return roundedSpread.toFixed(2);
   };
@@ -458,20 +468,20 @@ export default function ArbitrageTable() {
           <table className="min-w-full divide-y divide-gray-700">
             <thead className="bg-gray-800">
               <tr>
-                <th scope="col" className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Par</th>
-                <th scope="col" className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Compra</th>
-                <th scope="col" className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Venda</th>
-                <th scope="col" className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Spread %</th>
-                <th scope="col" className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Spread Máximo (24h)</th>
-                <th scope="col" className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Lucro Estimado (USD)</th>
-                <th scope="col" className="py-3 px-6 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Ações</th>
+                <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Par</th>
+                <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Compra</th>
+                <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Venda</th>
+                <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Spread %</th>
+                <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Spread Máximo (24h)</th>
+                <th scope="col" className="py-3 px-4 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">Lucro Estimado (USD)</th>
+                <th scope="col" className="py-3 px-4 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
               {isLoading ? (
-                <tr><td colSpan={8} className="text-center py-8"><RefreshCw className="h-6 w-6 animate-spin inline-block mr-2" />Carregando oportunidades...</td></tr>
+                <tr><td colSpan={7} className="text-center text-gray-400 py-8">Carregando...</td></tr>
               ) : rankedOpportunities.length === 0 && !error ? (
-                <tr><td colSpan={8} className="text-center text-gray-400 py-8">Nenhuma oportunidade encontrada para os filtros selecionados.</td></tr>
+                <tr><td colSpan={7} className="text-center text-gray-400 py-8">Nenhuma oportunidade encontrada para os filtros selecionados.</td></tr>
               ) : (
                 rankedOpportunities.map((opportunity, index) => (
                   <OpportunityRow
