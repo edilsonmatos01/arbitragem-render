@@ -31,6 +31,19 @@ type CustomTooltipProps = {
   label?: string;
 };
 
+function getBrasiliaDate(date: Date): Date {
+  return new Date(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+}
+
+function formatBrasiliaTime(date: Date): string {
+  return date.toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+}
+
 export default function SpreadHistoryLineChart({ symbol, isOpen, onClose }: SpreadHistoryLineChartProps) {
   const [data, setData] = useState<SpreadHistoryData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,14 +76,14 @@ export default function SpreadHistoryLineChart({ symbol, isOpen, onClose }: Spre
     }
   }, [isOpen, fetchData]);
 
-  // Configura atualização a cada 30 minutos
+  // Configura atualização a cada 30 minutos (horário de Brasília)
   useEffect(() => {
     if (!isOpen) return;
 
-    // Calcula o tempo até o próximo intervalo de 30 minutos
-    const now = new Date();
-    const minutes = now.getMinutes();
-    const secondsToNextInterval = ((30 - (minutes % 30)) * 60 - now.getSeconds()) * 1000;
+    // Calcula o tempo até o próximo intervalo de 30 minutos no horário de Brasília
+    const brasiliaDate = getBrasiliaDate(new Date());
+    const minutes = brasiliaDate.getMinutes();
+    const secondsToNextInterval = ((30 - (minutes % 30)) * 60 - brasiliaDate.getSeconds()) * 1000;
 
     const timer = setTimeout(() => {
       fetchData();
@@ -99,7 +112,7 @@ export default function SpreadHistoryLineChart({ symbol, isOpen, onClose }: Spre
             Histórico de Spreads - {symbol}
             {lastUpdate && (
               <span className="text-sm text-gray-400 ml-2">
-                (Atualizado: {lastUpdate.toLocaleTimeString('pt-BR')})
+                (Atualizado: {formatBrasiliaTime(lastUpdate)})
               </span>
             )}
           </DialogTitle>

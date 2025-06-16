@@ -12,14 +12,24 @@ try {
 export const dynamic = 'force-dynamic';
 
 function formatDateTime(date: Date): string {
-  return date.toLocaleDateString('pt-BR', {
+  return date.toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
     day: '2-digit',
-    month: '2-digit'
-  }) + ' - ' + date.toLocaleTimeString('pt-BR', {
+    month: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
     hour12: false
-  });
+  }).replace(', ', ' - ');
+}
+
+function getBrasiliaDate(date: Date): Date {
+  return new Date(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+}
+
+function roundToNearestInterval(date: Date, intervalMinutes: number): Date {
+  const brasiliaDate = getBrasiliaDate(date);
+  brasiliaDate.setMinutes(Math.floor(brasiliaDate.getMinutes() / intervalMinutes) * intervalMinutes, 0, 0);
+  return brasiliaDate;
 }
 
 export async function GET(
@@ -37,7 +47,10 @@ export async function GET(
       return NextResponse.json([]);
     }
 
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    // Calcula o intervalo de 24 horas no fuso de Brasília
+    const now = new Date();
+    const brasiliaNow = getBrasiliaDate(now);
+    const twentyFourHoursAgo = new Date(brasiliaNow.getTime() - 24 * 60 * 60 * 1000);
     
     // Busca os dados do banco
     const spreadHistory = await prisma.spreadHistory.findMany({
@@ -60,11 +73,10 @@ export async function GET(
     const groupedData = new Map<string, number>();
     
     // Inicializa todos os intervalos de 30 minutos
-    let currentTime = new Date(twentyFourHoursAgo);
-    currentTime.setMinutes(Math.floor(currentTime.getMinutes() / 30) * 30, 0, 0);
-    const now = new Date();
+    let currentTime = roundToNearestInterval(twentyFourHoursAgo, 30);
+    const endTime = roundToNearestInterval(brasiliaNow, 30);
 
-    while (currentTime <= now) {
+    while (currentTime <= endTime) {
       const timeKey = formatDateTime(currentTime);
       if (!groupedData.has(timeKey)) {
         groupedData.set(timeKey, 0);
@@ -74,8 +86,7 @@ export async function GET(
 
     // Preenche com os dados reais
     for (const record of spreadHistory) {
-      const recordTime = new Date(record.timestamp);
-      recordTime.setMinutes(Math.floor(recordTime.getMinutes() / 30) * 30, 0, 0);
+      const recordTime = roundToNearestInterval(new Date(record.timestamp), 30);
       const timeKey = formatDateTime(recordTime);
       const currentMax = groupedData.get(timeKey) || 0;
       groupedData.set(timeKey, Math.max(currentMax, record.spread));
