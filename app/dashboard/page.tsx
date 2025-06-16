@@ -83,7 +83,7 @@ export default function DashboardPage() {
     <div className="flex min-h-screen bg-dark-bg text-white">
       <Sidebar
         user={{ 
-          name: 'Edilson V03',
+          name: 'Edilson M',
           imageUrl: '/images/avatar.png.png'
         }}
         navItems={sidebarNavItems}
