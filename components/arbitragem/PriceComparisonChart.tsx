@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
 
 interface PriceComparisonChartProps {
   symbol: string;
@@ -26,16 +26,20 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     const spotPrice = payload[0].value;
     const futuresPrice = payload[1].value;
-    const difference = Math.abs(futuresPrice - spotPrice);
+    const difference = futuresPrice - spotPrice; // Pode ser negativo agora
     const percentDiff = (difference / spotPrice) * 100;
+    const isPriceEqual = Math.abs(difference) < 0.0001; // Considera preços iguais se a diferença for menor que 0.0001
 
     return (
       <div className="p-3 bg-gray-800 border border-gray-700 rounded-md shadow-lg">
         <p className="label text-white font-semibold mb-2">{`${label}`}</p>
         <p className="text-green-400">{`Gate.io (spot): $${spotPrice.toLocaleString('pt-BR', { minimumFractionDigits: 4 })}`}</p>
         <p className="text-blue-400">{`MEXC (futures): $${futuresPrice.toLocaleString('pt-BR', { minimumFractionDigits: 4 })}`}</p>
-        <p className="text-gray-400 text-sm mt-1">
-          {`Diferença: $${difference.toLocaleString('pt-BR', { minimumFractionDigits: 4 })} (${percentDiff.toFixed(4)}%)`}
+        <p className={`text-sm mt-1 ${isPriceEqual ? 'text-yellow-400' : difference > 0 ? 'text-green-400' : 'text-red-400'}`}>
+          {isPriceEqual 
+            ? '⚠️ Preços Iguais!'
+            : `${difference > 0 ? 'Futures > Spot' : 'Spot > Futures'}: $${Math.abs(difference).toLocaleString('pt-BR', { minimumFractionDigits: 4 })} (${Math.abs(percentDiff).toFixed(4)}%)`
+          }
         </p>
       </div>
     );
@@ -47,6 +51,7 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
   const [data, setData] = useState<PriceData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [crossPoints, setCrossPoints] = useState<string[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -67,6 +72,24 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
           setData([]);
         } else {
           setData(result.data);
+          
+          // Encontrar pontos de cruzamento
+          const crossingPoints = result.data.reduce((points: string[], current, index, arr) => {
+            if (index === 0) return points;
+            const prev = arr[index - 1];
+            
+            // Verifica se houve cruzamento (mudança de sinal na diferença)
+            const prevDiff = prev.futures - prev.spot;
+            const currDiff = current.futures - current.spot;
+            
+            if ((prevDiff >= 0 && currDiff <= 0) || (prevDiff <= 0 && currDiff >= 0)) {
+              points.push(current.timestamp);
+            }
+            
+            return points;
+          }, []);
+          
+          setCrossPoints(crossingPoints);
         }
       } catch (err) {
         console.error('Erro ao buscar dados de comparação:', err);
@@ -128,7 +151,13 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
   ];
 
   return (
-    <div style={{ width: '100%', height: 300 }}>
+    <div className="relative" style={{ width: '100%', height: 300 }}>
+      {/* Legenda de cruzamentos */}
+      {crossPoints.length > 0 && (
+        <div className="absolute top-0 right-0 bg-gray-800 p-2 rounded-md text-xs text-yellow-400 z-10">
+          ⚠️ {crossPoints.length} cruzamento(s) detectado(s)
+        </div>
+      )}
       <ResponsiveContainer>
         <LineChart
           data={data}
@@ -136,7 +165,7 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
             top: 5,
             right: 30,
             left: 20,
-            bottom: 60, // Aumentado para acomodar labels de data/hora
+            bottom: 60,
           }}
         >
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -147,7 +176,7 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
             angle={-45}
             textAnchor="end"
             height={60}
-            interval={Math.max(0, Math.floor(data.length / 8))} // Mostra no máximo 8 labels
+            interval={Math.max(0, Math.floor(data.length / 8))}
           />
           <YAxis 
             stroke="#9CA3AF" 
@@ -157,6 +186,23 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
           />
           <Tooltip content={<CustomTooltip />} />
           <Legend wrapperStyle={{ color: '#9CA3AF' }} />
+          
+          {/* Linhas de referência para cruzamentos */}
+          {crossPoints.map((timestamp, index) => (
+            <ReferenceLine
+              key={index}
+              x={timestamp}
+              stroke="#FBBF24"
+              strokeDasharray="3 3"
+              label={{
+                value: "⚠️",
+                position: "top",
+                fill: "#FBBF24",
+                fontSize: 12
+              }}
+            />
+          ))}
+
           <Line 
             type="monotone" 
             dataKey="spot" 
@@ -164,7 +210,7 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
             strokeWidth={2} 
             dot={{ r: 2 }} 
             activeDot={{ r: 6 }} 
-            name="Gate.io (spot)" 
+            name="Gate.io (spot)"
           />
           <Line 
             type="monotone" 
@@ -173,7 +219,7 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
             strokeWidth={2} 
             dot={{ r: 2 }} 
             activeDot={{ r: 6 }} 
-            name="MEXC (futures)" 
+            name="MEXC (futures)"
           />
         </LineChart>
       </ResponsiveContainer>
