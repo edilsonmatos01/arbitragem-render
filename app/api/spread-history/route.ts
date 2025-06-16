@@ -7,12 +7,18 @@ const prisma = new PrismaClient();
 
 // Função para converter timestamp UTC para horário de Brasília
 function convertToBrasiliaTime(date: Date): Date {
-  const brasiliaDate = new Date(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
-  console.log('Convertendo data:', {
-    original: date.toISOString(),
-    brasilia: brasiliaDate.toLocaleString()
-  });
-  return brasiliaDate;
+  // Cria uma nova data para não modificar a original
+  const utcDate = new Date(date.getTime());
+  // Converte para string no fuso horário de Brasília
+  const brasiliaString = utcDate.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' });
+  // Converte de volta para Date
+  return new Date(brasiliaString);
+}
+
+// Função para converter horário de Brasília para UTC
+function convertToUTC(date: Date): Date {
+  const brasiliaOffset = 180; // UTC-3 em minutos
+  return new Date(date.getTime() + brasiliaOffset * 60000);
 }
 
 // Função para arredondar data para o intervalo de 30 minutos mais próximo
@@ -25,11 +31,6 @@ function roundToNearestInterval(date: Date, roundDown = true): Date {
   result.setMinutes(roundedMinutes);
   result.setSeconds(0);
   result.setMilliseconds(0);
-  console.log('Arredondando data:', {
-    original: date.toLocaleString(),
-    rounded: result.toLocaleString(),
-    roundDown
-  });
   return result;
 }
 
@@ -53,27 +54,23 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
     }
 
-    // Calcula o intervalo de tempo
+    // Calcula o intervalo de tempo em horário de Brasília
     const now = new Date();
-    console.log('Horário atual UTC:', now.toISOString());
-    
     const brasiliaNow = convertToBrasiliaTime(now);
-    console.log('Horário atual Brasília:', brasiliaNow.toLocaleString());
-    
-    // Arredonda para a meia hora anterior
     const lastValidTime = roundToNearestInterval(brasiliaNow, true);
-    console.log('Último horário válido:', lastValidTime.toLocaleString());
-    
     const twentyFourHoursAgo = new Date(lastValidTime.getTime() - 24 * 60 * 60 * 1000);
-    console.log('24 horas atrás:', twentyFourHoursAgo.toLocaleString());
 
-    // Converte as datas para UTC para a consulta no banco
-    const utcLastValidTime = new Date(lastValidTime.getTime() + lastValidTime.getTimezoneOffset() * 60000);
-    const utcTwentyFourHoursAgo = new Date(twentyFourHoursAgo.getTime() + twentyFourHoursAgo.getTimezoneOffset() * 60000);
-    
-    console.log('Intervalo de busca UTC:', {
-      from: utcTwentyFourHoursAgo.toISOString(),
-      to: utcLastValidTime.toISOString()
+    // Converte para UTC para buscar no banco
+    const utcLastValidTime = convertToUTC(lastValidTime);
+    const utcTwentyFourHoursAgo = convertToUTC(twentyFourHoursAgo);
+
+    console.log('Buscando dados:', {
+      now: now.toISOString(),
+      brasiliaNow: brasiliaNow.toLocaleString(),
+      lastValidTime: lastValidTime.toLocaleString(),
+      utcLastValidTime: utcLastValidTime.toISOString(),
+      twentyFourHoursAgo: twentyFourHoursAgo.toLocaleString(),
+      utcTwentyFourHoursAgo: utcTwentyFourHoursAgo.toISOString()
     });
 
     const rawHistory = await prisma.spreadHistory.findMany({
@@ -89,13 +86,13 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    console.log('Registros encontrados:', rawHistory.length);
+    console.log(`Encontrados ${rawHistory.length} registros`);
 
     // Agrupa os dados em intervalos de 30 minutos
     const aggregatedData: Record<string, { maxSpread: number; date: Date }> = {};
     
     for (const record of rawHistory) {
-      // Converte para horário de Brasília e arredonda para intervalo de 30 minutos
+      // Converte o timestamp UTC do banco para horário de Brasília
       const brasiliaDate = convertToBrasiliaTime(record.timestamp);
       const roundedDate = roundToNearestInterval(brasiliaDate, true);
       

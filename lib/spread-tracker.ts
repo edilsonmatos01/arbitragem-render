@@ -14,6 +14,12 @@ interface SpreadSample {
   spread: number // Valor em porcentagem (ex: 1.5 para 1.5%)
 }
 
+// Função para obter o timestamp atual em UTC
+function getCurrentUTCTimestamp(): Date {
+  const now = new Date();
+  return new Date(now.getTime());
+}
+
 export async function recordSpread(sample: SpreadSample): Promise<void> {
   try {
     // Normaliza o spread usando a função utilitária
@@ -31,7 +37,7 @@ export async function recordSpread(sample: SpreadSample): Promise<void> {
         exchangeSell: sample.exchangeSell,
         direction: sample.direction,
         spread: parseFloat(normalizedSpread),
-        timestamp: new Date()
+        timestamp: getCurrentUTCTimestamp() // Usa a função auxiliar para garantir UTC
       }
     });
   } catch (error) {
