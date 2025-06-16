@@ -174,11 +174,6 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
       </h2>
       <div className="relative">
         <Line options={options} data={chartData} />
-        <div className="absolute top-0 right-0 bg-gray-800 p-2 rounded text-white text-sm">
-          {lastTimestamp}
-          <br />
-          Spread (%): {lastSpread}
-        </div>
       </div>
     </div>
   );

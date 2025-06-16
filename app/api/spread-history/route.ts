@@ -11,13 +11,16 @@ function convertToBrasiliaTime(date: Date): Date {
 }
 
 // Função para arredondar data para o intervalo de 30 minutos mais próximo
-function roundToNearestInterval(date: Date): Date {
-  const minutes = date.getMinutes();
-  const roundedMinutes = Math.floor(minutes / 30) * 30;
-  date.setMinutes(roundedMinutes);
-  date.setSeconds(0);
-  date.setMilliseconds(0);
-  return date;
+function roundToNearestInterval(date: Date, roundDown = true): Date {
+  const result = new Date(date);
+  const minutes = result.getMinutes();
+  const roundedMinutes = roundDown 
+    ? Math.floor(minutes / 30) * 30 
+    : Math.ceil(minutes / 30) * 30;
+  result.setMinutes(roundedMinutes);
+  result.setSeconds(0);
+  result.setMilliseconds(0);
+  return result;
 }
 
 // Função para formatar data no padrão brasileiro
@@ -40,14 +43,19 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
     }
 
-    // Busca dados das últimas 24 horas
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    // Calcula o intervalo de tempo
+    const now = new Date();
+    const brasiliaNow = convertToBrasiliaTime(now);
+    // Arredonda para a meia hora anterior
+    const lastValidTime = roundToNearestInterval(brasiliaNow, true);
+    const twentyFourHoursAgo = new Date(lastValidTime.getTime() - 24 * 60 * 60 * 1000);
     
     const rawHistory = await prisma.spreadHistory.findMany({
       where: {
         symbol: symbol,
         timestamp: {
           gte: twentyFourHoursAgo,
+          lte: lastValidTime, // Garante que não pegamos dados futuros
         },
       },
       orderBy: {
@@ -61,7 +69,11 @@ export async function GET(req: NextRequest) {
     for (const record of rawHistory) {
       // Converte para horário de Brasília e arredonda para intervalo de 30 minutos
       const brasiliaDate = convertToBrasiliaTime(record.timestamp);
-      const roundedDate = roundToNearestInterval(brasiliaDate);
+      const roundedDate = roundToNearestInterval(brasiliaDate, true);
+      
+      // Ignora registros futuros
+      if (roundedDate > lastValidTime) continue;
+      
       const key = roundedDate.getTime().toString();
 
       if (!aggregatedData[key] || record.spread > aggregatedData[key].maxSpread) {
@@ -72,13 +84,10 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Preenche intervalos faltantes com null
-    const now = new Date();
-    const startTime = convertToBrasiliaTime(twentyFourHoursAgo);
-    const endTime = convertToBrasiliaTime(now);
-    let currentTime = roundToNearestInterval(new Date(startTime));
-
-    while (currentTime <= endTime) {
+    // Preenche intervalos faltantes com zero
+    let currentTime = new Date(twentyFourHoursAgo);
+    
+    while (currentTime <= lastValidTime) {
       const key = currentTime.getTime().toString();
       if (!aggregatedData[key]) {
         aggregatedData[key] = {
