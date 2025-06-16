@@ -98,24 +98,57 @@ const POLLING_INTERVAL_MS = 5000; // Intervalo de polling: 5 segundos
 // Interface para as props do OpportunityRow
 interface OpportunityRowProps {
   opportunity: Opportunity;
-  livePrices: {
-    [symbol: string]: {
-      [marketType: string]: {
-        bestAsk: number;
-        bestBid: number;
-      }
-    }
-  };
+  livePrices: any;
   formatPrice: (price: number) => string;
   getSpreadDisplayClass: (spread: number) => string;
-  calcularLucro: (spread: number) => string;
+  calcularLucro: (opportunity: Opportunity) => string;
   handleExecuteArbitrage: (opportunity: Opportunity) => void;
   formatSpread: (spread: number) => string;
   minSpread: number;
   onSpreadBelowMin: (symbol: string) => void;
 }
 
-const OpportunityRow = React.memo(({ 
+const getLivePrice = (originalPrice: number, marketTypeStr: string, side: 'buy' | 'sell', livePrices: any, symbol: string) => {
+    const liveData = livePrices[symbol];
+    if (!liveData) return originalPrice;
+
+    const marketType = marketTypeStr.toLowerCase().includes('spot') ? 'spot' : 'futures';
+    
+    if (liveData[marketType]) {
+        return side === 'buy' ? liveData[marketType].bestAsk : liveData[marketType].bestBid;
+    }
+    return originalPrice;
+};
+
+const calculateLiveSpread = (buyPrice: number, sellPrice: number, originalSpread: number): number => {
+    if (!buyPrice || !sellPrice || buyPrice <= 0 || sellPrice <= 0) {
+        return originalSpread;
+    }
+    try {
+        const buy = new Decimal(buyPrice.toString());
+        const sell = new Decimal(sellPrice.toString());
+        
+        if (buy.isZero() || buy.isNegative() || sell.isNegative() || 
+            !buy.isFinite() || !sell.isFinite()) {
+            return originalSpread;
+        }
+
+        const difference = sell.minus(buy);
+        const ratio = difference.dividedBy(buy);
+        const percentageSpread = ratio.times(100);
+
+        if (percentageSpread.isNegative() || !percentageSpread.isFinite()) {
+            return originalSpread;
+        }
+
+        return parseFloat(percentageSpread.toDecimalPlaces(4).toString());
+    } catch (error) {
+        console.error('Erro ao calcular spread em tempo real:', error);
+        return originalSpread;
+    }
+};
+
+const OpportunityRow = ({ 
     opportunity, 
     livePrices, 
     formatPrice, 
@@ -126,103 +159,38 @@ const OpportunityRow = React.memo(({
     minSpread,
     onSpreadBelowMin 
 }: OpportunityRowProps) => {
-    // Memoizar os preços e spread para evitar recálculos desnecessários
-    const { compraPreco, vendaPreco, liveSpread } = useMemo(() => {
-        const compraPreco = getLivePrice(opportunity.compraPreco, opportunity.compraExchange, 'buy');
-        const vendaPreco = getLivePrice(opportunity.vendaPreco, opportunity.vendaExchange, 'sell');
-        const liveSpread = calculateLiveSpread(compraPreco, vendaPreco);
-        return { compraPreco, vendaPreco, liveSpread };
-    }, [opportunity, livePrices]);
-
-    // Memoizar a função getLivePrice
-    const getLivePrice = useCallback((originalPrice: number, marketTypeStr: string, side: 'buy' | 'sell') => {
-        const liveData = livePrices[opportunity.symbol];
-        if (!liveData) return originalPrice;
-
-        const marketType = marketTypeStr.toLowerCase().includes('spot') ? 'spot' : 'futures';
-        
-        if (liveData[marketType]) {
-            return side === 'buy' ? liveData[marketType].bestAsk : liveData[marketType].bestBid;
-        }
-        return originalPrice;
-    }, [opportunity.symbol, livePrices]);
-
-    // Memoizar a função calculateLiveSpread
-    const calculateLiveSpread = useCallback((buyPrice: number, sellPrice: number): number => {
-        if (!buyPrice || !sellPrice || buyPrice <= 0 || sellPrice <= 0) {
-            return opportunity.spread;
-        }
-        try {
-            const buy = new Decimal(buyPrice.toString());
-            const sell = new Decimal(sellPrice.toString());
-            
-            if (buy.isZero() || buy.isNegative() || sell.isNegative() || 
-                !buy.isFinite() || !sell.isFinite()) {
-                return opportunity.spread;
-            }
-
-            const difference = sell.minus(buy);
-            const ratio = difference.dividedBy(buy);
-            const percentageSpread = ratio.times(100);
-
-            if (percentageSpread.isNegative() || !percentageSpread.isFinite()) {
-                return opportunity.spread;
-            }
-
-            return parseFloat(percentageSpread.toDecimalPlaces(4).toString());
-        } catch (error) {
-            console.error('Erro ao calcular spread em tempo real:', error);
-            return opportunity.spread;
-        }
-    }, [opportunity.spread]);
-
-    // Verifica se o spread caiu abaixo do mínimo
-    useEffect(() => {
-        if (liveSpread < minSpread) {
-            onSpreadBelowMin(opportunity.symbol);
-        }
-    }, [liveSpread, minSpread, opportunity.symbol, onSpreadBelowMin]);
-
-    // Memoizar o MaxSpreadCell para evitar re-renderizações
-    const spreadCell = useMemo(() => (
-        <MaxSpreadCell symbol={opportunity.symbol} />
-    ), [opportunity.symbol]);
+    const compraPreco = getLivePrice(opportunity.compraPreco, opportunity.compraExchange, 'buy', livePrices, opportunity.symbol);
+    const vendaPreco = getLivePrice(opportunity.vendaPreco, opportunity.vendaExchange, 'sell', livePrices, opportunity.symbol);
+    const liveSpread = calculateLiveSpread(compraPreco, vendaPreco, opportunity.spread);
 
     return (
-        <tr className="border-b border-gray-700 hover:bg-gray-800">
-            <td className="py-4 px-6 whitespace-nowrap text-sm font-semibold">{opportunity.symbol}</td>
-            <td className="py-4 px-6 whitespace-nowrap text-sm">{opportunity.compraExchange} <br /> <span className="font-bold">{formatPrice(compraPreco)}</span></td>
-            <td className="py-4 px-6 whitespace-nowrap text-sm">{opportunity.vendaExchange} <br /> <span className="font-bold">{formatPrice(vendaPreco)}</span></td>
-            <td className={`py-4 px-6 whitespace-nowrap text-sm font-bold ${getSpreadDisplayClass(liveSpread)}`}>
-              {formatSpread(liveSpread)}%
+        <tr className="border-b border-gray-700">
+            <td className="py-4 px-4">{opportunity.symbol}</td>
+            <td className="py-4 px-4">{opportunity.compraExchange}</td>
+            <td className="py-4 px-4">{formatPrice(compraPreco)}</td>
+            <td className="py-4 px-4">{opportunity.vendaExchange}</td>
+            <td className="py-4 px-4">{formatPrice(vendaPreco)}</td>
+            <td className={`py-4 px-4 ${getSpreadDisplayClass(liveSpread)}`}>
+                {formatSpread(liveSpread)}
             </td>
-            <td className="py-4 px-6 whitespace-nowrap text-sm">
-              {spreadCell}
+            <td className="py-4 px-4">
+                <MaxSpreadCell symbol={opportunity.symbol} />
             </td>
-            <td className="py-4 px-6 whitespace-nowrap text-sm">{calcularLucro(liveSpread)}</td>
-            <td className="py-4 px-6 whitespace-nowrap text-center text-sm">
-              <button 
-                onClick={() => handleExecuteArbitrage({...opportunity, spread: liveSpread})}
-                className="flex items-center justify-center bg-custom-cyan hover:bg-custom-cyan/90 text-black font-bold py-2 px-3 rounded-md transition-colors text-sm"
-              >
-                <Play className="h-4 w-4" />
-              </button>
+            <td className="py-4 px-4 text-right">
+                {calcularLucro(opportunity)}
+            </td>
+            <td className="py-4 px-4">
+                <button
+                    onClick={() => handleExecuteArbitrage(opportunity)}
+                    className="bg-custom-cyan text-black px-4 py-2 rounded hover:bg-cyan-400 transition-colors"
+                    disabled={liveSpread < minSpread}
+                >
+                    Executar
+                </button>
             </td>
         </tr>
     );
-}, (prevProps, nextProps) => {
-    // Função de comparação personalizada para o memo
-    return (
-        prevProps.opportunity.symbol === nextProps.opportunity.symbol &&
-        prevProps.opportunity.compraExchange === nextProps.opportunity.compraExchange &&
-        prevProps.opportunity.vendaExchange === nextProps.opportunity.vendaExchange &&
-        prevProps.opportunity.compraPreco === nextProps.opportunity.compraPreco &&
-        prevProps.opportunity.vendaPreco === nextProps.opportunity.vendaPreco &&
-        prevProps.minSpread === nextProps.minSpread &&
-        JSON.stringify(prevProps.livePrices[prevProps.opportunity.symbol]) === 
-        JSON.stringify(nextProps.livePrices[nextProps.opportunity.symbol])
-    );
-});
+};
 
 OpportunityRow.displayName = 'OpportunityRow';
 
@@ -249,8 +217,8 @@ export default function ArbitrageTable() {
     setRankedOpportunities(prev => prev.filter(opp => opp.symbol !== symbol));
   }, []);
 
-  function calcularLucro(spreadValue: number) { 
-    return ((spreadValue / 100) * amount).toFixed(2);
+  function calcularLucro(opportunity: Opportunity) { 
+    return ((opportunity.spread / 100) * amount).toFixed(2);
   }
   
   const handleExecuteArbitrage = (opportunity: Opportunity) => {
