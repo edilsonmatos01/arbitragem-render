@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import ccxt from 'ccxt';
 import { recordSpread } from '@/lib/spread-tracker'; // Importar a função
+import { calculateSpread } from '@/app/utils/spreadUtils';
 
 const API_KEY = process.env.GATEIO_API_KEY;
 const API_SECRET = process.env.GATEIO_API_SECRET;
@@ -23,27 +24,6 @@ const TARGET_PAIRS = [
 
 function mapDirectionToTracker(apiDirection: 'FUTURES_TO_SPOT' | 'SPOT_TO_FUTURES'): 'spot-to-future' | 'future-to-spot' {
   return apiDirection === 'FUTURES_TO_SPOT' ? 'spot-to-future' : 'future-to-spot';
-}
-
-// Função centralizada para cálculo do spread
-function calculateSpread(spotAsk: number, futuresBid: number): number | null {
-    // Validação rigorosa dos inputs
-    if (!spotAsk || !futuresBid || 
-        spotAsk <= 0 || futuresBid <= 0 ||
-        !isFinite(spotAsk) || !isFinite(futuresBid) ||
-        isNaN(spotAsk) || isNaN(futuresBid)) {
-        return null;
-    }
-
-    // Cálculo do spread
-    const spread = ((futuresBid - spotAsk) / spotAsk) * 100;
-
-    // Validação do resultado
-    if (!isFinite(spread) || isNaN(spread) || spread <= 0) {
-        return null;
-    }
-
-    return spread;
 }
 
 export async function GET() {
@@ -83,16 +63,18 @@ export async function GET() {
 
         const fundingRate = futuresTicker.info?.fundingRate || futuresTicker.info?.funding_rate || '0';
 
-        const spread = calculateSpread(spotAsk, futuresBid);
+        // Usando a função centralizada com os parâmetros na ordem correta (venda, compra)
+        const spread = calculateSpread(futuresBid.toString(), spotAsk.toString());
+        const spreadValue = spread ? parseFloat(spread) : null;
 
-        if (spread !== null && spread >= 0.01 && spread < 10) {
+        if (spreadValue !== null && spreadValue >= 0.01 && spreadValue < 10) {
           const opportunity = {
             symbol: spotSymbol,
             spotPrice: spotAsk.toString(),
             futuresPrice: futuresBid.toString(),
             direction: 'SPOT_TO_FUTURES',
             fundingRate: fundingRate,
-            percentDiff: spread.toString(),
+            percentDiff: spread,
           };
           
           opportunities.push(opportunity);
@@ -102,7 +84,7 @@ export async function GET() {
             exchangeBuy: EXCHANGE_ID,
             exchangeSell: EXCHANGE_ID,
             direction: 'spot-to-future',
-            spread: spread
+            spread: spreadValue
           }).catch(err => {
             console.error(`${EXCHANGE_NAME_FOR_LOG} - Failed to record spread for ${spotSymbol}:`, err);
           });

@@ -6,6 +6,7 @@ import { GateIoConnector } from './src/gateio-connector';
 import { MexcConnector } from './src/mexc-connector';
 import { MarketPrices, ArbitrageOpportunity } from './src/types';
 import { PrismaClient } from '@prisma/client';
+import { calculateSpread } from './app/utils/spreadUtils';
 
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 10000;
@@ -206,36 +207,6 @@ function getNormalizedData(symbol: string): { baseSymbol: string, factor: number
     return { baseSymbol: symbol, factor: 1 };
 }
 
-// Função centralizada para cálculo do spread
-function calculateSpread(
-    spotAsk: number,
-    futuresBid: number,
-    spotFactor: number = 1,
-    futuresFactor: number = 1
-): number | null {
-    // Validação rigorosa dos inputs
-    if (!spotAsk || !futuresBid || 
-        spotAsk <= 0 || futuresBid <= 0 ||
-        !isFinite(spotAsk) || !isFinite(futuresBid) ||
-        isNaN(spotAsk) || isNaN(futuresBid)) {
-        return null;
-    }
-
-    // Normalização dos preços
-    const normalizedSpotAsk = spotAsk * (futuresFactor / spotFactor);
-    const normalizedFuturesBid = futuresBid * (futuresFactor / spotFactor);
-
-    // Cálculo do spread
-    const spread = ((normalizedFuturesBid - normalizedSpotAsk) / normalizedSpotAsk) * 100;
-
-    // Validação do resultado
-    if (!isFinite(spread) || isNaN(spread) || spread <= 0) {
-        return null;
-    }
-
-    return spread;
-}
-
 async function findAndBroadcastArbitrage() {
     const exchangeIdentifiers = Object.keys(marketPrices);
     if (exchangeIdentifiers.length < 2) return;
@@ -262,18 +233,19 @@ async function findAndBroadcastArbitrage() {
             const spotAsk = spotPrices[spotSymbol].bestAsk;
             const futuresBid = futuresPrices[futuresSymbol].bestBid;
 
-            const spread = calculateSpread(
-                spotAsk,
-                futuresBid,
-                spotData.factor,
-                futuresData.factor
-            );
+            // Convertendo para string e garantindo a ordem correta (venda, compra)
+            const spread = calculateSpread(futuresBid.toString(), spotAsk.toString());
+            const spreadValue = spread ? parseFloat(spread) : null;
 
-            if (spread !== null && spread >= MIN_PROFIT_PERCENTAGE && spread < 10) {
+            if (spreadValue === null || spreadValue <= 0) {
+                continue;
+            }
+
+            if (spreadValue >= MIN_PROFIT_PERCENTAGE && spreadValue < 10) {
                 const opportunity: ArbitrageOpportunity = {
                     type: 'arbitrage',
                     baseSymbol: spotData.baseSymbol,
-                    profitPercentage: spread,
+                    profitPercentage: spreadValue,
                     buyAt: { 
                         exchange: spotId, 
                         price: spotAsk,
