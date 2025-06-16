@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   LineChart,
   Line,
@@ -35,34 +35,55 @@ export default function SpreadHistoryLineChart({ symbol, isOpen, onClose }: Spre
   const [data, setData] = useState<SpreadHistoryData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!isOpen) return;
-      
-      try {
-        setLoading(true);
-        const response = await fetch(`/api/spread-history/24h/${encodeURIComponent(symbol)}`);
-        if (!response.ok) throw new Error('Falha ao carregar dados');
-        const result = await response.json();
-        setData(result);
-        setError(null);
-      } catch (err) {
-        console.error('Erro ao buscar histórico:', err);
-        setError('Falha ao carregar dados do histórico');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
+  const fetchData = useCallback(async () => {
+    if (!isOpen) return;
+    
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/spread-history/24h/${encodeURIComponent(symbol)}`);
+      if (!response.ok) throw new Error('Falha ao carregar dados');
+      const result = await response.json();
+      setData(result);
+      setError(null);
+      setLastUpdate(new Date());
+    } catch (err) {
+      console.error('Erro ao buscar histórico:', err);
+      setError('Falha ao carregar dados do histórico');
+    } finally {
+      setLoading(false);
+    }
   }, [symbol, isOpen]);
+
+  // Atualiza os dados quando o modal é aberto
+  useEffect(() => {
+    if (isOpen) {
+      fetchData();
+    }
+  }, [isOpen, fetchData]);
+
+  // Configura atualização a cada 30 minutos
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // Calcula o tempo até o próximo intervalo de 30 minutos
+    const now = new Date();
+    const minutes = now.getMinutes();
+    const secondsToNextInterval = ((30 - (minutes % 30)) * 60 - now.getSeconds()) * 1000;
+
+    const timer = setTimeout(() => {
+      fetchData();
+    }, secondsToNextInterval);
+
+    return () => clearTimeout(timer);
+  }, [isOpen, lastUpdate, fetchData]);
 
   const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
     if (active && payload && payload.length > 0) {
       return (
         <div className="bg-gray-800 border border-gray-700 p-2 rounded-md shadow-lg">
-          <p className="text-white">{`Horário: ${label}`}</p>
+          <p className="text-white">{`Data: ${label}`}</p>
           <p className="text-purple-400">{`Spread: ${payload[0].value.toFixed(2)}%`}</p>
         </div>
       );
@@ -76,6 +97,11 @@ export default function SpreadHistoryLineChart({ symbol, isOpen, onClose }: Spre
         <DialogHeader>
           <DialogTitle className="text-white">
             Histórico de Spreads - {symbol}
+            {lastUpdate && (
+              <span className="text-sm text-gray-400 ml-2">
+                (Atualizado: {lastUpdate.toLocaleTimeString('pt-BR')})
+              </span>
+            )}
           </DialogTitle>
         </DialogHeader>
 
@@ -100,7 +126,7 @@ export default function SpreadHistoryLineChart({ symbol, isOpen, onClose }: Spre
                   dataKey="timestamp"
                   stroke="#9CA3AF"
                   tick={{ fill: '#9CA3AF', fontSize: 12 }}
-                  interval="preserveStartEnd"
+                  interval={2}  // Mostra 1 a cada 3 labels
                   angle={-45}
                   textAnchor="end"
                   height={60}
