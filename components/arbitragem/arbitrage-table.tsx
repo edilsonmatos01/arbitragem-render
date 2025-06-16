@@ -4,6 +4,7 @@ import { Play, RefreshCw, AlertTriangle, CheckCircle2, Clock } from 'lucide-reac
 import { useArbitrageWebSocket } from './useArbitrageWebSocket';
 import MaxSpreadCell from './MaxSpreadCell'; // Importar o novo componente
 import React from 'react';
+import Decimal from 'decimal.js';
 
 const EXCHANGES = [
   { value: "gateio", label: "Gate.io" },
@@ -110,24 +111,56 @@ const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSp
         return originalPrice;
     };
 
+    // Função para calcular o spread em tempo real usando Decimal.js
+    const calculateLiveSpread = (buyPrice: number, sellPrice: number): number => {
+        if (!buyPrice || !sellPrice || buyPrice <= 0 || sellPrice <= 0) {
+            return opportunity.spread;
+        }
+        try {
+            const buy = new Decimal(buyPrice.toString());
+            const sell = new Decimal(sellPrice.toString());
+            
+            if (buy.isZero() || buy.isNegative() || sell.isNegative() || 
+                !buy.isFinite() || !sell.isFinite()) {
+                return opportunity.spread;
+            }
+
+            const difference = sell.minus(buy);
+            const ratio = difference.dividedBy(buy);
+            const percentageSpread = ratio.times(100);
+
+            if (percentageSpread.isNegative() || !percentageSpread.isFinite()) {
+                return opportunity.spread;
+            }
+
+            return parseFloat(percentageSpread.toDecimalPlaces(4).toString());
+        } catch (error) {
+            console.error('Erro ao calcular spread em tempo real:', error);
+            return opportunity.spread;
+        }
+    };
+
     const compraPreco = getLivePrice(opportunity.compraPreco, opportunity.compraExchange, 'buy');
     const vendaPreco = getLivePrice(opportunity.vendaPreco, opportunity.vendaExchange, 'sell');
+    
+    // Calcula o spread em tempo real com os novos preços
+    const liveSpread = calculateLiveSpread(compraPreco, vendaPreco);
 
     return (
         <tr className="border-b border-gray-700 hover:bg-gray-800">
             <td className="py-4 px-6 whitespace-nowrap text-sm font-semibold">{opportunity.symbol}</td>
             <td className="py-4 px-6 whitespace-nowrap text-sm">{opportunity.compraExchange} <br /> <span className="font-bold">{formatPrice(compraPreco)}</span></td>
             <td className="py-4 px-6 whitespace-nowrap text-sm">{opportunity.vendaExchange} <br /> <span className="font-bold">{formatPrice(vendaPreco)}</span></td>
-            <td className={`py-4 px-6 whitespace-nowrap text-sm font-bold ${getSpreadDisplayClass(opportunity.spread)}`}>
-              {formatSpread(opportunity.spread)}%
+            <td className={`py-4 px-6 whitespace-nowrap text-sm font-bold ${getSpreadDisplayClass(liveSpread)}`}>
+              {formatSpread(liveSpread)}%
             </td>
             <td className="py-4 px-6 whitespace-nowrap text-sm">
               <MaxSpreadCell symbol={opportunity.symbol} />
             </td>
-            <td className="py-4 px-6 whitespace-nowrap text-sm">{calcularLucro(opportunity.spread)}</td>
+            <td className="py-4 px-6 whitespace-nowrap text-sm">{calcularLucro(liveSpread)}</td>
             <td className="py-4 px-6 whitespace-nowrap text-center text-sm">
               <button 
-                onClick={() => handleExecuteArbitrage(opportunity as Opportunity)}
+                onClick={() => handleExecuteArbitrage({...opportunity, spread: liveSpread})}
                 className="flex items-center justify-center bg-custom-cyan hover:bg-custom-cyan/90 text-black font-bold py-2 px-3 rounded-md transition-colors text-sm"
               >
                 <Play className="h-4 w-4" />
