@@ -12,7 +12,7 @@ datasource db {
 }
 
 model SpreadHistory {
-  id           String   @id @default(cuid())
+  id           String   @id @default(uuid())
   symbol       String
   exchangeBuy  String
   exchangeSell String

@@ -1,10 +1,11 @@
 "use client";
 import { useCallback, useState, useEffect, useRef, useMemo } from "react";
-import { Play, RefreshCw, AlertTriangle, CheckCircle2, Clock } from 'lucide-react'; // Ícones
+import { Play, RefreshCw, AlertTriangle, CheckCircle2, Clock, BarChart2 } from 'lucide-react'; // Ícones
 import { useArbitrageWebSocket } from './useArbitrageWebSocket';
 import MaxSpreadCell from './MaxSpreadCell'; // Importar o novo componente
 import React from 'react';
 import Decimal from 'decimal.js';
+import SpreadHistoryLineChart from './SpreadHistoryLineChart';
 
 const EXCHANGES = [
   { value: "gateio", label: "Gate.io" },
@@ -162,6 +163,7 @@ const OpportunityRow = ({
     minSpread,
     onSpreadBelowMin 
 }: OpportunityRowProps) => {
+    const [showSpreadHistory, setShowSpreadHistory] = useState(false);
     const compraPreco = getLivePrice(opportunity.compraPreco, opportunity.compraExchange, 'buy', livePrices, opportunity.symbol);
     const vendaPreco = getLivePrice(opportunity.vendaPreco, opportunity.vendaExchange, 'sell', livePrices, opportunity.symbol);
     const liveSpread = calculateLiveSpread(compraPreco, vendaPreco, opportunity.spread);
@@ -185,9 +187,21 @@ const OpportunityRow = ({
                 {formatSpread(liveSpread)}%
             </td>
             <td className="py-4 px-4">
-                <div className="flex items-center">
+                <div className="flex items-center space-x-2">
                     <MaxSpreadCell symbol={opportunity.symbol} />
+                    <button
+                        onClick={() => setShowSpreadHistory(true)}
+                        className="p-1 text-gray-400 hover:text-purple-400 transition-colors"
+                        title="Ver histórico de spreads"
+                    >
+                        <BarChart2 className="h-5 w-5" />
+                    </button>
                 </div>
+                <SpreadHistoryLineChart
+                    symbol={opportunity.symbol}
+                    isOpen={showSpreadHistory}
+                    onClose={() => setShowSpreadHistory(false)}
+                />
             </td>
             <td className="py-4 px-4 text-center">
                 <button
