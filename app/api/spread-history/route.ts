@@ -3,9 +3,13 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const prisma = new PrismaClient();
 
+// Função auxiliar para obter a data atual em Brasília
+function getCurrentBrasiliaDate(): Date {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+}
+
 // Função auxiliar para converter UTC para horário de Brasília
 function convertToBrasiliaTime(date: Date): Date {
-  // Cria uma nova data usando o timezone de Brasília
   return new Date(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
 }
 
@@ -17,7 +21,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
   }
 
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  // Calcula 24 horas atrás a partir do horário atual de Brasília
+  const currentBrasiliaDate = getCurrentBrasiliaDate();
+  const twentyFourHoursAgo = new Date(currentBrasiliaDate.getTime() - 24 * 60 * 60 * 1000);
 
   try {
     const rawHistory = await prisma.spreadHistory.findMany({
@@ -47,13 +53,17 @@ export async function GET(req: NextRequest) {
     for (const record of rawHistory) {
       // Converter o timestamp para horário de Brasília
       const brasiliaDate = convertToBrasiliaTime(record.timestamp);
+      // Arredonda para o intervalo de 30 minutos mais próximo
       const bucketTimestamp = Math.floor(brasiliaDate.getTime() / thirtyMinutesInMs) * thirtyMinutesInMs;
       
-      if (!aggregatedData[bucketTimestamp] || record.spread > aggregatedData[bucketTimestamp].maxSpread) {
+      if (!aggregatedData[bucketTimestamp]) {
         aggregatedData[bucketTimestamp] = {
           maxSpread: record.spread,
-          date: brasiliaDate
+          date: new Date(bucketTimestamp)
         };
+      } else if (record.spread > aggregatedData[bucketTimestamp].maxSpread) {
+        // Atualiza apenas o spread máximo, mantendo o timestamp do intervalo
+        aggregatedData[bucketTimestamp].maxSpread = record.spread;
       }
     }
 
@@ -61,7 +71,7 @@ export async function GET(req: NextRequest) {
       .sort(([a], [b]) => parseInt(a) - parseInt(b))
       .map(([_, data]) => {
         // Formato brasileiro: DD/MM HH:mm
-        const timeLabel = data.date.toLocaleString('pt-BR', {
+        const timeLabel = new Date(data.date).toLocaleString('pt-BR', {
           day: '2-digit',
           month: '2-digit',
           hour: '2-digit',
