@@ -5,7 +5,8 @@ const prisma = new PrismaClient();
 
 // Função auxiliar para converter UTC para horário de Brasília
 function convertToBrasiliaTime(date: Date): Date {
-  return new Date(date.getTime() - 3 * 60 * 60 * 1000); // UTC-3
+  // Cria uma nova data usando o timezone de Brasília
+  return new Date(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
 }
 
 export async function GET(req: NextRequest) {
@@ -41,37 +42,32 @@ export async function GET(req: NextRequest) {
 
     // Lógica de agregação para intervalos de 30 minutos
     const thirtyMinutesInMs = 30 * 60 * 1000;
-    // A estrutura agora armazena o spread máximo para cada balde de tempo.
     const aggregatedData: { [key: number]: { maxSpread: number; date: Date } } = {};
 
     for (const record of rawHistory) {
-      // Converter o timestamp para horário de Brasília antes de processar
-      const brasiliaTimestamp = convertToBrasiliaTime(record.timestamp);
-      const bucketTimestamp = Math.floor(brasiliaTimestamp.getTime() / thirtyMinutesInMs) * thirtyMinutesInMs;
+      // Converter o timestamp para horário de Brasília
+      const brasiliaDate = convertToBrasiliaTime(record.timestamp);
+      const bucketTimestamp = Math.floor(brasiliaDate.getTime() / thirtyMinutesInMs) * thirtyMinutesInMs;
       
-      // Se o balde não existir, ou se o spread do registro atual for maior
-      // que o máximo já armazenado para esse balde, atualize-o.
       if (!aggregatedData[bucketTimestamp] || record.spread > aggregatedData[bucketTimestamp].maxSpread) {
         aggregatedData[bucketTimestamp] = {
           maxSpread: record.spread,
-          date: new Date(bucketTimestamp)
+          date: brasiliaDate
         };
       }
     }
 
     const formattedHistory = Object.entries(aggregatedData)
       .sort(([a], [b]) => parseInt(a) - parseInt(b))
-      .map(([timestamp, data]) => {
+      .map(([_, data]) => {
         // Formato brasileiro: DD/MM HH:mm
-        const timeLabel = data.date.toLocaleDateString('pt-BR', { 
-          day: '2-digit', 
+        const timeLabel = data.date.toLocaleString('pt-BR', {
+          day: '2-digit',
           month: '2-digit',
-          timeZone: 'America/Sao_Paulo'
-        }) + ' ' + data.date.toLocaleTimeString('pt-BR', { 
-          hour: '2-digit', 
+          hour: '2-digit',
           minute: '2-digit',
           timeZone: 'America/Sao_Paulo'
-        });
+        }).replace(',', '');
 
         return {
           timestamp: timeLabel,

@@ -40,8 +40,6 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
           throw new Error('Falha ao buscar o histórico de spread.');
         }
         const rawData: SpreadData[] = await response.json();
-        
-        // A API já retorna o timestamp formatado, não precisamos reformatar
         setData(rawData);
       } catch (err: any) {
         setError(err.message || 'Ocorreu um erro.');
@@ -50,9 +48,16 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
       }
     };
 
+    // Busca inicial
     if (symbol) {
       fetchData();
     }
+
+    // Configura atualização periódica a cada 30 segundos
+    const interval = setInterval(fetchData, 30000);
+
+    // Limpa o intervalo quando o componente é desmontado
+    return () => clearInterval(interval);
   }, [symbol]);
 
   if (isLoading) {
