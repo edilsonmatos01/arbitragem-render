@@ -1,38 +1,18 @@
 import { NextResponse } from 'next/server';
-import WebSocket from 'ws';
 
 // Função auxiliar para converter UTC para horário de Brasília
 function convertToBrasiliaTime(date: Date): Date {
   return new Date(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
 }
 
-interface MarketPrice {
-  bestBid: number;
-  bestAsk: number;
-}
-
-interface MarketPrices {
-  [symbol: string]: {
-    spot?: MarketPrice;
-    futures?: MarketPrice;
+// Função para gerar preços simulados
+function generateSimulatedPrices(basePrice: number = 1000) {
+  const variation = (Math.random() - 0.5) * 0.002; // Variação de ±0.1%
+  return {
+    spot: basePrice * (1 + variation),
+    futures: basePrice * (1 - variation)
   };
 }
-
-let marketPrices: MarketPrices = {};
-
-// Conectar ao websocket local
-const ws = new WebSocket('ws://localhost:3001');
-
-ws.on('message', (data) => {
-  try {
-    const message = JSON.parse(data.toString());
-    if (message.type === 'marketPrices') {
-      marketPrices = message.data;
-    }
-  } catch (error) {
-    console.error('Erro ao processar mensagem do websocket:', error);
-  }
-});
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -43,18 +23,6 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Obter preços atuais do websocket
-    const currentPrices = marketPrices[symbol];
-    if (!currentPrices || !currentPrices.spot || !currentPrices.futures) {
-      return NextResponse.json({ 
-        data: [], 
-        message: 'Dados de preço não disponíveis no momento' 
-      });
-    }
-
-    const spotPrice = (currentPrices.spot.bestBid + currentPrices.spot.bestAsk) / 2;
-    const futuresPrice = (currentPrices.futures.bestBid + currentPrices.futures.bestAsk) / 2;
-
     // Gerar dados para as últimas 24 horas em intervalos de 30 minutos
     const now = new Date();
     const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -66,6 +34,10 @@ export async function GET(request: Request) {
 
     // Gerar pontos a cada 30 minutos
     let currentTime = new Date(twentyFourHoursAgo);
+    
+    // Preço base que será usado para gerar variações
+    const basePrice = 1000; // Você pode ajustar este valor conforme necessário
+    
     while (currentTime <= now) {
       const brasiliaTime = convertToBrasiliaTime(currentTime);
       const timeLabel = brasiliaTime.toLocaleString('pt-BR', {
@@ -76,18 +48,27 @@ export async function GET(request: Request) {
         timeZone: 'America/Sao_Paulo'
       }).replace(',', '');
 
-      // Adicionar uma pequena variação aos preços para simular movimento
+      // Gerar preços simulados para este intervalo
       const timeProgress = (currentTime.getTime() - twentyFourHoursAgo.getTime()) / (now.getTime() - twentyFourHoursAgo.getTime());
-      const variation = Math.sin(timeProgress * Math.PI * 4) * 0.001; // Variação suave de ±0.1%
+      const cyclicVariation = Math.sin(timeProgress * Math.PI * 4) * 0.005; // Variação cíclica de ±0.5%
+      
+      const prices = generateSimulatedPrices(basePrice * (1 + cyclicVariation));
 
       data.push({
         timestamp: timeLabel,
-        spot: Number((spotPrice * (1 + variation)).toFixed(4)),
-        futures: Number((futuresPrice * (1 - variation)).toFixed(4)),
+        spot: Number(prices.spot.toFixed(4)),
+        futures: Number(prices.futures.toFixed(4)),
       });
 
       // Avançar 30 minutos
       currentTime = new Date(currentTime.getTime() + 30 * 60 * 1000);
+    }
+
+    // Calcular próxima atualização (próximo intervalo de 30 minutos)
+    const nextUpdateTime = new Date(now);
+    nextUpdateTime.setMinutes(Math.ceil(nextUpdateTime.getMinutes() / 30) * 30, 0, 0);
+    if (nextUpdateTime <= now) {
+      nextUpdateTime.setTime(nextUpdateTime.getTime() + 30 * 60 * 1000);
     }
 
     return NextResponse.json({
@@ -95,7 +76,7 @@ export async function GET(request: Request) {
       symbol,
       totalRecords: data.length,
       timeRange: '24h',
-      nextUpdate: new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
+      nextUpdate: nextUpdateTime.toISOString(),
     });
 
   } catch (error) {
