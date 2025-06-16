@@ -34,6 +34,9 @@ interface SpreadData {
   spread: number;
 }
 
+// Constante para o intervalo de atualização (30 minutos)
+const UPDATE_INTERVAL_MS = 1800000;
+
 export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) {
   const [spreadHistory, setSpreadHistory] = useState<SpreadData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,8 +62,8 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
 
   useEffect(() => {
     fetchSpreadHistory();
-    // Atualiza a cada 30 segundos
-    const interval = setInterval(fetchSpreadHistory, 30000);
+    // Atualiza a cada 30 minutos
+    const interval = setInterval(fetchSpreadHistory, UPDATE_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [symbol]);
 
