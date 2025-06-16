@@ -11,6 +11,12 @@ const EXCHANGES = [
   { value: "mexc", label: "MEXC" },
 ];
 
+const directionOptions = [
+  { value: 'ALL', label: 'Todas as Direções' },
+  { value: 'SPOT_TO_FUTURES', label: 'Comprar Spot / Vender Futuros (Spot < Futuros)' },
+  { value: 'FUTURES_TO_SPOT', label: 'Vender Spot / Comprar Futuros (Spot > Futuros)' },
+];
+
 const PAIRS = [
   "BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "XRP/USDT", "ADA/USDT", "AVAX/USDT", "DOT/USDT", "TRX/USDT", "LTC/USDT",
   "MATIC/USDT", "LINK/USDT", "ATOM/USDT", "NEAR/USDT", "FIL/USDT", "AAVE/USDT", "UNI/USDT", "FTM/USDT", "INJ/USDT", "RNDR/USDT",
@@ -48,7 +54,6 @@ interface Opportunity {
   compraPreco: number;
   vendaPreco: number;
   spread: number; // Em porcentagem, ex: 0.5 para 0.5%
-  lucroEstimado?: string; // Calculado no frontend
   status?: string; // Calculado no frontend (ex: 'available')
   tipo: 'intra' | 'inter';
   // Campos adicionais para manter consistência ou para lógica futura
@@ -101,7 +106,6 @@ interface OpportunityRowProps {
   livePrices: any;
   formatPrice: (price: number) => string;
   getSpreadDisplayClass: (spread: number) => string;
-  calcularLucro: (opportunity: Opportunity) => string;
   handleExecuteArbitrage: (opportunity: Opportunity) => void;
   formatSpread: (spread: number) => string;
   minSpread: number;
@@ -153,7 +157,6 @@ const OpportunityRow = ({
     livePrices, 
     formatPrice, 
     getSpreadDisplayClass, 
-    calcularLucro, 
     handleExecuteArbitrage, 
     formatSpread,
     minSpread,
@@ -186,9 +189,6 @@ const OpportunityRow = ({
                     <MaxSpreadCell symbol={opportunity.symbol} />
                 </div>
             </td>
-            <td className="py-4 px-4 text-right">
-                {calcularLucro(opportunity)}
-            </td>
             <td className="py-4 px-4 text-center">
                 <button
                     onClick={() => handleExecuteArbitrage(opportunity)}
@@ -208,7 +208,6 @@ export default function ArbitrageTable() {
   const [arbitrageType, setArbitrageType] = useState<'intra'|'inter'>('inter');
   const [direction, setDirection] = useState<'SPOT_TO_FUTURES' | 'FUTURES_TO_SPOT' | 'ALL'>('ALL');
   const [minSpread, setMinSpread] = useState(0.1);
-  const [amount, setAmount] = useState(100);
   const [spotExchange, setSpotExchange] = useState('gateio');
   const [futuresExchange, setFuturesExchange] = useState('mexc');
   const [isPaused, setIsPaused] = useState(true);
@@ -227,22 +226,12 @@ export default function ArbitrageTable() {
     setRankedOpportunities(prev => prev.filter(opp => opp.symbol !== symbol));
   }, []);
 
-  function calcularLucro(opportunity: Opportunity) { 
-    return ((opportunity.spread / 100) * amount).toFixed(2);
-  }
-  
   const handleExecuteArbitrage = (opportunity: Opportunity) => {
     setSuccessMessage(`Sucesso! Arbitragem para ${opportunity.symbol} (Spread: ${Math.abs(opportunity.spread).toFixed(4)}%) executada.`);
-    console.log("Executar arbitragem:", opportunity, "Valor aportado:", amount);
+    console.log("Executar arbitragem:", opportunity);
     setTimeout(() => setSuccessMessage(null), 5000);
   };
 
-  const directionOptions = [
-    { value: 'ALL', label: 'Todas as Direções' },
-    { value: 'SPOT_TO_FUTURES', label: 'Comprar Spot / Vender Futuros (Spot < Futuros)' },
-    { value: 'FUTURES_TO_SPOT', label: 'Vender Spot / Comprar Futuros (Spot > Futuros)' },
-  ];
-  
   const formatPrice = (price: number) => {
     if (price === 0) return '0.00';
     if (Math.abs(price) < 1) {
@@ -310,7 +299,6 @@ export default function ArbitrageTable() {
           compraPreco: opp.buyAt.price,
           vendaPreco: opp.sellAt.price,
           spread: opp.profitPercentage,
-          lucroEstimado: ((opp.profitPercentage / 100) * amount).toFixed(2),
           status: 'available',
           tipo: opp.buyAt.exchange !== opp.sellAt.exchange ? 'inter' : 'intra',
           directionApi: opp.arbitrageType.startsWith('spot_') ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT',
@@ -375,7 +363,6 @@ export default function ArbitrageTable() {
     arbitrageType,
     spotExchange,
     futuresExchange,
-    amount,
   ]);
 
   return (
@@ -401,13 +388,6 @@ export default function ArbitrageTable() {
               id="minSpread" type="number" step="0.01" min={0} 
               className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan"
               value={minSpread} onChange={e => setMinSpread(Number(e.target.value))} 
-            />
-          </div>
-          <div>
-            <label htmlFor="amount" className="block text-sm font-medium text-gray-300 mb-1">Valor por Operação (USDT)</label>
-            <input id="amount" type="number" step="1" min={1} 
-              className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan" 
-              value={amount} onChange={e => setAmount(Number(e.target.value))} 
             />
           </div>
           <div>
@@ -473,15 +453,14 @@ export default function ArbitrageTable() {
                 <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Venda</th>
                 <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Spread %</th>
                 <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Spread Máximo (24h)</th>
-                <th scope="col" className="py-3 px-4 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">Lucro Estimado (USD)</th>
                 <th scope="col" className="py-3 px-4 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
               {isLoading ? (
-                <tr><td colSpan={7} className="text-center text-gray-400 py-8">Carregando...</td></tr>
+                <tr><td colSpan={6} className="text-center text-gray-400 py-8">Carregando...</td></tr>
               ) : rankedOpportunities.length === 0 && !error ? (
-                <tr><td colSpan={7} className="text-center text-gray-400 py-8">Nenhuma oportunidade encontrada para os filtros selecionados.</td></tr>
+                <tr><td colSpan={6} className="text-center text-gray-400 py-8">Nenhuma oportunidade encontrada para os filtros selecionados.</td></tr>
               ) : (
                 rankedOpportunities.map((opportunity, index) => (
                   <OpportunityRow
@@ -490,7 +469,6 @@ export default function ArbitrageTable() {
                     livePrices={livePrices}
                     formatPrice={formatPrice}
                     getSpreadDisplayClass={getSpreadDisplayClass}
-                    calcularLucro={calcularLucro}
                     handleExecuteArbitrage={handleExecuteArbitrage}
                     formatSpread={formatSpread}
                     minSpread={minSpread}
