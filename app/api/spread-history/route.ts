@@ -3,33 +3,44 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const prisma = new PrismaClient();
 
-// Função auxiliar para obter a data atual em Brasília
-function getCurrentBrasiliaDate(): Date {
-  return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
-}
-
-// Função auxiliar para converter UTC para horário de Brasília
+// Função para converter timestamp UTC para horário de Brasília
 function convertToBrasiliaTime(date: Date): Date {
   return new Date(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
 }
 
+// Função para arredondar data para o intervalo de 30 minutos mais próximo
+function roundToNearestInterval(date: Date): Date {
+  const minutes = date.getMinutes();
+  const roundedMinutes = Math.floor(minutes / 30) * 30;
+  date.setMinutes(roundedMinutes);
+  date.setSeconds(0);
+  date.setMilliseconds(0);
+  return date;
+}
+
+// Função para formatar data no padrão brasileiro
+function formatBrasiliaTime(date: Date): string {
+  return date.toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).replace(',', '');
+}
+
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const symbol = searchParams.get('symbol');
-
-  console.log('Recebida requisição para símbolo:', symbol);
-
-  if (!symbol) {
-    return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
-  }
-
-  // Calcula 24 horas atrás a partir do horário atual de Brasília
-  const currentBrasiliaDate = getCurrentBrasiliaDate();
-  const twentyFourHoursAgo = new Date(currentBrasiliaDate.getTime() - 24 * 60 * 60 * 1000);
-
-  console.log('Buscando dados a partir de:', twentyFourHoursAgo.toISOString());
-
   try {
+    const url = new URL(req.url);
+    const symbol = url.searchParams.get('symbol');
+
+    if (!symbol) {
+      return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
+    }
+
+    // Busca dados das últimas 24 horas
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    
     const rawHistory = await prisma.spreadHistory.findMany({
       where: {
         symbol: symbol,
@@ -40,59 +51,49 @@ export async function GET(req: NextRequest) {
       orderBy: {
         timestamp: 'asc',
       },
-      select: {
-        timestamp: true,
-        spread: true,
-      },
     });
 
-    console.log('Registros encontrados:', rawHistory.length);
-
-    if (rawHistory.length === 0) {
-      console.log('Nenhum registro encontrado para o símbolo');
-      return NextResponse.json([]);
-    }
-
-    // Lógica de agregação para intervalos de 30 minutos
-    const thirtyMinutesInMs = 30 * 60 * 1000;
-    const aggregatedData: { [key: number]: { maxSpread: number; date: Date } } = {};
-
+    // Agrupa os dados em intervalos de 30 minutos
+    const aggregatedData: Record<string, { maxSpread: number; date: Date }> = {};
+    
     for (const record of rawHistory) {
-      // Converter o timestamp para horário de Brasília
+      // Converte para horário de Brasília e arredonda para intervalo de 30 minutos
       const brasiliaDate = convertToBrasiliaTime(record.timestamp);
-      // Arredonda para o intervalo de 30 minutos mais próximo
-      const bucketTimestamp = Math.floor(brasiliaDate.getTime() / thirtyMinutesInMs) * thirtyMinutesInMs;
-      
-      if (!aggregatedData[bucketTimestamp]) {
-        aggregatedData[bucketTimestamp] = {
+      const roundedDate = roundToNearestInterval(brasiliaDate);
+      const key = roundedDate.getTime().toString();
+
+      if (!aggregatedData[key] || record.spread > aggregatedData[key].maxSpread) {
+        aggregatedData[key] = {
           maxSpread: record.spread,
-          date: new Date(bucketTimestamp)
+          date: roundedDate
         };
-      } else if (record.spread > aggregatedData[bucketTimestamp].maxSpread) {
-        // Atualiza apenas o spread máximo, mantendo o timestamp do intervalo
-        aggregatedData[bucketTimestamp].maxSpread = record.spread;
       }
     }
 
+    // Preenche intervalos faltantes com null
+    const now = new Date();
+    const startTime = convertToBrasiliaTime(twentyFourHoursAgo);
+    const endTime = convertToBrasiliaTime(now);
+    let currentTime = roundToNearestInterval(new Date(startTime));
+
+    while (currentTime <= endTime) {
+      const key = currentTime.getTime().toString();
+      if (!aggregatedData[key]) {
+        aggregatedData[key] = {
+          maxSpread: 0,
+          date: new Date(currentTime)
+        };
+      }
+      currentTime = new Date(currentTime.getTime() + 30 * 60 * 1000); // Adiciona 30 minutos
+    }
+
+    // Formata os dados para retorno
     const formattedHistory = Object.entries(aggregatedData)
       .sort(([a], [b]) => parseInt(a) - parseInt(b))
-      .map(([_, data]) => {
-        // Formato brasileiro: DD/MM HH:mm
-        const timeLabel = new Date(data.date).toLocaleString('pt-BR', {
-          day: '2-digit',
-          month: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          timeZone: 'America/Sao_Paulo'
-        }).replace(',', '');
-
-        return {
-          timestamp: timeLabel,
-          spread: data.maxSpread,
-        };
-      });
-
-    console.log('Dados formatados:', formattedHistory);
+      .map(([_, data]) => ({
+        timestamp: formatBrasiliaTime(data.date),
+        spread: data.maxSpread,
+      }));
 
     return NextResponse.json(formattedHistory);
   } catch (error) {

@@ -44,12 +44,10 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
 
   const fetchSpreadHistory = async () => {
     try {
-      console.log('Buscando dados para o símbolo:', symbol);
       setLoading(true);
       const response = await fetch(`/api/spread-history?symbol=${encodeURIComponent(symbol)}`);
       if (!response.ok) throw new Error('Failed to fetch spread history');
       const data = await response.json();
-      console.log('Dados recebidos:', data);
       setSpreadHistory(data);
       setError(null);
     } catch (error) {
@@ -62,19 +60,14 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
 
   useEffect(() => {
     fetchSpreadHistory();
-    // Atualiza a cada 30 minutos
     const interval = setInterval(fetchSpreadHistory, UPDATE_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [symbol]);
 
-  const getCurrentBrasiliaTime = () => {
-    return new Date().toLocaleString('pt-BR', {
-      timeZone: 'America/Sao_Paulo',
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).replace(',', '');
+  const formatTime = (timestamp: string) => {
+    // Assumindo que o timestamp já está em formato DD/MM HH:mm
+    // Vamos extrair apenas o horário (HH:mm)
+    return timestamp.split(' ')[1];
   };
 
   const options: ChartOptions<'line'> = {
@@ -85,6 +78,13 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
       },
       tooltip: {
         callbacks: {
+          title: (items) => {
+            if (items[0]) {
+              // Mostra a data completa no tooltip
+              return items[0].label;
+            }
+            return '';
+          },
           label: (context: TooltipItem<'line'>) => {
             return `Spread (%): ${context.parsed.y.toFixed(2)}`;
           },
@@ -92,10 +92,30 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
       },
     },
     scales: {
+      x: {
+        ticks: {
+          callback: function(value) {
+            // Mostra apenas o horário no eixo X
+            const label = this.getLabelForValue(value as number);
+            return formatTime(label);
+          },
+          maxRotation: 0,
+          autoSkip: true,
+          autoSkipPadding: 30,
+        },
+        grid: {
+          display: true,
+          color: 'rgba(255, 255, 255, 0.1)',
+        },
+      },
       y: {
         beginAtZero: true,
         ticks: {
           callback: (value: number | string) => `${value}%`,
+        },
+        grid: {
+          display: true,
+          color: 'rgba(255, 255, 255, 0.1)',
         },
       },
     },
@@ -117,9 +137,6 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
       },
     ],
   };
-
-  const currentTime = getCurrentBrasiliaTime();
-  const lastSpread = spreadHistory[spreadHistory.length - 1]?.spread.toFixed(2) || '0.00';
 
   if (loading) {
     return (
@@ -147,6 +164,9 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
     );
   }
 
+  const lastSpread = spreadHistory[spreadHistory.length - 1]?.spread.toFixed(2) || '0.00';
+  const lastTimestamp = spreadHistory[spreadHistory.length - 1]?.timestamp || '';
+
   return (
     <div className="w-full p-4 bg-gray-800 rounded-lg">
       <h2 className="text-lg font-semibold mb-4 text-white">
@@ -154,8 +174,8 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
       </h2>
       <div className="relative">
         <Line options={options} data={chartData} />
-        <div className="absolute top-0 right-0 bg-gray-800 p-2 rounded text-white">
-          {currentTime}
+        <div className="absolute top-0 right-0 bg-gray-800 p-2 rounded text-white text-sm">
+          {lastTimestamp}
           <br />
           Spread (%): {lastSpread}
         </div>
