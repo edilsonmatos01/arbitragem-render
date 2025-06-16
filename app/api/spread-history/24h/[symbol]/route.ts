@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+let prisma: PrismaClient | null = null;
+
+try {
+  prisma = new PrismaClient();
+} catch (error) {
+  console.warn('Aviso: Não foi possível conectar ao banco de dados');
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +27,12 @@ export async function GET(
     const symbol = params.symbol;
     if (!symbol) {
       return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
+    }
+
+    // Se não houver conexão com o banco, retorna array vazio
+    if (!prisma) {
+      console.warn('Aviso: Banco de dados não disponível');
+      return NextResponse.json([]);
     }
 
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -78,9 +90,6 @@ export async function GET(
     return NextResponse.json(formattedData);
   } catch (error) {
     console.error('Error fetching spread history:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json([]);
   }
 } 

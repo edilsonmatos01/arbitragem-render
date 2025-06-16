@@ -9,7 +9,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  TooltipProps
 } from 'recharts';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
@@ -23,6 +22,14 @@ interface SpreadHistoryLineChartProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
+type CustomTooltipProps = {
+  active?: boolean;
+  payload?: Array<{
+    value: number;
+  }>;
+  label?: string;
+};
 
 export default function SpreadHistoryLineChart({ symbol, isOpen, onClose }: SpreadHistoryLineChartProps) {
   const [data, setData] = useState<SpreadHistoryData[]>([]);
@@ -51,8 +58,8 @@ export default function SpreadHistoryLineChart({ symbol, isOpen, onClose }: Spre
     fetchData();
   }, [symbol, isOpen]);
 
-  const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
-    if (active && payload && payload.length) {
+  const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
+    if (active && payload && payload.length > 0) {
       return (
         <div className="bg-gray-800 border border-gray-700 p-2 rounded-md shadow-lg">
           <p className="text-white">{`Horário: ${label}`}</p>
