@@ -19,6 +19,7 @@ interface ApiResponse {
   totalRecords: number;
   timeRange: string;
   message?: string;
+  nextUpdate: string;
 }
 
 // Componente de Tooltip customizado para formatar os valores
@@ -132,7 +133,7 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
   const [data, setData] = useState<PriceData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [lastUpdateTime, setLastUpdateTime] = useState<number>(0);
+  const [nextUpdate, setNextUpdate] = useState<Date | null>(null);
 
   // Função memoizada para calcular os pontos de cruzamento
   const findCrossPoints = useCallback((chartData: PriceData[]) => {
@@ -183,18 +184,12 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
       
       const result: ApiResponse = await response.json();
       
-      // Verifica se há novos dados comparando com o último registro
-      if (result.data.length > 0) {
-        const lastTimestamp = new Date(result.data[result.data.length - 1].timestamp).getTime();
-        
-        // Só atualiza se houver dados novos
-        if (lastTimestamp > lastUpdateTime) {
-          setData(result.data);
-          setLastUpdateTime(lastTimestamp);
-        }
-      } else {
+      if (result.data.length === 0) {
         setError(result.message || 'Sem dados suficientes para comparação');
         setData([]);
+      } else {
+        setData(result.data);
+        setNextUpdate(new Date(result.nextUpdate));
       }
     } catch (err) {
       console.error('Erro ao buscar dados de comparação:', err);
@@ -203,7 +198,7 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
     } finally {
       setLoading(false);
     }
-  }, [symbol, lastUpdateTime]);
+  }, [symbol]);
 
   useEffect(() => {
     setLoading(true);
@@ -211,10 +206,16 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
     
     fetchData();
     
-    // Verifica novos dados a cada 5 segundos
-    const interval = setInterval(fetchData, 5000);
+    // Configura o próximo intervalo de atualização
+    const interval = setInterval(() => {
+      const now = new Date();
+      if (nextUpdate && now >= nextUpdate) {
+        fetchData();
+      }
+    }, 1000); // Verifica a cada segundo se é hora de atualizar
+
     return () => clearInterval(interval);
-  }, [fetchData]);
+  }, [fetchData, nextUpdate]);
 
   if (loading) {
     return (
@@ -250,5 +251,17 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
     );
   }
 
-  return <MemoizedLineChart data={data} crossPoints={crossPoints} yDomain={yDomain} />;
+  return (
+    <div>
+      <div className="text-xs text-gray-500 mb-2">
+        Próxima atualização: {nextUpdate?.toLocaleString('pt-BR', { 
+          day: '2-digit',
+          month: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        })}
+      </div>
+      <MemoizedLineChart data={data} crossPoints={crossPoints} yDomain={yDomain} />
+    </div>
+  );
 } 
