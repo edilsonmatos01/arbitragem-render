@@ -10,6 +10,7 @@ const http_1 = require("http");
 const gateio_connector_1 = require("./src/gateio-connector");
 const mexc_connector_1 = require("./src/mexc-connector");
 const client_1 = require("@prisma/client");
+const spreadUtils_1 = require("./app/utils/spreadUtils");
 const prisma = new client_1.PrismaClient();
 const PORT = process.env.PORT || 10000;
 const MIN_PROFIT_PERCENTAGE = 0.1;
@@ -175,29 +176,6 @@ function getNormalizedData(symbol) {
     }
     return { baseSymbol: symbol, factor: 1 };
 }
-// Função centralizada para cálculo do spread
-function calculateSpread(spotAsk, futuresBid, spotFactor = 1, futuresFactor = 1) {
-    // Validação rigorosa dos inputs
-    if (!spotAsk || !futuresBid ||
-        spotAsk <= 0 || futuresBid <= 0 ||
-        !isFinite(spotAsk) || !isFinite(futuresBid) ||
-        isNaN(spotAsk) || isNaN(futuresBid)) {
-        return null;
-    }
-
-    // Normalização dos preços
-    const normalizedSpotAsk = spotAsk * (futuresFactor / spotFactor);
-    const normalizedFuturesBid = futuresBid * (futuresFactor / spotFactor);
-
-    try {
-        // Importa a função de cálculo de spread do utilitário central
-        const { calculateSpread } = require('../app/utils/spreadUtils');
-        return calculateSpread(normalizedFuturesBid.toString(), normalizedSpotAsk.toString());
-    } catch (error) {
-        console.error('Erro ao calcular spread:', error);
-        return null;
-    }
-}
 async function findAndBroadcastArbitrage() {
     const exchangeIdentifiers = Object.keys(marketPrices);
     if (exchangeIdentifiers.length < 2)
@@ -219,12 +197,17 @@ async function findAndBroadcastArbitrage() {
             const futuresData = getNormalizedData(futuresSymbol);
             const spotAsk = spotPrices[spotSymbol].bestAsk;
             const futuresBid = futuresPrices[futuresSymbol].bestBid;
-            const spread = calculateSpread(spotAsk, futuresBid, spotData.factor, futuresData.factor);
-            if (spread !== null && spread >= MIN_PROFIT_PERCENTAGE && spread < 10) {
+            // Convertendo para string e garantindo a ordem correta (venda, compra)
+            const spread = (0, spreadUtils_1.calculateSpread)(futuresBid.toString(), spotAsk.toString());
+            const spreadValue = spread ? parseFloat(spread) : null;
+            if (spreadValue === null || spreadValue <= 0) {
+                continue;
+            }
+            if (spreadValue >= MIN_PROFIT_PERCENTAGE && spreadValue < 10) {
                 const opportunity = {
                     type: 'arbitrage',
                     baseSymbol: spotData.baseSymbol,
-                    profitPercentage: spread,
+                    profitPercentage: spreadValue,
                     buyAt: {
                         exchange: spotId,
                         price: spotAsk,

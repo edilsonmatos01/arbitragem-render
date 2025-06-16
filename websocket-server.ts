@@ -161,8 +161,6 @@ async function recordSpread(opportunity: ArbitrageOpportunity) {
                 exchangeSell: opportunity.sellAt.exchange,
                 direction: opportunity.arbitrageType,
                 spread: opportunity.profitPercentage,
-                buyPrice: opportunity.buyAt.price,
-                sellPrice: opportunity.sellAt.price,
             },
         });
     } catch (error) {

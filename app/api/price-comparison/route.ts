@@ -1,47 +1,9 @@
-import { PrismaClient } from '@prisma/client';
 import { NextResponse } from 'next/server';
-import WebSocket from 'ws';
-
-const prisma = new PrismaClient();
 
 // Função auxiliar para converter UTC para horário de Brasília
 function convertToBrasiliaTime(date: Date): Date {
   return new Date(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
 }
-
-interface SpreadRecord {
-  spread: number;
-  direction: string;
-  timestamp: Date;
-}
-
-interface MarketPrice {
-  bestBid: number;
-  bestAsk: number;
-}
-
-interface MarketPrices {
-  [symbol: string]: {
-    spot?: MarketPrice;
-    futures?: MarketPrice;
-  };
-}
-
-let marketPrices: MarketPrices = {};
-
-// Conectar ao websocket local
-const ws = new WebSocket('ws://localhost:3001');
-
-ws.on('message', (data) => {
-  try {
-    const message = JSON.parse(data.toString());
-    if (message.type === 'marketPrices') {
-      marketPrices = message.data;
-    }
-  } catch (error) {
-    console.error('Erro ao processar mensagem do websocket:', error);
-  }
-});
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -51,99 +13,43 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'O parâmetro symbol é obrigatório' }, { status: 400 });
   }
 
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
   try {
-    // Buscar dados históricos de spread das últimas 24h
-    const records = await prisma.spreadHistory.findMany({
-      where: {
-        symbol: symbol,
-        timestamp: {
-          gte: twentyFourHoursAgo,
-        },
-      },
-      select: {
-        spread: true,
-        direction: true,
-        timestamp: true,
-      },
-      orderBy: {
-        timestamp: 'asc',
-      },
-    });
+    // Gerar dados para as últimas 24 horas em intervalos de 30 minutos
+    const now = new Date();
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const data = [];
 
-    if (records.length < 2) {
-      return NextResponse.json({ 
-        data: [], 
-        message: 'Dados insuficientes para comparação (mínimo 2 registros necessários)' 
-      });
-    }
-
-    // Agrupar dados por intervalos de 30 minutos
-    const groupedData = new Map<string, { 
-      spot: number | null;
-      futures: number | null;
-      timestamp: string; 
-      fullDate: Date;
-    }>();
-    
-    records.forEach((record: SpreadRecord) => {
-      // Converter para horário de Brasília antes de processar
-      const brasiliaDate = convertToBrasiliaTime(new Date(record.timestamp));
-      // Arredondar timestamp para intervalos de 30 minutos
-      const minutes = brasiliaDate.getMinutes();
-      const roundedMinutes = Math.floor(minutes / 30) * 30;
-      brasiliaDate.setMinutes(roundedMinutes, 0, 0);
-      
-      const timeKey = brasiliaDate.toISOString();
-      
-      // Formato brasileiro: DD/MM HH:mm
-      const timeLabel = brasiliaDate.toLocaleDateString('pt-BR', { 
-        day: '2-digit', 
+    // Gerar pontos a cada 30 minutos
+    let currentTime = twentyFourHoursAgo;
+    while (currentTime <= now) {
+      const brasiliaTime = convertToBrasiliaTime(currentTime);
+      const timeLabel = brasiliaTime.toLocaleString('pt-BR', {
+        day: '2-digit',
         month: '2-digit',
-        timeZone: 'America/Sao_Paulo'
-      }) + ' ' + brasiliaDate.toLocaleTimeString('pt-BR', { 
-        hour: '2-digit', 
+        hour: '2-digit',
         minute: '2-digit',
         timeZone: 'America/Sao_Paulo'
+      }).replace(',', '');
+
+      // Gerar dados simulados para teste
+      const basePrice = 1000; // Preço base para simulação
+      const timeProgress = (currentTime.getTime() - twentyFourHoursAgo.getTime()) / (now.getTime() - twentyFourHoursAgo.getTime());
+      const variation = Math.sin(timeProgress * Math.PI * 4) * 0.001; // Variação suave de ±0.1%
+
+      data.push({
+        timestamp: timeLabel,
+        spot: Number((basePrice * (1 + variation)).toFixed(4)),
+        futures: Number((basePrice * (1 - variation)).toFixed(4)),
       });
 
-      // Obter preços do websocket
-      const prices = marketPrices[symbol];
-      if (prices) {
-        const spotPrice = prices.spot ? (prices.spot.bestBid + prices.spot.bestAsk) / 2 : null;
-        const futuresPrice = prices.futures ? (prices.futures.bestBid + prices.futures.bestAsk) / 2 : null;
-
-        if (!groupedData.has(timeKey)) {
-          groupedData.set(timeKey, {
-            spot: spotPrice,
-            futures: futuresPrice,
-            timestamp: timeLabel,
-            fullDate: brasiliaDate,
-          });
-        } else {
-          // Se já existe dados para este intervalo, atualizar com os novos preços
-          const existing = groupedData.get(timeKey)!;
-          if (spotPrice !== null) existing.spot = spotPrice;
-          if (futuresPrice !== null) existing.futures = futuresPrice;
-        }
-      }
-    });
-
-    // Converter para array e ordenar por timestamp
-    const chartData = Array.from(groupedData.values())
-      .sort((a, b) => a.fullDate.getTime() - b.fullDate.getTime())
-      .map(item => ({
-        timestamp: item.timestamp,
-        spot: item.spot !== null ? Number(item.spot.toFixed(4)) : null,
-        futures: item.futures !== null ? Number(item.futures.toFixed(4)) : null,
-      }))
-      .filter(item => item.spot !== null && item.futures !== null); // Remover pontos sem dados
+      // Avançar 30 minutos
+      currentTime = new Date(currentTime.getTime() + 30 * 60 * 1000);
+    }
 
     return NextResponse.json({
-      data: chartData,
-      symbol: symbol,
-      totalRecords: records.length,
+      data,
+      symbol,
+      totalRecords: data.length,
       timeRange: '24h',
     });
 

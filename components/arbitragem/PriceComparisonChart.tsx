@@ -24,16 +24,19 @@ interface ApiResponse {
 // Componente de Tooltip customizado para formatar os valores
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
+    const spotPrice = payload[0].value;
+    const futuresPrice = payload[1].value;
+    const difference = Math.abs(futuresPrice - spotPrice);
+    const percentDiff = (difference / spotPrice) * 100;
+
     return (
       <div className="p-3 bg-gray-800 border border-gray-700 rounded-md shadow-lg">
         <p className="label text-white font-semibold mb-2">{`${label}`}</p>
-        <p className="text-green-400">{`Gate.io (spot): $${payload[0].value.toLocaleString('pt-BR', { minimumFractionDigits: 4 })}`}</p>
-        <p className="text-blue-400">{`MEXC (futures): $${payload[1].value.toLocaleString('pt-BR', { minimumFractionDigits: 4 })}`}</p>
-        {payload[0].value !== payload[1].value && (
-          <p className="text-gray-400 text-sm mt-1">
-            {`Diferença: ${((Math.abs(payload[1].value - payload[0].value) / payload[0].value) * 100).toFixed(4)}%`}
-          </p>
-        )}
+        <p className="text-green-400">{`Gate.io (spot): $${spotPrice.toLocaleString('pt-BR', { minimumFractionDigits: 4 })}`}</p>
+        <p className="text-blue-400">{`MEXC (futures): $${futuresPrice.toLocaleString('pt-BR', { minimumFractionDigits: 4 })}`}</p>
+        <p className="text-gray-400 text-sm mt-1">
+          {`Diferença: $${difference.toLocaleString('pt-BR', { minimumFractionDigits: 4 })} (${percentDiff.toFixed(4)}%)`}
+        </p>
       </div>
     );
   }
@@ -75,8 +78,8 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
     };
 
     fetchData();
-    // Atualiza a cada 30 segundos
-    const interval = setInterval(fetchData, 30000);
+    // Atualiza a cada 5 segundos para manter os preços atualizados
+    const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
   }, [symbol]);
 
