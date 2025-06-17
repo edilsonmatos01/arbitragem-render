@@ -15,7 +15,7 @@ services:
   env: node
   region: oregon
   plan: free
-  buildCommand: npm install && node scripts/fix-production-migrations.js && npm run build && npm run prisma:deploy
+  buildCommand: npm install && node scripts/fix-production-migrations.js && npx prisma generate && npm run build
   startCommand: npm start
   envVars:
     - key: NODE_ENV
@@ -46,7 +46,7 @@ services:
   env: node
   region: oregon
   plan: free
-  buildCommand: npm install && node scripts/fix-production-migrations.js && npm run build:tracker
+  buildCommand: npm install && node scripts/fix-production-migrations.js && npx prisma generate && npm run build:tracker
   startCommand: npm run start:tracker
   envVars:
     - key: NODE_ENV
@@ -74,7 +74,7 @@ services:
   name: arbitragem-cleanup
   env: node
   plan: free
-  buildCommand: npm install && node scripts/fix-production-migrations.js
+  buildCommand: npm install && node scripts/fix-production-migrations.js && npx prisma generate
   startCommand: npm run cleanup:schedule
   envVars:
     - key: NODE_ENV
