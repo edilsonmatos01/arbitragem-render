@@ -76,20 +76,32 @@ export default function SpreadHistoryLineChart({ symbol, isOpen, onClose }: Spre
     }
   }, [isOpen, fetchData]);
 
-  // Configura atualização a cada 30 minutos (horário de Brasília)
+  // Configura atualização a cada 5 minutos
   useEffect(() => {
     if (!isOpen) return;
 
-    // Calcula o tempo até o próximo intervalo de 30 minutos no horário de Brasília
+    // Calcula o tempo até o próximo intervalo de 5 minutos no horário de Brasília
     const brasiliaDate = getBrasiliaDate(new Date());
     const minutes = brasiliaDate.getMinutes();
-    const secondsToNextInterval = ((30 - (minutes % 30)) * 60 - brasiliaDate.getSeconds()) * 1000;
+    const seconds = brasiliaDate.getSeconds();
+    
+    // Calcula quanto tempo falta para o próximo intervalo de 5 minutos
+    const nextInterval = 5 - (minutes % 5);
+    const msToNextInterval = ((nextInterval * 60) - seconds) * 1000;
+
+    console.log(`Próxima atualização em ${msToNextInterval/1000} segundos`);
 
     const timer = setTimeout(() => {
       fetchData();
-    }, secondsToNextInterval);
+    }, msToNextInterval);
 
-    return () => clearTimeout(timer);
+    // Configura atualizações subsequentes a cada 5 minutos
+    const interval = setInterval(fetchData, 5 * 60 * 1000);
+
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
   }, [isOpen, lastUpdate, fetchData]);
 
   const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
