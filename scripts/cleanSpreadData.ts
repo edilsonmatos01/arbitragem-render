@@ -4,17 +4,19 @@ async function cleanSpreadData() {
   const prisma = new PrismaClient();
 
   try {
-    // Excluir registros da tabela spreadHistory
+    // Calcula a data limite (24 horas atrás)
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    // Excluir registros mais antigos que 24 horas
     const deletedSpreadHistory = await prisma.spreadHistory.deleteMany({
       where: {
         timestamp: {
-          gte: new Date('2025-06-12T00:00:00Z'),
-          lt: new Date('2025-06-12T21:30:00Z') // 18:30 BRT = 21:30 UTC
+          lt: twentyFourHoursAgo
         }
       }
     });
 
-    console.log(`Registros excluídos da spreadHistory: ${deletedSpreadHistory.count}`);
+    console.log(`Registros antigos excluídos da spreadHistory: ${deletedSpreadHistory.count}`);
   } catch (error) {
     console.error('Erro ao excluir registros:', error);
   } finally {
@@ -22,4 +24,5 @@ async function cleanSpreadData() {
   }
 }
 
+// Executa a limpeza
 cleanSpreadData(); 
