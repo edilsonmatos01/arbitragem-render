@@ -1,29 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Line } from 'react-chartjs-2';
 import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
   Tooltip,
-  Legend,
-  ChartOptions,
-  TooltipItem,
-} from 'chart.js';
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend
-);
+  ResponsiveContainer,
+  TooltipProps
+} from 'recharts';
+import { NameType, ValueType } from 'recharts/types/component/DefaultTooltipContent';
 
 interface SpreadHistoryChartProps {
   symbol: string;
@@ -34,189 +22,133 @@ interface SpreadData {
   spread_percentage: number;
 }
 
-// Constante para o intervalo de atualização (5 minutos para teste)
-const UPDATE_INTERVAL_MS = 300000; // 5 minutos em vez de 30 minutos para teste
+type CustomTooltipProps = TooltipProps<ValueType, NameType>;
+
+function formatDateTime(timestamp: string) {
+  const [date, time] = timestamp.split(' - ');
+  const [day, month] = date.split('/');
+  return `${day}/${month} ${time}`;
+}
 
 export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) {
   const [spreadHistory, setSpreadHistory] = useState<SpreadData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const fetchSpreadHistory = async () => {
-    try {
-      setLoading(true);
-      console.log('Buscando dados do histórico:', new Date().toLocaleString());
-      const response = await fetch(`/api/spread-history/24h/${encodeURIComponent(symbol)}`);
-      if (!response.ok) throw new Error('Failed to fetch spread history');
-      const data = await response.json();
-      console.log('Dados recebidos:', data);
-      setSpreadHistory(data);
-      setError(null);
-    } catch (error) {
-      console.error('Error fetching spread history:', error);
-      setError('Falha ao carregar dados do histórico');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
   useEffect(() => {
-    console.log('Iniciando componente SpreadHistoryChart');
-    fetchSpreadHistory();
-    const interval = setInterval(fetchSpreadHistory, UPDATE_INTERVAL_MS);
-    return () => {
-      console.log('Limpando intervalo');
-      clearInterval(interval);
+    const fetchSpreadHistory = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/spread-history/24h/${encodeURIComponent(symbol)}`);
+        if (!response.ok) throw new Error('Failed to fetch spread history');
+        const data = await response.json();
+        setSpreadHistory(data);
+        setLastUpdate(new Date());
+        setError(null);
+      } catch (error) {
+        console.error('Error fetching spread history:', error);
+        setError('Falha ao carregar dados do histórico');
+      } finally {
+        setLoading(false);
+      }
     };
+
+    fetchSpreadHistory();
+    const interval = setInterval(fetchSpreadHistory, 300000); // 5 minutos
+    return () => clearInterval(interval);
   }, [symbol]);
 
-  const formatDateTime = (timestamp: string) => {
-    const [date, time] = timestamp.split(' - ');
-    const [day, month] = date.split('/');
-    return `${day}/${month} ${time}`;
-  };
-
-  const options: ChartOptions<'line'> = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        display: false,
-      },
-      tooltip: {
-        backgroundColor: 'rgba(17, 24, 39, 0.9)',
-        borderColor: 'rgba(75, 85, 99, 0.3)',
-        borderWidth: 1,
-        titleColor: '#E5E7EB',
-        bodyColor: '#10B981',
-        padding: 10,
-        callbacks: {
-          title: (items) => {
-            if (items[0]) {
-              return formatDateTime(items[0].label);
-            }
-            return '';
-          },
-          label: (context: TooltipItem<'line'>) => {
-            return `Spread: ${context.parsed.y.toFixed(2)}%`;
-          },
-        },
-      },
-    },
-    scales: {
-      x: {
-        grid: {
-          color: 'rgba(75, 85, 99, 0.2)',
-          display: true
-        },
-        border: {
-          display: false
-        },
-        ticks: {
-          color: '#9CA3AF',
-          font: {
-            size: 11,
-          },
-          callback: function(value) {
-            const label = this.getLabelForValue(value as number);
-            return formatDateTime(label);
-          },
-          maxRotation: -45,
-          minRotation: -45,
-          autoSkip: true,
-          autoSkipPadding: 40,
-          padding: 10
-        },
-      },
-      y: {
-        grid: {
-          color: 'rgba(75, 85, 99, 0.2)',
-          display: true
-        },
-        border: {
-          display: false
-        },
-        ticks: {
-          color: '#9CA3AF',
-          font: {
-            size: 11,
-          },
-          callback: (value: number | string) => `${value}%`,
-        },
-        beginAtZero: true,
-      },
-    },
-    interaction: {
-      intersect: false,
-      mode: 'index',
-    },
-    layout: {
-      padding: {
-        bottom: 45, // Aumentado para 45 pixels
-        right: 10,
-        left: 10,
-        top: 10
-      }
+  const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
+    if (active && payload && payload.length > 0) {
+      const value = payload[0].value as number;
+      return (
+        <div className="bg-gray-800 border border-gray-700 p-2 rounded-md shadow-lg">
+          <p className="text-white">{`Data: ${formatDateTime(label?.toString() || '')}`}</p>
+          <p className="text-green-400">{`Spread: ${value.toFixed(2)}%`}</p>
+        </div>
+      );
     }
-  };
-
-  const chartData = {
-    labels: spreadHistory.map(item => item.timestamp),
-    datasets: [
-      {
-        label: 'Spread (%)',
-        data: spreadHistory.map(item => item.spread_percentage),
-        borderColor: '#10B981', // Verde do tema
-        backgroundColor: 'rgba(16, 185, 129, 0.1)', // Verde com transparência
-        fill: true,
-        tension: 0.4,
-        pointRadius: 2,
-        pointHoverRadius: 4,
-        pointBackgroundColor: '#10B981',
-        pointBorderColor: '#FFFFFF',
-        pointHoverBackgroundColor: '#10B981',
-        pointHoverBorderColor: '#FFFFFF',
-      },
-    ],
+    return null;
   };
 
   if (loading) {
     return (
-      <div className="w-full p-4 bg-gray-800 rounded-lg">
-        <div className="text-center text-gray-400">Carregando dados do histórico...</div>
+      <div className="w-full h-[400px] flex items-center justify-center">
+        <p className="text-gray-400">Carregando dados do histórico...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="w-full p-4 bg-gray-800 rounded-lg">
-        <div className="text-center text-red-500">{error}</div>
+      <div className="w-full h-[400px] flex items-center justify-center">
+        <p className="text-red-400">{error}</p>
       </div>
     );
   }
 
   if (spreadHistory.length === 0) {
     return (
-      <div className="w-full p-4 bg-gray-800 rounded-lg">
-        <div className="text-center text-gray-500">
-          Nenhum dado de histórico encontrado para as últimas 24 horas
-        </div>
+      <div className="w-full h-[400px] flex items-center justify-center">
+        <p className="text-gray-400">Nenhum dado de histórico encontrado para as últimas 24 horas</p>
       </div>
     );
   }
 
-  const lastSpread = spreadHistory[spreadHistory.length - 1]?.spread_percentage.toFixed(2) || '0.00';
-  const lastTimestamp = spreadHistory[spreadHistory.length - 1]?.timestamp || '';
-
   return (
-    <div className="w-full p-4 bg-gray-800 rounded-lg">
-      <h2 className="text-lg font-semibold mb-4 text-white">
-        Histórico de spread máximo das últimas 24 horas
-      </h2>
-      <div className="relative h-[400px]">
-        <Line options={options} data={chartData} />
+    <div className="w-full h-[400px]">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-semibold text-white">
+          Histórico de spread máximo das últimas 24 horas
+        </h3>
+        {lastUpdate && (
+          <span className="text-sm text-gray-400">
+            Atualizado: {formatDateTime(lastUpdate.toLocaleString('pt-BR', {
+              timeZone: 'America/Sao_Paulo',
+              day: '2-digit',
+              month: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: false
+            }).replace(', ', ' - '))}
+          </span>
+        )}
       </div>
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={spreadHistory} margin={{ top: 5, right: 30, left: 20, bottom: 25 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+          <XAxis
+            dataKey="timestamp"
+            stroke="#9CA3AF"
+            tick={{ fill: '#9CA3AF', fontSize: 11 }}
+            angle={-45}
+            textAnchor="end"
+            height={60}
+            interval={2}
+            tickFormatter={formatDateTime}
+            padding={{ left: 10, right: 10 }}
+          />
+          <YAxis
+            stroke="#9CA3AF"
+            tick={{ fill: '#9CA3AF', fontSize: 11 }}
+            tickFormatter={(value) => `${value}%`}
+            domain={['auto', 'auto']}
+            padding={{ top: 10, bottom: 10 }}
+          />
+          <Tooltip content={<CustomTooltip />} />
+          <Line
+            type="basis"
+            dataKey="spread_percentage"
+            stroke="#10B981"
+            dot={{ r: 1 }}
+            strokeWidth={1.5}
+            activeDot={{ r: 4 }}
+            isAnimationActive={false}
+            connectNulls={true}
+          />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   );
 } 
