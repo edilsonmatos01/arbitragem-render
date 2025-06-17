@@ -165,20 +165,22 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
             dataKey="gateio_price"
             name="Gate.io (spot)"
             stroke="#10B981"
-            dot={{ r: 2 }}
-            strokeWidth={2}
+            dot={{ r: 1 }}
+            strokeWidth={1.5}
             activeDot={{ r: 4 }}
-            connectNulls
+            connectNulls={true}
+            isAnimationActive={false}
           />
           <Line
             type="monotone"
             dataKey="mexc_price"
             name="MEXC (futures)"
             stroke="#9CA3AF"
-            dot={{ r: 2 }}
-            strokeWidth={2}
+            dot={{ r: 1 }}
+            strokeWidth={1.5}
             activeDot={{ r: 4 }}
-            connectNulls
+            connectNulls={true}
+            isAnimationActive={false}
           />
         </LineChart>
       </ResponsiveContainer>

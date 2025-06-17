@@ -151,7 +151,7 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
     },
     layout: {
       padding: {
-        bottom: 15 // Adiciona padding na parte inferior do gráfico
+        bottom: 30 // Aumentado de 15 para 30 para evitar corte das labels
       }
     }
   };

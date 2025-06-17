@@ -116,20 +116,21 @@ export async function GET(
 
       if (record.spread) {
         const prices = calculatePrices(record.spread, record.direction);
-        data.gateio = (data.gateio || 0) + prices.gateio;
-        data.mexc = (data.mexc || 0) + prices.mexc;
+        // Se já temos dados para este intervalo, fazemos a média
+        data.gateio = prices.gateio;
+        data.mexc = prices.mexc;
         data.count++;
       }
 
       groupedData.set(timeKey, data);
     }
 
-    // Calcula a média para cada intervalo
+    // Calcula a média para cada intervalo e preenche gaps
     const formattedData = Array.from(groupedData.entries())
       .map(([timestamp, prices]) => ({
         timestamp,
-        gateio_price: prices.count > 0 ? prices.gateio! / prices.count : null,
-        mexc_price: prices.count > 0 ? prices.mexc! / prices.count : null
+        gateio_price: prices.count > 0 ? prices.gateio : null,
+        mexc_price: prices.count > 0 ? prices.mexc : null
       }))
       .sort((a, b) => {
         const [dateA, timeA] = a.timestamp.split(' - ');
@@ -144,6 +145,29 @@ export async function GET(
         if (hourA !== hourB) return hourA - hourB;
         return minuteA - minuteB;
       });
+
+    // Preenche gaps com interpolação linear
+    let lastValidIndex = -1;
+    for (let i = 0; i < formattedData.length; i++) {
+      if (formattedData[i].gateio_price !== null && formattedData[i].mexc_price !== null) {
+        // Se encontramos um gap entre dois pontos válidos, interpolamos
+        if (lastValidIndex !== -1 && i - lastValidIndex > 1) {
+          const startGateio = formattedData[lastValidIndex].gateio_price!;
+          const endGateio = formattedData[i].gateio_price!;
+          const startMexc = formattedData[lastValidIndex].mexc_price!;
+          const endMexc = formattedData[i].mexc_price!;
+          const steps = i - lastValidIndex;
+          
+          // Preenche os pontos intermediários com valores interpolados
+          for (let j = 1; j < steps; j++) {
+            const fraction = j / steps;
+            formattedData[lastValidIndex + j].gateio_price = startGateio + (endGateio - startGateio) * fraction;
+            formattedData[lastValidIndex + j].mexc_price = startMexc + (endMexc - startMexc) * fraction;
+          }
+        }
+        lastValidIndex = i;
+      }
+    }
 
     return NextResponse.json(formattedData);
   } catch (error) {

@@ -130,14 +130,6 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
                   Preços Spot/Future
                 </button>
               </div>
-              <DialogClose asChild>
-                <button 
-                  className="text-gray-400 hover:text-white transition-colors"
-                  onClick={() => setIsModalOpen(false)}
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </DialogClose>
             </div>
           </div>
           
