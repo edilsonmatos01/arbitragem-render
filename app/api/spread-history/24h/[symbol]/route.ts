@@ -22,19 +22,16 @@ function formatDateTime(date: Date): string {
   }).replace(', ', ' - ');
 }
 
-function getBrasiliaDate(date: Date): Date {
-  return new Date(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
-}
-
-function getUTCFromBrasilia(brasiliaDate: Date): Date {
-  const brasiliaOffset = 3; // Brasília está 3 horas atrás do UTC
-  return new Date(brasiliaDate.getTime() + brasiliaOffset * 60 * 60 * 1000);
+function adjustToUTC(date: Date): Date {
+  // Ajusta o horário para UTC considerando o offset de Brasília (-3)
+  return new Date(date.getTime() + (3 * 60 * 60 * 1000));
 }
 
 function roundToNearestInterval(date: Date, intervalMinutes: number): Date {
-  const brasiliaDate = getBrasiliaDate(date);
-  brasiliaDate.setMinutes(Math.floor(brasiliaDate.getMinutes() / intervalMinutes) * intervalMinutes, 0, 0);
-  return brasiliaDate;
+  const minutes = Math.floor(date.getMinutes() / intervalMinutes) * intervalMinutes;
+  const rounded = new Date(date);
+  rounded.setMinutes(minutes, 0, 0);
+  return rounded;
 }
 
 export async function GET(
@@ -52,21 +49,18 @@ export async function GET(
       return NextResponse.json([]);
     }
 
-    // Calcula o intervalo de 24 horas considerando o fuso de Brasília
-    const brasiliaNow = getBrasiliaDate(new Date());
-    const brasiliaStart = new Date(brasiliaNow.getTime() - 24 * 60 * 60 * 1000);
-    
-    // Converte para UTC para fazer a consulta no banco
-    const utcStart = getUTCFromBrasilia(brasiliaStart);
-    const utcEnd = getUTCFromBrasilia(brasiliaNow);
-    
+    // Define o intervalo de 24 horas em UTC
+    const now = new Date();
+    const utcNow = adjustToUTC(now);
+    const utcStart = new Date(utcNow.getTime() - 24 * 60 * 60 * 1000);
+
     // Busca os dados do banco usando UTC
     const spreadHistory = await prisma.spreadHistory.findMany({
       where: {
         symbol: symbol,
         timestamp: {
           gte: utcStart,
-          lte: utcEnd
+          lte: utcNow
         }
       },
       select: {
@@ -81,28 +75,28 @@ export async function GET(
     // Agrupa os dados em intervalos de 30 minutos
     const groupedData = new Map<string, number>();
     
-    // Inicializa todos os intervalos de 30 minutos no horário de Brasília
-    let currentTime = roundToNearestInterval(brasiliaStart, 30);
-    const endTime = roundToNearestInterval(brasiliaNow, 30);
+    // Inicializa todos os intervalos de 30 minutos
+    let currentTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const endTime = now;
 
     while (currentTime <= endTime) {
-      const timeKey = formatDateTime(currentTime);
+      const timeKey = formatDateTime(roundToNearestInterval(currentTime, 30));
       if (!groupedData.has(timeKey)) {
         groupedData.set(timeKey, 0);
       }
       currentTime = new Date(currentTime.getTime() + 30 * 60 * 1000);
     }
 
-    // Preenche com os dados reais, convertendo cada timestamp para horário de Brasília
+    // Preenche com os dados reais
     for (const record of spreadHistory) {
-      const brasiliaTime = getBrasiliaDate(new Date(record.timestamp));
-      const recordTime = roundToNearestInterval(brasiliaTime, 30);
-      const timeKey = formatDateTime(recordTime);
+      // Converte o timestamp UTC do banco para o horário local
+      const localTime = new Date(record.timestamp);
+      const timeKey = formatDateTime(roundToNearestInterval(localTime, 30));
       const currentMax = groupedData.get(timeKey) || 0;
       groupedData.set(timeKey, Math.max(currentMax, record.spread));
     }
 
-    // Converte para o formato esperado pelo gráfico
+    // Converte para o formato esperado pelo gráfico e ordena
     const formattedData = Array.from(groupedData.entries())
       .map(([timestamp, spread]) => ({
         timestamp,

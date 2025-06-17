@@ -36,7 +36,7 @@ function getBrasiliaDate(date: Date): Date {
 }
 
 function formatBrasiliaTime(date: Date): string {
-  return date.toLocaleString('pt-BR', {
+  return new Date(date).toLocaleString('pt-BR', {
     timeZone: 'America/Sao_Paulo',
     hour: '2-digit',
     minute: '2-digit',
@@ -61,6 +61,7 @@ export default function SpreadHistoryLineChart({ symbol, isOpen, onClose }: Spre
       setData(result);
       setError(null);
       setLastUpdate(new Date());
+      console.log('Dados atualizados:', new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }));
     } catch (err) {
       console.error('Erro ao buscar histórico:', err);
       setError('Falha ao carregar dados do histórico');
@@ -76,33 +77,20 @@ export default function SpreadHistoryLineChart({ symbol, isOpen, onClose }: Spre
     }
   }, [isOpen, fetchData]);
 
-  // Configura atualização a cada 5 minutos
+  // Configura atualização a cada 1 minuto
   useEffect(() => {
     if (!isOpen) return;
 
-    // Calcula o tempo até o próximo intervalo de 5 minutos no horário de Brasília
-    const brasiliaDate = getBrasiliaDate(new Date());
-    const minutes = brasiliaDate.getMinutes();
-    const seconds = brasiliaDate.getSeconds();
-    
-    // Calcula quanto tempo falta para o próximo intervalo de 5 minutos
-    const nextInterval = 5 - (minutes % 5);
-    const msToNextInterval = ((nextInterval * 60) - seconds) * 1000;
+    // Atualiza imediatamente
+    fetchData();
 
-    console.log(`Próxima atualização em ${msToNextInterval/1000} segundos`);
-
-    const timer = setTimeout(() => {
-      fetchData();
-    }, msToNextInterval);
-
-    // Configura atualizações subsequentes a cada 5 minutos
-    const interval = setInterval(fetchData, 5 * 60 * 1000);
+    // Configura atualizações a cada minuto
+    const interval = setInterval(fetchData, 60 * 1000);
 
     return () => {
-      clearTimeout(timer);
       clearInterval(interval);
     };
-  }, [isOpen, lastUpdate, fetchData]);
+  }, [isOpen, fetchData]);
 
   const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
     if (active && payload && payload.length > 0) {
