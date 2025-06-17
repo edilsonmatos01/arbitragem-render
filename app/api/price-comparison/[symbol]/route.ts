@@ -34,6 +34,24 @@ function adjustToUTC(date: Date): Date {
   return new Date(date.getTime() + (3 * 60 * 60 * 1000));
 }
 
+function calculatePrices(spread: number, direction: string): { gateio: number; mexc: number } {
+  // Usamos um fator de amplificação para tornar as diferenças mais visíveis
+  const basePrice = 1;
+  const spreadMultiplier = 1000; // Amplifica a diferença do spread
+  
+  if (direction === 'SPOT_TO_FUTURES') {
+    return {
+      gateio: basePrice,
+      mexc: basePrice * (1 + (spread * spreadMultiplier))
+    };
+  } else {
+    return {
+      gateio: basePrice * (1 + (spread * spreadMultiplier)),
+      mexc: basePrice
+    };
+  }
+}
+
 export async function GET(
   request: Request,
   { params }: { params: { symbol: string } }
@@ -96,26 +114,10 @@ export async function GET(
       const timeKey = formatDateTime(localTime);
       const data = groupedData.get(timeKey) || { gateio: null, mexc: null, count: 0 };
 
-      // Calcula os preços relativos com base no spread
-      if (record.exchangeBuy === 'GATEIO_SPOT' && record.spread) {
-        const basePrice = 100;
-        if (record.direction === 'SPOT_TO_FUTURES') {
-          data.gateio = (data.gateio || 0) + basePrice;
-          data.mexc = (data.mexc || 0) + basePrice * (1 + record.spread / 100);
-        } else {
-          data.gateio = (data.gateio || 0) + basePrice;
-          data.mexc = (data.mexc || 0) + basePrice * (1 - record.spread / 100);
-        }
-        data.count++;
-      } else if (record.exchangeBuy === 'MEXC_FUTURES' && record.spread) {
-        const basePrice = 100;
-        if (record.direction === 'FUTURES_TO_SPOT') {
-          data.mexc = (data.mexc || 0) + basePrice;
-          data.gateio = (data.gateio || 0) + basePrice * (1 + record.spread / 100);
-        } else {
-          data.mexc = (data.mexc || 0) + basePrice;
-          data.gateio = (data.gateio || 0) + basePrice * (1 - record.spread / 100);
-        }
+      if (record.spread) {
+        const prices = calculatePrices(record.spread, record.direction);
+        data.gateio = (data.gateio || 0) + prices.gateio;
+        data.mexc = (data.mexc || 0) + prices.mexc;
         data.count++;
       }
 

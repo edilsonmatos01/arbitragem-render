@@ -84,8 +84,8 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
       return (
         <div className="bg-gray-800 border border-gray-700 p-2 rounded-md shadow-lg">
           <p className="text-white">{`Data: ${formatDateTime(label || '')}`}</p>
-          <p className="text-green-400">{`Gate.io (spot): ${payload[0]?.value?.toFixed(8) || 'N/A'}`}</p>
-          <p className="text-gray-400">{`MEXC (futures): ${payload[1]?.value?.toFixed(8) || 'N/A'}`}</p>
+          <p className="text-green-400">{`Gate.io (spot): ${payload[0]?.value?.toFixed(8) || 'N/D'}`}</p>
+          <p className="text-gray-400">{`MEXC (futures): ${payload[1]?.value?.toFixed(8) || 'N/D'}`}</p>
         </div>
       );
     }
@@ -108,6 +108,12 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
     );
   }
 
+  // Encontra os valores mínimo e máximo para ajustar a escala do eixo Y
+  const allPrices = data.flatMap(d => [d.gateio_price, d.mexc_price].filter(p => p !== null) as number[]);
+  const minPrice = Math.min(...allPrices);
+  const maxPrice = Math.max(...allPrices);
+  const padding = (maxPrice - minPrice) * 0.1; // 10% de padding
+
   return (
     <div className="w-full h-[400px]">
       <div className="flex justify-between items-center mb-4">
@@ -116,7 +122,14 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
         </h3>
         {lastUpdate && (
           <span className="text-sm text-gray-400">
-            Atualizado: {formatBrasiliaTime(lastUpdate)}
+            Atualizado: {formatDateTime(lastUpdate.toLocaleString('pt-BR', {
+              timeZone: 'America/Sao_Paulo',
+              day: '2-digit',
+              month: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: false
+            }).replace(', ', ' - '))}
           </span>
         )}
       </div>
@@ -137,6 +150,8 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
             stroke="#9CA3AF"
             tick={{ fill: '#9CA3AF', fontSize: 11 }}
             tickFormatter={(value) => value.toFixed(8)}
+            domain={[minPrice - padding, maxPrice + padding]}
+            scale="linear"
           />
           <Tooltip content={<CustomTooltip />} />
           <Legend
@@ -153,6 +168,7 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
             dot={{ r: 2 }}
             strokeWidth={2}
             activeDot={{ r: 4 }}
+            connectNulls
           />
           <Line
             type="monotone"
@@ -162,6 +178,7 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
             dot={{ r: 2 }}
             strokeWidth={2}
             activeDot={{ r: 4 }}
+            connectNulls
           />
         </LineChart>
       </ResponsiveContainer>

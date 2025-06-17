@@ -113,7 +113,7 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
                   onClick={() => setChartType('spread')}
                   className={`px-3 py-1 text-sm rounded-md transition-colors ${
                     chartType === 'spread'
-                      ? 'bg-purple-500 text-white font-semibold'
+                      ? 'bg-green-500 text-white font-semibold'
                       : 'text-gray-300 hover:text-white'
                   }`}
                 >

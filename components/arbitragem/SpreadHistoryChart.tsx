@@ -149,6 +149,11 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
       intersect: false,
       mode: 'index',
     },
+    layout: {
+      padding: {
+        bottom: 15 // Adiciona padding na parte inferior do gráfico
+      }
+    }
   };
 
   const chartData = {
