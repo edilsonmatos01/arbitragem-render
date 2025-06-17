@@ -124,7 +124,8 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
           maxRotation: -45,
           minRotation: -45,
           autoSkip: true,
-          autoSkipPadding: 30,
+          autoSkipPadding: 40,
+          padding: 10
         },
       },
       y: {
@@ -151,7 +152,10 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
     },
     layout: {
       padding: {
-        bottom: 30 // Aumentado de 15 para 30 para evitar corte das labels
+        bottom: 45, // Aumentado para 45 pixels
+        right: 10,
+        left: 10,
+        top: 10
       }
     }
   };

@@ -75,10 +75,8 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
   }, [isModalOpen]);
 
   const handleOpenChange = (open: boolean) => {
-    // Só permite fechar o modal através do botão X
-    if (open) {
-      setIsModalOpen(true);
-    }
+    // Permite tanto abrir quanto fechar o modal
+    setIsModalOpen(open);
   };
 
   if (isLoading) {

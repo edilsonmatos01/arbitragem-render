@@ -116,16 +116,24 @@ export async function GET(
 
       if (record.spread) {
         const prices = calculatePrices(record.spread, record.direction);
-        // Se já temos dados para este intervalo, fazemos a média
-        data.gateio = prices.gateio;
-        data.mexc = prices.mexc;
-        data.count++;
+        // Atualizamos os preços apenas se ambos forem válidos
+        if (prices.gateio > 0 && prices.mexc > 0) {
+          if (data.count === 0) {
+            data.gateio = prices.gateio;
+            data.mexc = prices.mexc;
+          } else {
+            // Média ponderada para suavizar as transições
+            data.gateio = (data.gateio! * data.count + prices.gateio) / (data.count + 1);
+            data.mexc = (data.mexc! * data.count + prices.mexc) / (data.count + 1);
+          }
+          data.count++;
+        }
       }
 
       groupedData.set(timeKey, data);
     }
 
-    // Calcula a média para cada intervalo e preenche gaps
+    // Processa os dados e preenche gaps
     const formattedData = Array.from(groupedData.entries())
       .map(([timestamp, prices]) => ({
         timestamp,
@@ -146,26 +154,38 @@ export async function GET(
         return minuteA - minuteB;
       });
 
-    // Preenche gaps com interpolação linear
+    // Preenche gaps com interpolação linear mais suave
     let lastValidIndex = -1;
     for (let i = 0; i < formattedData.length; i++) {
       if (formattedData[i].gateio_price !== null && formattedData[i].mexc_price !== null) {
-        // Se encontramos um gap entre dois pontos válidos, interpolamos
         if (lastValidIndex !== -1 && i - lastValidIndex > 1) {
           const startGateio = formattedData[lastValidIndex].gateio_price!;
           const endGateio = formattedData[i].gateio_price!;
           const startMexc = formattedData[lastValidIndex].mexc_price!;
           const endMexc = formattedData[i].mexc_price!;
           const steps = i - lastValidIndex;
-          
-          // Preenche os pontos intermediários com valores interpolados
+
+          // Interpolação com curva suave
           for (let j = 1; j < steps; j++) {
             const fraction = j / steps;
-            formattedData[lastValidIndex + j].gateio_price = startGateio + (endGateio - startGateio) * fraction;
-            formattedData[lastValidIndex + j].mexc_price = startMexc + (endMexc - startMexc) * fraction;
+            // Função de suavização cúbica
+            const smoothFraction = fraction * fraction * (3 - 2 * fraction);
+            
+            formattedData[lastValidIndex + j].gateio_price = startGateio + (endGateio - startGateio) * smoothFraction;
+            formattedData[lastValidIndex + j].mexc_price = startMexc + (endMexc - startMexc) * smoothFraction;
           }
         }
         lastValidIndex = i;
+      }
+    }
+
+    // Garante que não haja valores nulos isolados
+    for (let i = 1; i < formattedData.length - 1; i++) {
+      if (formattedData[i].gateio_price === null && formattedData[i-1].gateio_price !== null && formattedData[i+1].gateio_price !== null) {
+        formattedData[i].gateio_price = (formattedData[i-1].gateio_price! + formattedData[i+1].gateio_price!) / 2;
+      }
+      if (formattedData[i].mexc_price === null && formattedData[i-1].mexc_price !== null && formattedData[i+1].mexc_price !== null) {
+        formattedData[i].mexc_price = (formattedData[i-1].mexc_price! + formattedData[i+1].mexc_price!) / 2;
       }
     }
 

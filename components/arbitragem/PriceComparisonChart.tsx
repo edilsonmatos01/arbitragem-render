@@ -145,6 +145,7 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
             height={60}
             interval={2}
             tickFormatter={formatDateTime}
+            padding={{ left: 10, right: 10 }}
           />
           <YAxis
             stroke="#9CA3AF"
@@ -152,6 +153,7 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
             tickFormatter={(value) => value.toFixed(8)}
             domain={[minPrice - padding, maxPrice + padding]}
             scale="linear"
+            padding={{ top: 10, bottom: 10 }}
           />
           <Tooltip content={<CustomTooltip />} />
           <Legend
@@ -161,7 +163,7 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
             }}
           />
           <Line
-            type="monotone"
+            type="basis"
             dataKey="gateio_price"
             name="Gate.io (spot)"
             stroke="#10B981"
@@ -172,7 +174,7 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
             isAnimationActive={false}
           />
           <Line
-            type="monotone"
+            type="basis"
             dataKey="mexc_price"
             name="MEXC (futures)"
             stroke="#9CA3AF"
