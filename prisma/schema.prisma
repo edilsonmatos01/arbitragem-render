@@ -19,6 +19,8 @@ model SpreadHistory {
   direction    String
   spread       Float
   timestamp    DateTime @default(now())
+  spotPrice    Float?
+  futuresPrice Float?
 
   @@index([symbol, timestamp])
   @@map("spread_history")

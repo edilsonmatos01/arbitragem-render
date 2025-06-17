@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS spread_history CASCADE;
+DROP TABLE IF EXISTS _prisma_migrations CASCADE; 

@@ -1,5 +1,5 @@
 -- CreateTable
-CREATE TABLE "SpreadHistory" (
+CREATE TABLE "spread_history" (
     "id" TEXT NOT NULL,
     "symbol" TEXT NOT NULL,
     "exchangeBuy" TEXT NOT NULL,
@@ -7,9 +7,11 @@ CREATE TABLE "SpreadHistory" (
     "direction" TEXT NOT NULL,
     "spread" DOUBLE PRECISION NOT NULL,
     "timestamp" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "spotPrice" DOUBLE PRECISION,
+    "futuresPrice" DOUBLE PRECISION,
 
-    CONSTRAINT "SpreadHistory_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "spread_history_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
-CREATE INDEX "SpreadHistory_symbol_exchangeBuy_exchangeSell_direction_idx" ON "SpreadHistory"("symbol", "exchangeBuy", "exchangeSell", "direction"); 
+CREATE INDEX "spread_history_symbol_timestamp_idx" ON "spread_history"("symbol", "timestamp");
