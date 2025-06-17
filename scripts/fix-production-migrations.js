@@ -1,78 +1,89 @@
-const { PrismaClient } = require('@prisma/client');
+const { exec } = require('child_process');
+const { Pool } = require('pg');
 const fs = require('fs').promises;
 const path = require('path');
 
-async function waitForDatabase(prisma, retries = 10, delay = 3000) {
-  for (let i = 0; i < retries; i++) {
+async function executeQuery(pool, query) {
     try {
-      await prisma.$queryRaw`SELECT 1`;
-      console.log('Conexão com o banco estabelecida com sucesso');
-      return true;
+        await pool.query(query);
+        console.log('Query executada com sucesso:', query.substring(0, 50) + '...');
+        return true;
     } catch (error) {
-      console.log(`Tentativa ${i + 1} de ${retries} falhou. Aguardando ${delay}ms...`);
-      if (i === retries - 1) throw error;
-      await new Promise(resolve => setTimeout(resolve, delay));
+        console.error('Erro ao executar query:', error.message);
+        return false;
     }
-  }
-  return false;
 }
 
-async function executeMigration() {
-  const prisma = new PrismaClient({
-    log: ['warn', 'error'],
-    errorFormat: 'pretty',
-  });
-
-  try {
-    console.log('Iniciando script de migração...');
-
-    // Aguarda o banco estar pronto
-    await waitForDatabase(prisma);
-    
-    // Lê e executa o arquivo de migração
-    const migrationPath = path.join(__dirname, '..', 'prisma', 'migrations', '20240617_fix_table_name', 'migration.sql');
-    const migrationSQL = await fs.readFile(migrationPath, 'utf8');
-    
-    console.log('Executando migração...');
-    await prisma.$executeRawUnsafe(migrationSQL);
-    console.log('Migração executada com sucesso!');
-
-    // Verifica se a tabela foi criada corretamente
-    const tableExists = await prisma.$queryRaw`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name = 'spread_history'
-      );
-    `;
-
-    if (tableExists[0].exists) {
-      console.log('Tabela spread_history criada com sucesso!');
-      
-      // Tenta fazer uma query simples
-      const count = await prisma.spreadHistory.count();
-      console.log(`Conexão com Prisma estabelecida com sucesso. Registros na tabela: ${count}`);
-    } else {
-      throw new Error('Tabela spread_history não foi criada corretamente');
+async function waitForDatabase(pool, maxRetries = 10) {
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            await pool.query('SELECT 1');
+            console.log('Conexão com o banco de dados estabelecida!');
+            return true;
+        } catch (error) {
+            console.log(`Tentativa ${i + 1}/${maxRetries} de conectar ao banco...`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
     }
-
-  } catch (error) {
-    console.error('Erro durante a migração:', error);
-    throw error;
-  } finally {
-    await prisma.$disconnect();
-  }
+    throw new Error('Não foi possível conectar ao banco de dados');
 }
 
-// Se o script for executado diretamente
-if (require.main === module) {
-  executeMigration()
-    .then(() => {
-      console.log('Script de migração concluído com sucesso');
-      process.exit(0);
-    })
-    .catch(error => {
-      console.error('Erro no script de migração:', error);
-      process.exit(1);
+async function main() {
+    if (!process.env.DATABASE_URL) {
+        throw new Error('DATABASE_URL não está definida');
+    }
+
+    const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        ssl: {
+            rejectUnauthorized: false
+        }
     });
-} 
+
+    try {
+        console.log('Iniciando processo de correção das migrações...');
+        
+        // Espera o banco estar disponível
+        await waitForDatabase(pool);
+
+        // Verifica se a tabela _prisma_migrations existe
+        const hasMigrationsTable = await executeQuery(pool, `
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = '_prisma_migrations'
+            );
+        `);
+
+        if (!hasMigrationsTable) {
+            console.log('Criando tabela _prisma_migrations...');
+            await executeQuery(pool, `
+                CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
+                    id VARCHAR(36) PRIMARY KEY NOT NULL,
+                    checksum VARCHAR(64) NOT NULL,
+                    finished_at TIMESTAMP WITH TIME ZONE,
+                    migration_name VARCHAR(255) NOT NULL,
+                    logs TEXT,
+                    rolled_back_at TIMESTAMP WITH TIME ZONE,
+                    started_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                    applied_steps_count INTEGER NOT NULL DEFAULT 0
+                );
+            `);
+        }
+
+        // Lê e executa o arquivo de migração
+        const migrationPath = path.join(__dirname, '../prisma/migrations/20240617_fix_table_name/migration.sql');
+        const migrationSQL = await fs.readFile(migrationPath, 'utf8');
+        
+        console.log('Executando migração...');
+        await executeQuery(pool, migrationSQL);
+
+        console.log('Processo de correção concluído com sucesso!');
+    } catch (error) {
+        console.error('Erro durante o processo:', error);
+        process.exit(1);
+    } finally {
+        await pool.end();
+    }
+}
+
+main(); 
