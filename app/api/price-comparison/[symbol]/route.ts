@@ -20,6 +20,16 @@ function formatDateTime(date: Date): string {
   }).replace(', ', ' - ');
 }
 
+function roundToNearestInterval(date: Date, intervalMinutes: number): Date {
+  const minutes = date.getMinutes();
+  const roundedMinutes = Math.floor(minutes / intervalMinutes) * intervalMinutes;
+  const newDate = new Date(date);
+  newDate.setMinutes(roundedMinutes);
+  newDate.setSeconds(0);
+  newDate.setMilliseconds(0);
+  return newDate;
+}
+
 function adjustToUTC(date: Date): Date {
   return new Date(date.getTime() + (3 * 60 * 60 * 1000));
 }
@@ -66,56 +76,58 @@ export async function GET(
     });
 
     // Agrupa os dados em intervalos de 30 minutos
-    const groupedData = new Map<string, { gateio: number | null; mexc: number | null }>();
+    const groupedData = new Map<string, { gateio: number | null; mexc: number | null; count: number }>();
     
     // Inicializa todos os intervalos de 30 minutos
-    let currentTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const endTime = now;
+    let currentTime = roundToNearestInterval(new Date(now.getTime() - 24 * 60 * 60 * 1000), 30);
+    const endTime = roundToNearestInterval(now, 30);
 
     while (currentTime <= endTime) {
       const timeKey = formatDateTime(currentTime);
       if (!groupedData.has(timeKey)) {
-        groupedData.set(timeKey, { gateio: null, mexc: null });
+        groupedData.set(timeKey, { gateio: null, mexc: null, count: 0 });
       }
       currentTime = new Date(currentTime.getTime() + 30 * 60 * 1000);
     }
 
     // Preenche com os dados reais
     for (const record of priceHistory) {
-      const localTime = new Date(record.timestamp);
+      const localTime = roundToNearestInterval(new Date(record.timestamp), 30);
       const timeKey = formatDateTime(localTime);
-      const data = groupedData.get(timeKey) || { gateio: null, mexc: null };
+      const data = groupedData.get(timeKey) || { gateio: null, mexc: null, count: 0 };
 
       // Calcula os preços relativos com base no spread
       if (record.exchangeBuy === 'GATEIO_SPOT' && record.spread) {
-        const basePrice = 100; // Preço base para visualização
+        const basePrice = 100;
         if (record.direction === 'SPOT_TO_FUTURES') {
-          data.gateio = basePrice;
-          data.mexc = basePrice * (1 + record.spread / 100);
+          data.gateio = (data.gateio || 0) + basePrice;
+          data.mexc = (data.mexc || 0) + basePrice * (1 + record.spread / 100);
         } else {
-          data.gateio = basePrice;
-          data.mexc = basePrice * (1 - record.spread / 100);
+          data.gateio = (data.gateio || 0) + basePrice;
+          data.mexc = (data.mexc || 0) + basePrice * (1 - record.spread / 100);
         }
+        data.count++;
       } else if (record.exchangeBuy === 'MEXC_FUTURES' && record.spread) {
-        const basePrice = 100; // Preço base para visualização
+        const basePrice = 100;
         if (record.direction === 'FUTURES_TO_SPOT') {
-          data.mexc = basePrice;
-          data.gateio = basePrice * (1 + record.spread / 100);
+          data.mexc = (data.mexc || 0) + basePrice;
+          data.gateio = (data.gateio || 0) + basePrice * (1 + record.spread / 100);
         } else {
-          data.mexc = basePrice;
-          data.gateio = basePrice * (1 - record.spread / 100);
+          data.mexc = (data.mexc || 0) + basePrice;
+          data.gateio = (data.gateio || 0) + basePrice * (1 - record.spread / 100);
         }
+        data.count++;
       }
 
       groupedData.set(timeKey, data);
     }
 
-    // Converte para o formato esperado pelo gráfico
+    // Calcula a média para cada intervalo
     const formattedData = Array.from(groupedData.entries())
       .map(([timestamp, prices]) => ({
         timestamp,
-        gateio_price: prices.gateio,
-        mexc_price: prices.mexc
+        gateio_price: prices.count > 0 ? prices.gateio! / prices.count : null,
+        mexc_price: prices.count > 0 ? prices.mexc! / prices.count : null
       }))
       .sort((a, b) => {
         const [dateA, timeA] = a.timestamp.split(' - ');

@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { LineChart as ChartIcon } from 'lucide-react';
+import { LineChart as ChartIcon, X } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogClose
 } from '@/components/ui/dialog';
 import SpreadHistoryChart from './SpreadHistoryChart';
 import PriceComparisonChart from './PriceComparisonChart';
@@ -73,6 +74,13 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
     }
   }, [isModalOpen]);
 
+  const handleOpenChange = (open: boolean) => {
+    // Só permite fechar o modal através do botão X
+    if (open) {
+      setIsModalOpen(true);
+    }
+  };
+
   if (isLoading) {
     return <span className="text-gray-500">Carregando...</span>;
   }
@@ -90,16 +98,16 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
         <span className="text-xs text-gray-500">({stats.crosses} registros)</span>
       </div>
       
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+      <Dialog open={isModalOpen} onOpenChange={handleOpenChange}>
         <DialogTrigger asChild>
           <button className="ml-2 p-1 text-gray-400 hover:text-white transition-colors">
             <ChartIcon className="h-5 w-5" />
           </button>
         </DialogTrigger>
         <DialogContent className="max-w-4xl bg-dark-card border-gray-700 text-white">
-          <DialogHeader>
-            <div className="flex items-center justify-between">
-              <DialogTitle>Análise de {symbol}</DialogTitle>
+          <div className="flex items-center justify-between mb-4">
+            <DialogTitle>Análise de {symbol}</DialogTitle>
+            <div className="flex items-center space-x-4">
               <div className="flex bg-gray-800 rounded-lg p-1">
                 <button
                   onClick={() => setChartType('spread')}
@@ -122,8 +130,16 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
                   Preços Spot/Future
                 </button>
               </div>
+              <DialogClose asChild>
+                <button 
+                  className="text-gray-400 hover:text-white transition-colors"
+                  onClick={() => setIsModalOpen(false)}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </DialogClose>
             </div>
-          </DialogHeader>
+          </div>
           
           <div className="mt-4 h-[400px]">
             {isModalOpen && (
