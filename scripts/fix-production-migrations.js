@@ -1,10 +1,11 @@
 const { Client } = require('pg');
 const { PrismaClient } = require('@prisma/client');
 
-async function waitForDatabase(client, retries = 5, delay = 2000) {
+async function waitForDatabase(client, retries = 10, delay = 3000) {
   for (let i = 0; i < retries; i++) {
     try {
       await client.query('SELECT 1');
+      console.log('Conexão com o banco estabelecida com sucesso');
       return true;
     } catch (error) {
       console.log(`Tentativa ${i + 1} de ${retries} falhou. Aguardando ${delay}ms...`);
@@ -18,9 +19,11 @@ async function waitForDatabase(client, retries = 5, delay = 2000) {
 async function createTable() {
   const client = new Client({
     connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
   });
 
   try {
+    console.log('Iniciando script de migração...');
     await client.connect();
     console.log('Conectado ao banco de dados');
 
@@ -41,7 +44,9 @@ async function createTable() {
       
       // Criar a tabela spread_history
       await client.query(`
-        CREATE TABLE IF NOT EXISTS "spread_history" (
+        DROP TABLE IF EXISTS "spread_history";
+        
+        CREATE TABLE "spread_history" (
           "id" TEXT NOT NULL,
           "symbol" TEXT NOT NULL,
           "exchangeBuy" TEXT NOT NULL,
