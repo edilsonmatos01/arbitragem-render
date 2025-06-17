@@ -21,7 +21,7 @@ interface SpreadStats {
   crosses: number;
 }
 
-// Usamos um cache simples em memória para evitar chamadas repetidas à API para o mesmo símbolo.
+// Cache para evitar chamadas repetidas à API
 const cache = new Map<string, { data: SpreadStats; timestamp: number }>();
 const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutos
 
@@ -29,7 +29,7 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
   const [stats, setStats] = useState<SpreadStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [chartType, setChartType] = useState<'spread' | 'comparison'>('spread');
+  const [chartType, setChartType] = useState<'spread' | 'price'>('spread');
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -48,7 +48,6 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
         }
         const data: SpreadStats = await response.json();
         
-        // Se não houver dados suficientes, mostra N/D
         if (data.spMax === null || data.crosses < 2) {
           setStats({ spMax: null, crosses: data.crosses });
         } else {
@@ -106,46 +105,33 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
                   onClick={() => setChartType('spread')}
                   className={`px-3 py-1 text-sm rounded-md transition-colors ${
                     chartType === 'spread'
-                      ? 'bg-custom-cyan text-black font-semibold'
+                      ? 'bg-purple-500 text-white font-semibold'
                       : 'text-gray-300 hover:text-white'
                   }`}
                 >
-                  Spread 24h
+                  Spread (%)
                 </button>
                 <button
-                  onClick={() => setChartType('comparison')}
+                  onClick={() => setChartType('price')}
                   className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                    chartType === 'comparison'
-                      ? 'bg-custom-cyan text-black font-semibold'
+                    chartType === 'price'
+                      ? 'bg-green-500 text-white font-semibold'
                       : 'text-gray-300 hover:text-white'
                   }`}
                 >
-                  Spot vs Futures
+                  Preços Spot/Future
                 </button>
               </div>
             </div>
           </DialogHeader>
           
-          <div className="mt-4">
-            {/* Renderiza o gráfico apenas se o modal estiver aberto */}
+          <div className="mt-4 h-[400px]">
             {isModalOpen && (
-              <>
-                {chartType === 'spread' ? (
-                  <div>
-                    <div className="mb-3 text-sm text-gray-400">
-                      Histórico de spread máximo das últimas 24 horas
-                    </div>
-                    <SpreadHistoryChart symbol={symbol} />
-                  </div>
-                ) : (
-                  <div>
-                    <div className="mb-3 text-sm text-gray-400">
-                      Comparação de preços spot vs futures (pontos a cada 30 min)
-                    </div>
-                    <PriceComparisonChart symbol={symbol} />
-                  </div>
-                )}
-              </>
+              chartType === 'spread' ? (
+                <SpreadHistoryChart symbol={symbol} />
+              ) : (
+                <PriceComparisonChart symbol={symbol} />
+              )
             )}
           </div>
         </DialogContent>

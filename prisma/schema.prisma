@@ -1,5 +1,5 @@
-// schema.prisma
-// Definição da tabela para histórico de spreads
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
   provider = "prisma-client-js"
@@ -18,7 +18,8 @@ model SpreadHistory {
   exchangeSell String
   direction    String
   spread       Float
-  timestamp    DateTime @default(now())
+  timestamp    DateTime
 
-  @@index([symbol, exchangeBuy, exchangeSell, direction])
+  @@index([symbol, timestamp])
+  @@map("spread_history")
 } 
