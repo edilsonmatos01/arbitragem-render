@@ -70,59 +70,79 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
     };
   }, [symbol]);
 
-  const formatTime = (timestamp: string) => {
-    // Assumindo que o timestamp já está em formato DD/MM HH:mm
-    // Vamos extrair apenas o horário (HH:mm)
-    return timestamp.split(' - ')[1];
+  const formatDateTime = (timestamp: string) => {
+    const [date, time] = timestamp.split(' - ');
+    const [day, month] = date.split('/');
+    return `${day}/${month} ${time}`;
   };
 
   const options: ChartOptions<'line'> = {
     responsive: true,
+    maintainAspectRatio: false,
     plugins: {
       legend: {
         display: false,
       },
       tooltip: {
+        backgroundColor: 'rgba(17, 24, 39, 0.9)',
+        borderColor: 'rgba(75, 85, 99, 0.3)',
+        borderWidth: 1,
+        titleColor: '#E5E7EB',
+        bodyColor: '#10B981',
+        padding: 10,
         callbacks: {
           title: (items) => {
             if (items[0]) {
-              // Mostra a data completa no tooltip
-              return items[0].label;
+              return formatDateTime(items[0].label);
             }
             return '';
           },
           label: (context: TooltipItem<'line'>) => {
-            return `Spread (%): ${context.parsed.y.toFixed(2)}`;
+            return `Spread: ${context.parsed.y.toFixed(2)}%`;
           },
         },
       },
     },
     scales: {
       x: {
+        grid: {
+          color: 'rgba(75, 85, 99, 0.2)',
+          display: true
+        },
+        border: {
+          display: false
+        },
         ticks: {
-          callback: function(value) {
-            // Mostra apenas o horário no eixo X
-            const label = this.getLabelForValue(value as number);
-            return formatTime(label);
+          color: '#9CA3AF',
+          font: {
+            size: 11,
           },
-          maxRotation: 0,
+          callback: function(value) {
+            const label = this.getLabelForValue(value as number);
+            return formatDateTime(label);
+          },
+          maxRotation: -45,
+          minRotation: -45,
           autoSkip: true,
           autoSkipPadding: 30,
         },
-        grid: {
-          display: true,
-          color: 'rgba(255, 255, 255, 0.1)',
-        },
       },
       y: {
-        beginAtZero: true,
+        grid: {
+          color: 'rgba(75, 85, 99, 0.2)',
+          display: true
+        },
+        border: {
+          display: false
+        },
         ticks: {
+          color: '#9CA3AF',
+          font: {
+            size: 11,
+          },
           callback: (value: number | string) => `${value}%`,
         },
-        grid: {
-          display: true,
-          color: 'rgba(255, 255, 255, 0.1)',
-        },
+        beginAtZero: true,
       },
     },
     interaction: {
@@ -137,9 +157,16 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
       {
         label: 'Spread (%)',
         data: spreadHistory.map(item => item.spread_percentage),
-        borderColor: 'rgb(75, 192, 192)',
-        tension: 0.1,
-        pointRadius: 3,
+        borderColor: '#10B981', // Verde do tema
+        backgroundColor: 'rgba(16, 185, 129, 0.1)', // Verde com transparência
+        fill: true,
+        tension: 0.4,
+        pointRadius: 2,
+        pointHoverRadius: 4,
+        pointBackgroundColor: '#10B981',
+        pointBorderColor: '#FFFFFF',
+        pointHoverBackgroundColor: '#10B981',
+        pointHoverBorderColor: '#FFFFFF',
       },
     ],
   };
@@ -178,7 +205,7 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
       <h2 className="text-lg font-semibold mb-4 text-white">
         Histórico de spread máximo das últimas 24 horas
       </h2>
-      <div className="relative">
+      <div className="relative h-[400px]">
         <Line options={options} data={chartData} />
       </div>
     </div>

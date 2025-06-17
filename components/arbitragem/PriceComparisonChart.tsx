@@ -32,6 +32,9 @@ interface CustomTooltipProps {
   label?: string;
 }
 
+// Constante para o intervalo de atualização (30 minutos)
+const UPDATE_INTERVAL_MS = 30 * 60 * 1000;
+
 function formatBrasiliaTime(date: Date): string {
   return new Date(date).toLocaleString('pt-BR', {
     timeZone: 'America/Sao_Paulo',
@@ -39,6 +42,12 @@ function formatBrasiliaTime(date: Date): string {
     minute: '2-digit',
     hour12: false
   });
+}
+
+function formatDateTime(timestamp: string) {
+  const [date, time] = timestamp.split(' - ');
+  const [day, month] = date.split('/');
+  return `${day}/${month} ${time}`;
 }
 
 export default function PriceComparisonChart({ symbol }: PriceComparisonChartProps) {
@@ -64,10 +73,9 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
     }
   }, [symbol]);
 
-  // Atualiza os dados a cada minuto
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 60 * 1000);
+    const interval = setInterval(fetchData, UPDATE_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [fetchData]);
 
@@ -75,7 +83,7 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
     if (active && payload && payload.length > 0) {
       return (
         <div className="bg-gray-800 border border-gray-700 p-2 rounded-md shadow-lg">
-          <p className="text-white">{`Data: ${label}`}</p>
+          <p className="text-white">{`Data: ${formatDateTime(label || '')}`}</p>
           <p className="text-green-400">{`Gate.io (spot): ${payload[0]?.value?.toFixed(8) || 'N/A'}`}</p>
           <p className="text-gray-400">{`MEXC (futures): ${payload[1]?.value?.toFixed(8) || 'N/A'}`}</p>
         </div>
@@ -118,34 +126,42 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
           <XAxis
             dataKey="timestamp"
             stroke="#9CA3AF"
-            tick={{ fill: '#9CA3AF', fontSize: 12 }}
+            tick={{ fill: '#9CA3AF', fontSize: 11 }}
             angle={-45}
             textAnchor="end"
             height={60}
             interval={2}
+            tickFormatter={formatDateTime}
           />
           <YAxis
             stroke="#9CA3AF"
-            tick={{ fill: '#9CA3AF', fontSize: 12 }}
+            tick={{ fill: '#9CA3AF', fontSize: 11 }}
             tickFormatter={(value) => value.toFixed(8)}
           />
           <Tooltip content={<CustomTooltip />} />
-          <Legend />
+          <Legend
+            wrapperStyle={{
+              paddingTop: '10px',
+              fontSize: '12px'
+            }}
+          />
           <Line
             type="monotone"
             dataKey="gateio_price"
             name="Gate.io (spot)"
             stroke="#10B981"
-            dot={{ r: 1 }}
+            dot={{ r: 2 }}
             strokeWidth={2}
+            activeDot={{ r: 4 }}
           />
           <Line
             type="monotone"
             dataKey="mexc_price"
             name="MEXC (futures)"
             stroke="#9CA3AF"
-            dot={{ r: 1 }}
+            dot={{ r: 2 }}
             strokeWidth={2}
+            activeDot={{ r: 4 }}
           />
         </LineChart>
       </ResponsiveContainer>
