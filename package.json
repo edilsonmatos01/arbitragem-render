@@ -12,10 +12,10 @@
     "start:tracker": "node dist/websocket-server.js",
     "build:tracker": "tsc --project tsconfig.server.json",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate deploy",
+    "prisma:deploy": "prisma migrate deploy",
     "prisma:fix": "node scripts/fix-production-migrations.js",
-    "db:setup": "npm run prisma:generate && npm run prisma:fix && npm run prisma:migrate",
-    "postinstall": "npm run prisma:generate",
+    "db:setup": "npm run prisma:generate && npm run prisma:fix",
+    "postinstall": "prisma generate",
     "clean:spread": "ts-node scripts/cleanSpreadData.ts",
     "clean": "ts-node scripts/cleanSpreadData.ts",
     "cleanup:schedule": "ts-node scripts/scheduleCleanup.ts"
