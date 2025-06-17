@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.startWebSocketServer = startWebSocketServer;
+exports.startWebSocketServer = void 0;
 require('dotenv').config();
 const ws_1 = __importDefault(require("ws"));
 const http_1 = require("http");
@@ -72,6 +72,7 @@ function startWebSocketServer(httpServer) {
     console.log(`Servidor WebSocket iniciado e anexado ao servidor HTTP.`);
     startFeeds();
 }
+exports.startWebSocketServer = startWebSocketServer;
 // --- Início: Adição para Servidor Standalone ---
 // Esta função cria e inicia um servidor HTTP que usa a nossa lógica WebSocket.
 function initializeStandaloneServer() {
@@ -132,6 +133,7 @@ async function recordSpread(opportunity) {
                 exchangeSell: opportunity.sellAt.exchange,
                 direction: opportunity.arbitrageType,
                 spread: opportunity.profitPercentage,
+                timestamp: new Date()
             },
         });
     }

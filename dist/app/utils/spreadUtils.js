@@ -3,11 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.calculateSpread = calculateSpread;
-exports.normalizeSpread = normalizeSpread;
-exports.formatValue = formatValue;
-exports.compareSpread = compareSpread;
-exports.isValidSpread = isValidSpread;
+exports.isValidSpread = exports.compareSpread = exports.formatValue = exports.normalizeSpread = exports.calculateSpread = void 0;
 const decimal_js_1 = __importDefault(require("decimal.js"));
 /**
  * Calcula o spread percentual entre preço de venda e compra
@@ -47,6 +43,7 @@ function calculateSpread(sellPrice, buyPrice) {
         return null;
     }
 }
+exports.calculateSpread = calculateSpread;
 /**
  * Normaliza um valor de spread para garantir precisão
  * @param spread Valor do spread em porcentagem
@@ -65,6 +62,7 @@ function normalizeSpread(spread) {
         return null;
     }
 }
+exports.normalizeSpread = normalizeSpread;
 /**
  * Formata um valor para exibição mantendo precisão significativa
  * @param value Valor a ser formatado
@@ -84,6 +82,7 @@ function formatValue(value, minDecimals = 2, maxDecimals = 8) {
         return '0';
     }
 }
+exports.formatValue = formatValue;
 /**
  * Compara dois valores de spread com precisão
  */
@@ -103,6 +102,7 @@ function compareSpread(a, b) {
         return 0;
     }
 }
+exports.compareSpread = compareSpread;
 /**
  * Verifica se um spread é válido e significativo
  */
@@ -117,3 +117,4 @@ function isValidSpread(spread) {
         return false;
     }
 }
+exports.isValidSpread = isValidSpread;

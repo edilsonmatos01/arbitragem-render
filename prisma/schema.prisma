@@ -18,7 +18,7 @@ model SpreadHistory {
   exchangeSell String
   direction    String
   spread       Float
-  timestamp    DateTime
+  timestamp    DateTime @default(now())
 
   @@index([symbol, timestamp])
   @@map("spread_history")

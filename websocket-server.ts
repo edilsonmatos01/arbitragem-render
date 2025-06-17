@@ -161,6 +161,7 @@ async function recordSpread(opportunity: ArbitrageOpportunity) {
                 exchangeSell: opportunity.sellAt.exchange,
                 direction: opportunity.arbitrageType,
                 spread: opportunity.profitPercentage,
+                timestamp: new Date()
             },
         });
     } catch (error) {
