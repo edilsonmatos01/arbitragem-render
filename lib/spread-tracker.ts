@@ -4,7 +4,17 @@
 import { PrismaClient } from '@prisma/client'
 import { normalizeSpread } from '../app/utils/spreadUtils';
 
-const prisma = new PrismaClient()
+// PrismaClient é anexado ao objeto global quando não está em produção
+const globalForPrisma = global as unknown as { prisma: PrismaClient }
+
+export const prisma =
+  globalForPrisma.prisma ||
+  new PrismaClient({
+    log: ['error'],
+    errorFormat: 'minimal',
+  })
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
 
 interface SpreadSample {
   symbol: string
@@ -14,13 +24,43 @@ interface SpreadSample {
   spread: number // Valor em porcentagem (ex: 1.5 para 1.5%)
 }
 
+async function waitForDatabase(retries = 5, delay = 2000): Promise<boolean> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      return true;
+    } catch (error) {
+      if (i === retries - 1) throw error;
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  return false;
+}
+
 export async function recordSpread(sample: SpreadSample): Promise<void> {
   try {
-    // Normaliza o spread usando a função utilitária
+    // Aguarda o banco estar pronto
+    await waitForDatabase();
+    
+    // Normaliza o spread
     const normalizedSpread = normalizeSpread(sample.spread);
     
     if (normalizedSpread === null) {
       console.warn('Spread inválido, registro ignorado:', sample);
+      return;
+    }
+
+    // Verifica se a tabela existe
+    const tableExists = await prisma.$queryRaw<[{ exists: boolean }]>`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'spread_history'
+      );
+    `;
+
+    if (!tableExists[0]?.exists) {
+      console.error('Tabela spread_history não existe');
       return;
     }
 
@@ -36,6 +76,7 @@ export async function recordSpread(sample: SpreadSample): Promise<void> {
     });
   } catch (error) {
     console.error("Error recording spread:", error);
+    throw error; // Propaga o erro para melhor diagnóstico
   }
 }
 
@@ -46,6 +87,8 @@ export async function getAverageSpread24h(
   direction: 'spot-to-future' | 'future-to-spot'
 ): Promise<number | null> {
   try {
+    await waitForDatabase();
+    
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
 
     const records = await prisma.spreadHistory.findMany({

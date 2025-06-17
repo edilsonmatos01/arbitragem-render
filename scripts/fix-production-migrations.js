@@ -1,6 +1,20 @@
 const { Client } = require('pg');
 const { PrismaClient } = require('@prisma/client');
 
+async function waitForDatabase(client, retries = 5, delay = 2000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      await client.query('SELECT 1');
+      return true;
+    } catch (error) {
+      console.log(`Tentativa ${i + 1} de ${retries} falhou. Aguardando ${delay}ms...`);
+      if (i === retries - 1) throw error;
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  return false;
+}
+
 async function createTable() {
   const client = new Client({
     connectionString: process.env.DATABASE_URL,
@@ -9,6 +23,9 @@ async function createTable() {
   try {
     await client.connect();
     console.log('Conectado ao banco de dados');
+
+    // Aguarda o banco estar pronto
+    await waitForDatabase(client);
     
     // Verifica se a tabela já existe
     const tableExists = await client.query(`
@@ -48,14 +65,19 @@ async function createTable() {
     }
 
     // Verifica se o Prisma consegue se conectar
+    console.log('Testando conexão com Prisma...');
     const prisma = new PrismaClient();
     await prisma.$connect();
-    console.log('Conexão com Prisma estabelecida com sucesso');
+    
+    // Tenta fazer uma query simples
+    const count = await prisma.spreadHistory.count();
+    console.log(`Conexão com Prisma estabelecida com sucesso. Registros na tabela: ${count}`);
+    
     await prisma.$disconnect();
 
   } catch (error) {
     console.error('Erro durante a migração:', error);
-    process.exit(1);
+    throw error;
   } finally {
     await client.end();
   }
