@@ -31,7 +31,7 @@ interface SpreadHistoryChartProps {
 
 interface SpreadData {
   timestamp: string;
-  spread: number;
+  spread_percentage: number;
 }
 
 // Constante para o intervalo de atualização (5 minutos para teste)
@@ -46,7 +46,7 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
     try {
       setLoading(true);
       console.log('Buscando dados do histórico:', new Date().toLocaleString());
-      const response = await fetch(`/api/spread-history?symbol=${encodeURIComponent(symbol)}`);
+      const response = await fetch(`/api/spread-history/24h/${encodeURIComponent(symbol)}`);
       if (!response.ok) throw new Error('Failed to fetch spread history');
       const data = await response.json();
       console.log('Dados recebidos:', data);
@@ -73,7 +73,7 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
   const formatTime = (timestamp: string) => {
     // Assumindo que o timestamp já está em formato DD/MM HH:mm
     // Vamos extrair apenas o horário (HH:mm)
-    return timestamp.split(' ')[1];
+    return timestamp.split(' - ')[1];
   };
 
   const options: ChartOptions<'line'> = {
@@ -136,7 +136,7 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
     datasets: [
       {
         label: 'Spread (%)',
-        data: spreadHistory.map(item => item.spread),
+        data: spreadHistory.map(item => item.spread_percentage),
         borderColor: 'rgb(75, 192, 192)',
         tension: 0.1,
         pointRadius: 3,
@@ -170,7 +170,7 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
     );
   }
 
-  const lastSpread = spreadHistory[spreadHistory.length - 1]?.spread.toFixed(2) || '0.00';
+  const lastSpread = spreadHistory[spreadHistory.length - 1]?.spread_percentage.toFixed(2) || '0.00';
   const lastTimestamp = spreadHistory[spreadHistory.length - 1]?.timestamp || '';
 
   return (
