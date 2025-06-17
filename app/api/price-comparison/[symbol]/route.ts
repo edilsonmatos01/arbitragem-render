@@ -55,7 +55,13 @@ export async function GET(
       select: {
         timestamp: true,
         spotPrice: true,
-        futuresPrice: true
+        futuresPrice: true,
+        id: true,
+        symbol: true,
+        exchangeBuy: true,
+        exchangeSell: true,
+        direction: true,
+        spread: true
       },
       orderBy: {
         timestamp: 'asc'
@@ -93,12 +99,12 @@ export async function GET(
       };
 
       if (record.spotPrice) {
-        data.spot.sum += parseFloat(record.spotPrice);
+        data.spot.sum += record.spotPrice;
         data.spot.count++;
       }
 
       if (record.futuresPrice) {
-        data.futures.sum += parseFloat(record.futuresPrice);
+        data.futures.sum += record.futuresPrice;
         data.futures.count++;
       }
 
