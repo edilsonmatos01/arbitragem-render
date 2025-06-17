@@ -1,24 +1,6 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-
-let prisma: PrismaClient | null = null;
-
-try {
-  prisma = new PrismaClient();
-} catch (error) {
-  console.warn('Aviso: Não foi possível conectar ao banco de dados');
-}
-
-function formatDateTime(date: Date): string {
-  return date.toLocaleString('pt-BR', {
-    timeZone: 'America/Sao_Paulo',
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  }).replace(', ', ' - ');
-}
+import prisma from '@/lib/prisma';
+import { adjustToUTC } from '@/lib/utils';
 
 function roundToNearestInterval(date: Date, intervalMinutes: number): Date {
   const minutes = date.getMinutes();
@@ -30,26 +12,15 @@ function roundToNearestInterval(date: Date, intervalMinutes: number): Date {
   return newDate;
 }
 
-function adjustToUTC(date: Date): Date {
-  return new Date(date.getTime() + (3 * 60 * 60 * 1000));
-}
-
-function calculatePrices(spread: number, direction: string): { gateio: number; mexc: number } {
-  // Usamos um fator de amplificação para tornar as diferenças mais visíveis
-  const basePrice = 1;
-  const spreadMultiplier = 1000; // Amplifica a diferença do spread
-  
-  if (direction === 'SPOT_TO_FUTURES') {
-    return {
-      gateio: basePrice,
-      mexc: basePrice * (1 + (spread * spreadMultiplier))
-    };
-  } else {
-    return {
-      gateio: basePrice * (1 + (spread * spreadMultiplier)),
-      mexc: basePrice
-    };
-  }
+function formatDateTime(date: Date): string {
+  return date.toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).replace(', ', ' - ');
 }
 
 export async function GET(
@@ -83,10 +54,8 @@ export async function GET(
       },
       select: {
         timestamp: true,
-        exchangeBuy: true,
-        exchangeSell: true,
-        spread: true,
-        direction: true
+        spotPrice: true,
+        futuresPrice: true
       },
       orderBy: {
         timestamp: 'asc'
@@ -94,7 +63,10 @@ export async function GET(
     });
 
     // Agrupa os dados em intervalos de 30 minutos
-    const groupedData = new Map<string, { gateio: number | null; mexc: number | null; count: number }>();
+    const groupedData = new Map<string, { 
+      spot: { sum: number; count: number }; 
+      futures: { sum: number; count: number }; 
+    }>();
     
     // Inicializa todos os intervalos de 30 minutos
     let currentTime = roundToNearestInterval(new Date(now.getTime() - 24 * 60 * 60 * 1000), 30);
@@ -103,42 +75,42 @@ export async function GET(
     while (currentTime <= endTime) {
       const timeKey = formatDateTime(currentTime);
       if (!groupedData.has(timeKey)) {
-        groupedData.set(timeKey, { gateio: null, mexc: null, count: 0 });
+        groupedData.set(timeKey, {
+          spot: { sum: 0, count: 0 },
+          futures: { sum: 0, count: 0 }
+        });
       }
       currentTime = new Date(currentTime.getTime() + 30 * 60 * 1000);
     }
 
-    // Preenche com os dados reais
+    // Processa os dados reais
     for (const record of priceHistory) {
       const localTime = roundToNearestInterval(new Date(record.timestamp), 30);
       const timeKey = formatDateTime(localTime);
-      const data = groupedData.get(timeKey) || { gateio: null, mexc: null, count: 0 };
+      const data = groupedData.get(timeKey) || {
+        spot: { sum: 0, count: 0 },
+        futures: { sum: 0, count: 0 }
+      };
 
-      if (record.spread) {
-        const prices = calculatePrices(record.spread, record.direction);
-        // Atualizamos os preços apenas se ambos forem válidos
-        if (prices.gateio > 0 && prices.mexc > 0) {
-          if (data.count === 0) {
-            data.gateio = prices.gateio;
-            data.mexc = prices.mexc;
-          } else {
-            // Média ponderada para suavizar as transições
-            data.gateio = (data.gateio! * data.count + prices.gateio) / (data.count + 1);
-            data.mexc = (data.mexc! * data.count + prices.mexc) / (data.count + 1);
-          }
-          data.count++;
-        }
+      if (record.spotPrice) {
+        data.spot.sum += parseFloat(record.spotPrice);
+        data.spot.count++;
+      }
+
+      if (record.futuresPrice) {
+        data.futures.sum += parseFloat(record.futuresPrice);
+        data.futures.count++;
       }
 
       groupedData.set(timeKey, data);
     }
 
-    // Processa os dados e preenche gaps
+    // Formata os dados finais
     const formattedData = Array.from(groupedData.entries())
-      .map(([timestamp, prices]) => ({
+      .map(([timestamp, data]) => ({
         timestamp,
-        gateio_price: prices.count > 0 ? prices.gateio : null,
-        mexc_price: prices.count > 0 ? prices.mexc : null
+        gateio_price: data.spot.count > 0 ? data.spot.sum / data.spot.count : null,
+        mexc_price: data.futures.count > 0 ? data.futures.sum / data.futures.count : null
       }))
       .sort((a, b) => {
         const [dateA, timeA] = a.timestamp.split(' - ');
@@ -154,7 +126,7 @@ export async function GET(
         return minuteA - minuteB;
       });
 
-    // Preenche gaps com interpolação linear mais suave
+    // Interpolação para pontos faltantes
     let lastValidIndex = -1;
     for (let i = 0; i < formattedData.length; i++) {
       if (formattedData[i].gateio_price !== null && formattedData[i].mexc_price !== null) {
@@ -165,10 +137,8 @@ export async function GET(
           const endMexc = formattedData[i].mexc_price!;
           const steps = i - lastValidIndex;
 
-          // Interpolação com curva suave
           for (let j = 1; j < steps; j++) {
             const fraction = j / steps;
-            // Função de suavização cúbica
             const smoothFraction = fraction * fraction * (3 - 2 * fraction);
             
             formattedData[lastValidIndex + j].gateio_price = startGateio + (endGateio - startGateio) * smoothFraction;
@@ -176,16 +146,6 @@ export async function GET(
           }
         }
         lastValidIndex = i;
-      }
-    }
-
-    // Garante que não haja valores nulos isolados
-    for (let i = 1; i < formattedData.length - 1; i++) {
-      if (formattedData[i].gateio_price === null && formattedData[i-1].gateio_price !== null && formattedData[i+1].gateio_price !== null) {
-        formattedData[i].gateio_price = (formattedData[i-1].gateio_price! + formattedData[i+1].gateio_price!) / 2;
-      }
-      if (formattedData[i].mexc_price === null && formattedData[i-1].mexc_price !== null && formattedData[i+1].mexc_price !== null) {
-        formattedData[i].mexc_price = (formattedData[i-1].mexc_price! + formattedData[i+1].mexc_price!) / 2;
       }
     }
 

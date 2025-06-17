@@ -157,13 +157,15 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
           />
           <Tooltip content={<CustomTooltip />} />
           <Legend
+            verticalAlign="top"
+            height={36}
             wrapperStyle={{
               paddingTop: '10px',
               fontSize: '12px'
             }}
           />
           <Line
-            type="basis"
+            type="linear"
             dataKey="gateio_price"
             name="Gate.io (spot)"
             stroke="#10B981"
@@ -174,7 +176,7 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
             isAnimationActive={false}
           />
           <Line
-            type="basis"
+            type="linear"
             dataKey="mexc_price"
             name="MEXC (futures)"
             stroke="#9CA3AF"
