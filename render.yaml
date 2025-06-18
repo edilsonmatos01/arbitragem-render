@@ -90,11 +90,11 @@ services:
         property: connectionString
 
 - type: worker
-  name: spread-monitor
+  name: arbitragem-render
   env: node
   region: oregon
-  plan: free
-  buildCommand: npm install && npm run db:setup && npm run build && tsc src/spread-monitor.ts
+  plan: standard
+  buildCommand: npm install && npx prisma generate && npm run build && tsc src/spread-monitor.ts
   startCommand: node src/spread-monitor.js
   envVars:
     - key: NODE_ENV
@@ -112,6 +112,6 @@ services:
     - key: GATE_SECRET
       sync: false
   autoDeploy: true
-  branch: default
+  branch: master
 
 version: "1"

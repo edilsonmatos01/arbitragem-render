@@ -2,6 +2,8 @@ const { exec } = require('child_process');
 const { Pool } = require('pg');
 const fs = require('fs').promises;
 const path = require('path');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
 async function executeQuery(pool, query) {
     try {
@@ -51,27 +53,21 @@ async function main() {
         await waitForDatabase();
 
         // Verifica se a tabela _prisma_migrations existe
-        const hasMigrationsTable = await executeQuery(pool, `
+        const tableExists = await prisma.$queryRaw`
             SELECT EXISTS (
-                SELECT FROM information_schema.tables 
+                SELECT 1 
+                FROM information_schema.tables 
                 WHERE table_name = '_prisma_migrations'
             );
-        `);
+        `;
 
-        if (!hasMigrationsTable) {
-            console.log('Criando tabela _prisma_migrations...');
-            await executeQuery(pool, `
-                CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
-                    id VARCHAR(36) PRIMARY KEY NOT NULL,
-                    checksum VARCHAR(64) NOT NULL,
-                    finished_at TIMESTAMP WITH TIME ZONE,
-                    migration_name VARCHAR(255) NOT NULL,
-                    logs TEXT,
-                    rolled_back_at TIMESTAMP WITH TIME ZONE,
-                    started_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                    applied_steps_count INTEGER NOT NULL DEFAULT 0
-                );
-            `);
+        if (!tableExists[0].exists) {
+            console.log('Tabela _prisma_migrations não existe, executando migrate deploy...');
+            // Execute o comando prisma migrate deploy
+            const { execSync } = require('child_process');
+            execSync('npx prisma migrate deploy', { stdio: 'inherit' });
+        } else {
+            console.log('Tabela _prisma_migrations já existe, pulando migrate deploy');
         }
 
         // Lê e executa o arquivo de migração
@@ -87,6 +83,7 @@ async function main() {
         process.exit(1);
     } finally {
         await pool.end();
+        await prisma.$disconnect();
     }
 }
 
