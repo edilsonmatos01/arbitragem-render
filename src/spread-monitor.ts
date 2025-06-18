@@ -208,8 +208,8 @@ class SpreadMonitor {
 // Cria e inicia o monitor
 const spreadMonitor = new SpreadMonitor();
 
-// Agenda a execução a cada 30 minutos
-cron.schedule('*/30 * * * *', async () => {
+// Agenda a execução a cada 5 minutos
+cron.schedule('*/5 * * * *', async () => {
     const now = new Date();
     const lastSave = spreadMonitor.getLastSaveTime();
     const timeSinceLastSave = lastSave ? (now.getTime() - lastSave.getTime()) / 1000 : null;

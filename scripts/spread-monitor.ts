@@ -98,8 +98,8 @@ async function monitorSpreads() {
   }
 }
 
-// Inicia o agendador para executar a cada 30 minutos
-cron.schedule('*/30 * * * *', monitorSpreads);
+// Inicia o agendador para executar a cada 5 minutos
+cron.schedule('*/5 * * * *', monitorSpreads);
 
 // Executa imediatamente na primeira vez
 monitorSpreads();

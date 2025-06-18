@@ -32,8 +32,8 @@ interface CustomTooltipProps {
   label?: string;
 }
 
-// Constante para o intervalo de atualização (30 minutos)
-const UPDATE_INTERVAL_MS = 30 * 60 * 1000;
+// Constante para o intervalo de atualização (5 minutos)
+const UPDATE_INTERVAL_MS = 5 * 60 * 1000;
 
 function formatBrasiliaTime(date: Date): string {
   return new Date(date).toLocaleString('pt-BR', {

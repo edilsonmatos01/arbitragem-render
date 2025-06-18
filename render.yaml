@@ -94,7 +94,7 @@ services:
   env: node
   region: oregon
   plan: free
-  buildCommand: npm install && npm run db:setup && tsc src/spread-monitor.ts
+  buildCommand: pnpm install && pnpm run build && tsc src/spread-monitor.ts
   startCommand: node src/spread-monitor.js
   envVars:
     - key: NODE_ENV
