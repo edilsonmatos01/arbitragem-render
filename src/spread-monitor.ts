@@ -1,9 +1,12 @@
-import cron from 'node-cron';
 import { PrismaClient } from '@prisma/client';
+import cron from 'node-cron';
 import { GateIoConnector } from './gateio-connector';
 import { MexcConnector } from './mexc-connector';
+import prisma from '@/lib/prisma';
+import WebSocket from 'ws';
+import Decimal from 'decimal.js';
 
-const prisma = new PrismaClient();
+const prismaClient = new PrismaClient();
 let isCronRunning = false;
 
 // Lista de pares a serem monitorados
@@ -144,7 +147,7 @@ class SpreadMonitor {
 
         if (spreads.length > 0) {
             try {
-                await prisma.spreadHistory.createMany({
+                await prismaClient.spreadHistory.createMany({
                     data: spreads
                 });
                 console.log(`[${timestamp.toISOString()}] Salvos ${spreads.length} spreads no banco de dados`);
@@ -226,12 +229,43 @@ spreadMonitor.monitorSpreads().catch(console.error);
 // Tratamento de encerramento gracioso
 process.on('SIGTERM', async () => {
     console.log('Recebido sinal SIGTERM. Encerrando...');
-    await prisma.$disconnect();
+    await prismaClient.$disconnect();
     process.exit(0);
 });
 
 process.on('SIGINT', async () => {
     console.log('Recebido sinal SIGINT. Encerrando...');
-    await prisma.$disconnect();
+    await prismaClient.$disconnect();
     process.exit(0);
-}); 
+});
+
+// Função para salvar os preços no banco
+async function savePrices(symbol: string, spotPrice: number, futuresPrice: number) {
+  try {
+    // Calcula o spread
+    const spot = new Decimal(spotPrice);
+    const futures = new Decimal(futuresPrice);
+    const spread = futures.minus(spot).dividedBy(spot).times(100);
+
+    // Determina a direção com base no spread
+    const direction = spread.greaterThanOrEqualTo(0) ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT';
+
+    // Salva no banco
+    await prismaClient.spreadHistory.create({
+      data: {
+        symbol,
+        exchangeBuy: 'gateio',
+        exchangeSell: 'mexc',
+        direction,
+        spread: parseFloat(spread.abs().toFixed(8)),
+        spotPrice,
+        futuresPrice,
+        timestamp: new Date()
+      }
+    });
+
+    console.log(`[${new Date().toISOString()}] Preços salvos para ${symbol}: Spot=${spotPrice}, Futures=${futuresPrice}, Spread=${spread.abs().toFixed(8)}%`);
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] Erro ao salvar preços para ${symbol}:`, error);
+  }
+} 

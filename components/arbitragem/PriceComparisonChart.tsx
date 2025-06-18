@@ -75,11 +75,29 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
         hasNullValues: result.some((point: PriceData) => point.gateio_price === null || point.mexc_price === null)
       });
 
+      if (!Array.isArray(result)) {
+        throw new Error('Formato de dados inválido');
+      }
+
       if (result.length === 0) {
         throw new Error('Nenhum dado encontrado para o período');
       }
 
-      setData(result);
+      // Filtra pontos inválidos
+      const validData = result.filter((point: PriceData) => 
+        point.gateio_price !== null && 
+        point.mexc_price !== null && 
+        !isNaN(point.gateio_price) && 
+        !isNaN(point.mexc_price) &&
+        point.gateio_price > 0 &&
+        point.mexc_price > 0
+      );
+
+      if (validData.length === 0) {
+        throw new Error('Nenhum dado válido encontrado para o período');
+      }
+
+      setData(validData);
       setError(null);
       setLastUpdate(new Date());
     } catch (err) {

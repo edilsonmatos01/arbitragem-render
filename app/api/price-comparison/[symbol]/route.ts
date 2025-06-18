@@ -50,18 +50,15 @@ export async function GET(
         timestamp: {
           gte: start,
           lte: now
-        }
+        },
+        // Garante que só pegamos registros com preços válidos
+        spotPrice: { not: null },
+        futuresPrice: { not: null }
       },
       select: {
         timestamp: true,
         spotPrice: true,
-        futuresPrice: true,
-        id: true,
-        symbol: true,
-        exchangeBuy: true,
-        exchangeSell: true,
-        direction: true,
-        spread: true
+        futuresPrice: true
       },
       orderBy: {
         timestamp: 'asc'
@@ -69,6 +66,10 @@ export async function GET(
     });
 
     console.log(`Encontrados ${priceHistory.length} registros para ${symbol}`);
+
+    if (priceHistory.length === 0) {
+      return NextResponse.json([]);
+    }
 
     // Agrupa os dados em intervalos de 30 minutos
     const groupedData = new Map<string, { 
@@ -120,6 +121,7 @@ export async function GET(
         gateio_price: data.spot.count > 0 ? Number(data.spot.sum / data.spot.count) : null,
         mexc_price: data.futures.count > 0 ? Number(data.futures.sum / data.futures.count) : null
       }))
+      .filter(data => data.gateio_price !== null && data.mexc_price !== null) // Remove pontos sem dados
       .sort((a, b) => {
         const [dateA, timeA] = a.timestamp.split(' - ');
         const [dateB, timeB] = b.timestamp.split(' - ');
@@ -135,8 +137,10 @@ export async function GET(
       });
 
     console.log(`Dados formatados: ${formattedData.length} pontos`);
-    console.log(`Primeiro ponto: ${JSON.stringify(formattedData[0])}`);
-    console.log(`Último ponto: ${JSON.stringify(formattedData[formattedData.length - 1])}`);
+    if (formattedData.length > 0) {
+      console.log(`Primeiro ponto: ${JSON.stringify(formattedData[0])}`);
+      console.log(`Último ponto: ${JSON.stringify(formattedData[formattedData.length - 1])}`);
+    }
 
     return NextResponse.json(formattedData);
   } catch (error) {
