@@ -6,5 +6,14 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function adjustToUTC(date: Date): Date {
-  return new Date(date.getTime() + (3 * 60 * 60 * 1000));
+  // Converte a data para UTC sem adicionar offset
+  return new Date(Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate(),
+    date.getUTCHours(),
+    date.getUTCMinutes(),
+    date.getUTCSeconds(),
+    date.getUTCMilliseconds()
+  ));
 } 
