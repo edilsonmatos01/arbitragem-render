@@ -18,7 +18,10 @@
     "postinstall": "prisma generate",
     "clean:spread": "ts-node scripts/cleanSpreadData.ts",
     "clean": "ts-node scripts/cleanSpreadData.ts",
-    "cleanup:schedule": "ts-node scripts/scheduleCleanup.ts"
+    "cleanup:schedule": "ts-node scripts/scheduleCleanup.ts",
+    "dev:monitor": "ts-node-dev --respawn --transpile-only src/spread-monitor.ts",
+    "start:monitor": "node src/spread-monitor.js",
+    "build:monitor": "tsc src/spread-monitor.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",
