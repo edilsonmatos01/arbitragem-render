@@ -86,7 +86,8 @@ class SpreadMonitor {
         console.log(`Pares futures recebidos: ${Array.from(this.futuresPricesReceived).join(', ')}`);
 
         for (const [symbol, data] of this.priceData.entries()) {
-            if (data.spotPrice && data.futuresPrice) {
+            // Só salva se tiver ambos os preços
+            if (data.spotPrice > 0 && data.futuresPrice > 0) {
                 const spread = this.calculateSpread(data.spotPrice, data.futuresPrice);
                 spreads.push({
                     symbol,
@@ -94,12 +95,14 @@ class SpreadMonitor {
                     exchangeSell: 'MEXC',
                     direction: 'SPOT_TO_FUTURES',
                     spread,
-                    spotPrice: data.spotPrice,
-                    futuresPrice: data.futuresPrice,
+                    spotPrice: Number(data.spotPrice.toFixed(8)), // Garante que é um número com 8 casas decimais
+                    futuresPrice: Number(data.futuresPrice.toFixed(8)), // Garante que é um número com 8 casas decimais
                     timestamp
                 });
 
-                console.log(`[${timestamp.toISOString()}] ${symbol}: Spot=${data.spotPrice}, Futures=${data.futuresPrice}, Spread=${spread}%`);
+                console.log(`[${timestamp.toISOString()}] ${symbol}: Spot=${data.spotPrice.toFixed(8)}, Futures=${data.futuresPrice.toFixed(8)}, Spread=${spread.toFixed(4)}%`);
+            } else {
+                console.warn(`[${timestamp.toISOString()}] ${symbol}: Preços incompletos - Spot=${data.spotPrice}, Futures=${data.futuresPrice}`);
             }
         }
 
@@ -112,9 +115,10 @@ class SpreadMonitor {
                 this.lastSaveTime = timestamp;
             } catch (error) {
                 console.error('Erro ao salvar spreads:', error);
+                console.error('Dados que tentamos salvar:', JSON.stringify(spreads, null, 2));
             }
         } else {
-            console.warn(`[${timestamp.toISOString()}] Nenhum spread para salvar`);
+            console.warn(`[${timestamp.toISOString()}] Nenhum spread para salvar - Verifique se os preços estão sendo recebidos corretamente`);
         }
     }
 
