@@ -52,24 +52,60 @@ class SpreadMonitor {
 
     private handlePriceUpdate(data: any): void {
         const { symbol, marketType, bestBid, bestAsk } = data;
-        const averagePrice = (bestBid + bestAsk) / 2;
+        
+        // Log dos dados brutos recebidos
+        console.log(`[${new Date().toISOString()}] Dados recebidos da exchange:`, {
+            symbol,
+            marketType,
+            bestBid,
+            bestAsk,
+            rawData: JSON.stringify(data)
+        });
 
-        console.log(`[${new Date().toISOString()}] Recebido preço para ${symbol} - ${marketType}: ${averagePrice}`);
+        // Verifica se os preços são válidos
+        if (!bestBid || !bestAsk || isNaN(bestBid) || isNaN(bestAsk)) {
+            console.error(`[${new Date().toISOString()}] Preços inválidos recebidos para ${symbol} (${marketType}):`, {
+                bestBid,
+                bestAsk
+            });
+            return;
+        }
+
+        const averagePrice = (Number(bestBid) + Number(bestAsk)) / 2;
+
+        console.log(`[${new Date().toISOString()}] Calculado preço médio para ${symbol} (${marketType}): ${averagePrice}`);
 
         if (marketType === 'spot') {
             this.spotPricesReceived.add(symbol);
             if (!this.priceData.has(symbol)) {
                 this.priceData.set(symbol, { symbol, spotPrice: averagePrice, futuresPrice: 0 });
+                console.log(`[${new Date().toISOString()}] Criado novo registro para ${symbol} com spotPrice=${averagePrice}`);
             } else {
-                this.priceData.get(symbol)!.spotPrice = averagePrice;
+                const data = this.priceData.get(symbol)!;
+                data.spotPrice = averagePrice;
+                console.log(`[${new Date().toISOString()}] Atualizado spotPrice para ${symbol}: ${averagePrice} (futuresPrice atual: ${data.futuresPrice})`);
             }
         } else if (marketType === 'futures') {
             this.futuresPricesReceived.add(symbol);
             if (!this.priceData.has(symbol)) {
                 this.priceData.set(symbol, { symbol, spotPrice: 0, futuresPrice: averagePrice });
+                console.log(`[${new Date().toISOString()}] Criado novo registro para ${symbol} com futuresPrice=${averagePrice}`);
             } else {
-                this.priceData.get(symbol)!.futuresPrice = averagePrice;
+                const data = this.priceData.get(symbol)!;
+                data.futuresPrice = averagePrice;
+                console.log(`[${new Date().toISOString()}] Atualizado futuresPrice para ${symbol}: ${averagePrice} (spotPrice atual: ${data.spotPrice})`);
             }
+        }
+
+        // Log do estado atual do par após a atualização
+        const currentData = this.priceData.get(symbol);
+        if (currentData) {
+            console.log(`[${new Date().toISOString()}] Estado atual de ${symbol}:`, {
+                spotPrice: currentData.spotPrice,
+                futuresPrice: currentData.futuresPrice,
+                hasSpot: this.spotPricesReceived.has(symbol),
+                hasFutures: this.futuresPricesReceived.has(symbol)
+            });
         }
     }
 
