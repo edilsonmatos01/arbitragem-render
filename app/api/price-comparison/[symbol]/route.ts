@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { adjustToUTC } from '@/lib/utils';
 
 function roundToNearestInterval(date: Date, intervalMinutes: number): Date {
   const minutes = date.getMinutes();
@@ -38,18 +37,19 @@ export async function GET(
       return NextResponse.json([]);
     }
 
-    // Define o intervalo de 24 horas em UTC
+    // Define o intervalo de 24 horas
     const now = new Date();
-    const utcNow = adjustToUTC(now);
-    const utcStart = new Date(utcNow.getTime() - 24 * 60 * 60 * 1000);
+    const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-    // Busca os dados do banco usando UTC
+    console.log(`Buscando dados para ${symbol} de ${start.toISOString()} até ${now.toISOString()}`);
+
+    // Busca os dados do banco
     const priceHistory = await prisma.spreadHistory.findMany({
       where: {
         symbol: symbol,
         timestamp: {
-          gte: utcStart,
-          lte: utcNow
+          gte: start,
+          lte: now
         }
       },
       select: {
@@ -68,6 +68,8 @@ export async function GET(
       }
     });
 
+    console.log(`Encontrados ${priceHistory.length} registros para ${symbol}`);
+
     // Agrupa os dados em intervalos de 30 minutos
     const groupedData = new Map<string, { 
       spot: { sum: number; count: number }; 
@@ -75,7 +77,7 @@ export async function GET(
     }>();
     
     // Inicializa todos os intervalos de 30 minutos
-    let currentTime = roundToNearestInterval(new Date(now.getTime() - 24 * 60 * 60 * 1000), 30);
+    let currentTime = roundToNearestInterval(start, 30);
     const endTime = roundToNearestInterval(now, 30);
 
     while (currentTime <= endTime) {
@@ -98,12 +100,12 @@ export async function GET(
         futures: { sum: 0, count: 0 }
       };
 
-      if (record.spotPrice) {
+      if (record.spotPrice !== null) {
         data.spot.sum += record.spotPrice;
         data.spot.count++;
       }
 
-      if (record.futuresPrice) {
+      if (record.futuresPrice !== null) {
         data.futures.sum += record.futuresPrice;
         data.futures.count++;
       }
@@ -115,8 +117,8 @@ export async function GET(
     const formattedData = Array.from(groupedData.entries())
       .map(([timestamp, data]) => ({
         timestamp,
-        gateio_price: data.spot.count > 0 ? data.spot.sum / data.spot.count : null,
-        mexc_price: data.futures.count > 0 ? data.futures.sum / data.futures.count : null
+        gateio_price: data.spot.count > 0 ? Number(data.spot.sum / data.spot.count) : null,
+        mexc_price: data.futures.count > 0 ? Number(data.futures.sum / data.futures.count) : null
       }))
       .sort((a, b) => {
         const [dateA, timeA] = a.timestamp.split(' - ');
@@ -132,32 +134,14 @@ export async function GET(
         return minuteA - minuteB;
       });
 
-    // Interpolação para pontos faltantes
-    let lastValidIndex = -1;
-    for (let i = 0; i < formattedData.length; i++) {
-      if (formattedData[i].gateio_price !== null && formattedData[i].mexc_price !== null) {
-        if (lastValidIndex !== -1 && i - lastValidIndex > 1) {
-          const startGateio = formattedData[lastValidIndex].gateio_price!;
-          const endGateio = formattedData[i].gateio_price!;
-          const startMexc = formattedData[lastValidIndex].mexc_price!;
-          const endMexc = formattedData[i].mexc_price!;
-          const steps = i - lastValidIndex;
-
-          for (let j = 1; j < steps; j++) {
-            const fraction = j / steps;
-            const smoothFraction = fraction * fraction * (3 - 2 * fraction);
-            
-            formattedData[lastValidIndex + j].gateio_price = startGateio + (endGateio - startGateio) * smoothFraction;
-            formattedData[lastValidIndex + j].mexc_price = startMexc + (endMexc - startMexc) * smoothFraction;
-          }
-        }
-        lastValidIndex = i;
-      }
-    }
+    console.log(`Dados formatados: ${formattedData.length} pontos`);
+    console.log(`Primeiro ponto: ${JSON.stringify(formattedData[0])}`);
+    console.log(`Último ponto: ${JSON.stringify(formattedData[formattedData.length - 1])}`);
 
     return NextResponse.json(formattedData);
   } catch (error) {
     console.error('Error fetching price comparison:', error);
-    return NextResponse.json([]);
+    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido ao buscar dados';
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 } 

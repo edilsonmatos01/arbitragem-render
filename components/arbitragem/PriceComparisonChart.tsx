@@ -59,15 +59,33 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
+      console.log(`Buscando dados para ${symbol}...`);
       const response = await fetch(`/api/price-comparison/${encodeURIComponent(symbol)}`);
-      if (!response.ok) throw new Error('Falha ao carregar dados');
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Falha ao carregar dados: ${response.status}`);
+      }
+
       const result = await response.json();
+      console.log(`Dados recebidos para ${symbol}:`, {
+        totalPoints: result.length,
+        firstPoint: result[0],
+        lastPoint: result[result.length - 1],
+        hasNullValues: result.some((point: PriceData) => point.gateio_price === null || point.mexc_price === null)
+      });
+
+      if (result.length === 0) {
+        throw new Error('Nenhum dado encontrado para o período');
+      }
+
       setData(result);
       setError(null);
       setLastUpdate(new Date());
     } catch (err) {
       console.error('Erro ao buscar dados de preços:', err);
-      setError('Falha ao carregar dados de preços');
+      setError(err instanceof Error ? err.message : 'Falha ao carregar dados de preços');
+      setData([]);
     } finally {
       setLoading(false);
     }
@@ -94,7 +112,7 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-[400px]">
+      <div className="flex items-center justify-center h-[400px] bg-gray-900 rounded-lg border border-gray-800">
         <p className="text-gray-400">Carregando dados...</p>
       </div>
     );
@@ -102,8 +120,23 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-[400px]">
-        <p className="text-red-400">{error}</p>
+      <div className="flex flex-col items-center justify-center h-[400px] bg-gray-900 rounded-lg border border-gray-800 p-4">
+        <p className="text-red-400 mb-2">Erro ao carregar dados</p>
+        <p className="text-gray-400 text-sm text-center">{error}</p>
+        <button
+          onClick={() => fetchData()}
+          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+        >
+          Tentar novamente
+        </button>
+      </div>
+    );
+  }
+
+  if (data.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-[400px] bg-gray-900 rounded-lg border border-gray-800">
+        <p className="text-gray-400">Nenhum dado disponível</p>
       </div>
     );
   }
@@ -115,7 +148,7 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
   const padding = (maxPrice - minPrice) * 0.1; // 10% de padding
 
   return (
-    <div className="w-full h-[400px]">
+    <div className="w-full h-[400px] bg-gray-900 rounded-lg border border-gray-800 p-4">
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-lg font-semibold text-white">
           Comparativo de Preços - {symbol}
