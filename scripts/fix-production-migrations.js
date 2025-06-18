@@ -14,18 +14,22 @@ async function executeQuery(pool, query) {
     }
 }
 
-async function waitForDatabase(pool, maxRetries = 10) {
-    for (let i = 0; i < maxRetries; i++) {
+async function waitForDatabase() {
+    for (let i = 1; i <= 15; i++) {
         try {
-            await pool.query('SELECT 1');
-            console.log('Conexão com o banco de dados estabelecida!');
-            return true;
+            console.log(`Tentativa ${i}/15 de conectar ao banco...`);
+            await prisma.$connect();
+            console.log('Conexão bem sucedida!');
+            return;
         } catch (error) {
-            console.log(`Tentativa ${i + 1}/${maxRetries} de conectar ao banco...`);
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            console.error(`Tentativa ${i} falhou:`, error.message);
+            if (i < 15) {
+                // Aumenta o tempo de espera entre tentativas
+                await new Promise(resolve => setTimeout(resolve, 10000)); // 10 segundos
+            }
         }
     }
-    throw new Error('Não foi possível conectar ao banco de dados');
+    throw new Error('Não foi possível conectar ao banco de dados após 15 tentativas');
 }
 
 async function main() {
@@ -44,7 +48,7 @@ async function main() {
         console.log('Iniciando processo de correção das migrações...');
         
         // Espera o banco estar disponível
-        await waitForDatabase(pool);
+        await waitForDatabase();
 
         // Verifica se a tabela _prisma_migrations existe
         const hasMigrationsTable = await executeQuery(pool, `
