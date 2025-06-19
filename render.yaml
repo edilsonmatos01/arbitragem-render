@@ -94,7 +94,7 @@ services:
   env: node
   region: oregon
   plan: standard
-  buildCommand: npm install && npx prisma generate && npm run build && npx tsc --project tsconfig.server.json
+  buildCommand: npm install && npm run prisma:generate && npm run build && npx tsc --project tsconfig.server.json
   startCommand: node dist/src/spread-monitor.js
   envVars:
     - key: NODE_ENV
