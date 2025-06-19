@@ -96,11 +96,11 @@ services:
   plan: standard
   buildCommand: |
     export NODE_OPTIONS="--max_old_space_size=2048"
-    export BABEL_ENV=production
     export NODE_ENV=production
     rm -rf node_modules dist
-    npm cache clean --force
-    npm install
+    npm install typescript@5.4.0 -g
+    npm ci
+    node scripts/compile.js
     npx prisma generate
     npm run build:server
   startCommand: node --max-old-space-size=2048 dist/src/spread-monitor.js

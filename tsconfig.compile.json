@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES5",
+    "module": "CommonJS",
+    "lib": ["ES5", "ES2015.Promise"],
+    "moduleResolution": "node",
+    "outDir": "./dist/src",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"]
+    },
+    "declaration": false,
+    "sourceMap": false,
+    "removeComments": true,
+    "allowJs": true,
+    "noEmit": false,
+    "downlevelIteration": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+} 
