@@ -21,7 +21,7 @@
     "cleanup:schedule": "ts-node scripts/scheduleCleanup.ts",
     "dev:monitor": "ts-node-dev --respawn --transpile-only src/spread-monitor.ts",
     "start:monitor": "node dist/src/spread-monitor.js",
-    "build:monitor": "node scripts/compile.js",
+    "build:monitor": "tsc --project tsconfig.compile.json",
     "build:server": "npm run build:monitor"
   },
   "dependencies": {

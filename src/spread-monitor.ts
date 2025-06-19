@@ -1,7 +1,7 @@
 import db from './db-client';
-import { GateIoConnector } from './gateio-connector';
-import { MexcConnector } from './mexc-connector';
+import { GateIoAdapter, MexcAdapter } from './exchange-adapters';
 import { calculateSpreadPercentage } from './utils';
+import { ExchangeConnector } from './types';
 
 const symbols = [
   'BTC_USDT',
@@ -16,24 +16,33 @@ const symbols = [
   'DOT_USDT'
 ];
 
-const gateio = new GateIoConnector(
+const gateio = new GateIoAdapter(
   process.env.GATE_API_KEY || '',
-  process.env.GATE_SECRET || '',
-  'spot'
+  process.env.GATE_SECRET || ''
 );
 
-const mexc = new MexcConnector(
+const mexc = new MexcAdapter(
   process.env.MEXC_API_KEY || '',
   process.env.MEXC_SECRET || ''
 );
+
+async function getPrice(exchange: ExchangeConnector, symbol: string): Promise<number> {
+  try {
+    const ticker = await exchange.getTicker(symbol);
+    return (Number(ticker.buy) + Number(ticker.sell)) / 2;
+  } catch (error) {
+    console.error(`Erro ao obter preço de ${symbol}:`, error);
+    return 0;
+  }
+}
 
 async function monitorSpread() {
   try {
     for (const symbol of symbols) {
       try {
         const [gateioPrice, mexcPrice] = await Promise.all([
-          gateio.getSpotPrice(symbol),
-          mexc.getSpotPrice(symbol)
+          getPrice(gateio, symbol),
+          getPrice(mexc, symbol)
         ]);
 
         if (!gateioPrice || !mexcPrice) {

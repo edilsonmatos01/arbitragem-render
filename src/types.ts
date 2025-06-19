@@ -31,4 +31,14 @@ export interface ArbitrageOpportunity {
     spMax?: number;
     spMin?: number;
     crosses?: number;
+}
+
+export interface Ticker {
+  buy: string;
+  sell: string;
+  symbol: string;
+}
+
+export interface ExchangeConnector {
+  getTicker(symbol: string): Promise<Ticker>;
 } 
