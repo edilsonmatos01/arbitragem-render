@@ -21,7 +21,7 @@
     "cleanup:schedule": "ts-node scripts/scheduleCleanup.ts",
     "dev:monitor": "ts-node-dev --respawn --transpile-only src/spread-monitor.ts",
     "start:monitor": "node dist/src/spread-monitor.js",
-    "build:monitor": "tsc --project tsconfig.build.json",
+    "build:monitor": "babel src --extensions \".ts\" --out-dir dist/src",
     "build:server": "npm run build:monitor"
   },
   "dependencies": {
@@ -55,6 +55,10 @@
     "ws": "^8.18.2"
   },
   "devDependencies": {
+    "@babel/cli": "^7.24.1",
+    "@babel/core": "^7.24.3",
+    "@babel/preset-env": "^7.24.3",
+    "@babel/preset-typescript": "^7.24.1",
     "@eslint/eslintrc": "^2.1.4",
     "@types/node": "^20.19.0",
     "eslint": "^8.56.0",
