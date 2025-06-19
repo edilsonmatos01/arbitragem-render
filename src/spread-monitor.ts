@@ -1,13 +1,9 @@
-import { PrismaClient } from '@prisma/client';
+import { createSpreads, disconnectPrisma } from './prisma-client';
 import cron from 'node-cron';
 import { GateIoConnector } from './gateio-connector';
 import { MexcConnector } from './mexc-connector';
 import WebSocket from 'ws';
 import Decimal from 'decimal.js';
-
-const prisma = new PrismaClient({
-  errorFormat: 'minimal',
-});
 
 let isCronRunning = false;
 
@@ -116,9 +112,7 @@ class SpreadMonitor {
 
         if (spreads.length > 0) {
             try {
-                await prisma.spreadHistory.createMany({
-                    data: spreads
-                });
+                await createSpreads(spreads);
                 this.lastSaveTime = timestamp;
             } catch (error) {
                 console.error('Erro ao salvar spreads:', error);
@@ -165,12 +159,12 @@ cron.schedule('*/5 * * * *', async () => {
 spreadMonitor.monitorSpreads().catch(console.error);
 
 process.on('SIGTERM', async () => {
-    await prisma.$disconnect();
+    await disconnectPrisma();
     process.exit(0);
 });
 
 process.on('SIGINT', async () => {
-    await prisma.$disconnect();
+    await disconnectPrisma();
     process.exit(0);
 });
 
@@ -186,18 +180,16 @@ async function savePrices(symbol: string, spotPrice: number, futuresPrice: numbe
     const direction = spread.greaterThanOrEqualTo(0) ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT';
 
     // Salva no banco
-    await prisma.spreadHistory.create({
-      data: {
-        symbol,
-        exchangeBuy: 'gateio',
-        exchangeSell: 'mexc',
-        direction,
-        spread: parseFloat(spread.abs().toFixed(8)),
-        spotPrice,
-        futuresPrice,
-        timestamp: new Date()
-      }
-    });
+    await createSpreads([{
+      symbol,
+      exchangeBuy: 'gateio',
+      exchangeSell: 'mexc',
+      direction,
+      spread: parseFloat(spread.abs().toFixed(8)),
+      spotPrice,
+      futuresPrice,
+      timestamp: new Date()
+    }]);
 
     console.log(`[${new Date().toISOString()}] Preços salvos para ${symbol}: Spot=${spotPrice}, Futures=${futuresPrice}, Spread=${spread.abs().toFixed(8)}%`);
   } catch (error) {
