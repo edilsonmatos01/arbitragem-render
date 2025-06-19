@@ -96,10 +96,9 @@ services:
   plan: standard
   buildCommand: |
     export NODE_OPTIONS="--max_old_space_size=2048"
-    rm -rf node_modules
-    rm -rf dist
+    rm -rf node_modules dist
     npm ci
-    npm run prisma:generate
+    npx prisma generate --generator-engine=binary
     npm run build:server
   startCommand: node --max-old-space-size=2048 dist/src/spread-monitor.js
   envVars:
