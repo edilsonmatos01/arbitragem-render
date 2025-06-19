@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "node server.js",
-    "build": "next build && npm run build:tracker",
+    "build": "next build",
     "start": "NODE_ENV=production node server.js",
     "start:next": "next start",
     "lint": "next lint",
@@ -20,8 +20,9 @@
     "clean": "ts-node scripts/cleanSpreadData.ts",
     "cleanup:schedule": "ts-node scripts/scheduleCleanup.ts",
     "dev:monitor": "ts-node-dev --respawn --transpile-only src/spread-monitor.ts",
-    "start:monitor": "node src/spread-monitor.js",
-    "build:monitor": "tsc src/spread-monitor.ts"
+    "start:monitor": "node dist/src/spread-monitor.js",
+    "build:monitor": "tsc --project tsconfig.build.json",
+    "build:server": "npm run build:monitor"
   },
   "dependencies": {
     "@prisma/client": "^6.10.1",

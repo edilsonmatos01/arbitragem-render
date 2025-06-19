@@ -1,3 +1,4 @@
+import type { PrismaClient as PrismaClientType } from '@prisma/client';
 import { PrismaClient } from '@prisma/client';
 import cron from 'node-cron';
 import { GateIoConnector } from './gateio-connector';
@@ -5,7 +6,7 @@ import { MexcConnector } from './mexc-connector';
 import WebSocket from 'ws';
 import Decimal from 'decimal.js';
 
-const prisma = new PrismaClient();
+const prisma: PrismaClientType = new PrismaClient();
 let isCronRunning = false;
 
 // Lista de pares a serem monitorados
@@ -20,7 +21,7 @@ const TRADING_PAIRS = [
     'AVAX/USDT',
     'MATIC/USDT',
     'DOT/USDT'
-];
+] as string[];
 
 interface PriceData {
     symbol: string;
