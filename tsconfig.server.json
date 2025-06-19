@@ -8,8 +8,12 @@
     "isolatedModules": false,
     "target": "es2020",
     "lib": ["es2020"],
-    "jsx": "preserve"
+    "jsx": "preserve",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"]
+    }
   },
-  "include": ["websocket-server.ts", "src/**/*.ts"],
+  "include": ["websocket-server.ts", "src/**/*.ts", "src/spread-monitor.ts"],
   "exclude": ["node_modules", "src/app", "app"]
 } 
