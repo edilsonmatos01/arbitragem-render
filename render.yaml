@@ -89,41 +89,27 @@ services:
         name: arbitragem-banco
         property: connectionString
 
-- type: worker
-  name: arbitragem-render
-  env: node
-  region: oregon
-  plan: standard
+- type: cron
+  name: spread-monitor
+  runtime: node
+  region: ohio
+  plan: free
   buildCommand: |
     export NODE_OPTIONS="--max_old_space_size=2048"
     export NODE_ENV=production
-    rm -rf node_modules dist
-    npm install typescript@5.4.0 -g
+    rm -rf node_modules dist .next
+    npm cache clean --force
+    npm install typescript@4.9.5 -g
     npm ci
+    rm -rf node_modules/.prisma
+    npm run prisma:generate
     node scripts/compile.js
-    npx prisma generate
-    npm run build:server
-  startCommand: node --max-old-space-size=2048 dist/src/spread-monitor.js
+  startCommand: node dist/src/spread-monitor.js
+  schedule: "*/5 * * * *"
   envVars:
-    - key: NODE_ENV
-      value: production
     - key: NODE_VERSION
       value: 18.17.0
-    - key: PRISMA_CLI_QUERY_ENGINE_TYPE
+    - key: PRISMA_CLIENT_ENGINE_TYPE
       value: binary
-    - key: DATABASE_URL
-      fromDatabase:
-        name: arbitragem-banco
-        property: connectionString
-    - key: MEXC_API_KEY
-      sync: false
-    - key: MEXC_SECRET
-      sync: false
-    - key: GATE_API_KEY
-      sync: false
-    - key: GATE_SECRET
-      sync: false
-  autoDeploy: true
-  branch: master
 
 version: "1"

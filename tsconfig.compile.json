@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES5",
     "module": "CommonJS",
-    "lib": ["ES5", "ES2015.Promise"],
+    "lib": ["ES5", "ES2015.Promise", "ES2015.Collection", "ES2015.Iterable"],
     "moduleResolution": "node",
     "outDir": "./dist/src",
     "esModuleInterop": true,
@@ -19,8 +19,11 @@
     "removeComments": true,
     "allowJs": true,
     "noEmit": false,
-    "downlevelIteration": true
+    "downlevelIteration": true,
+    "isolatedModules": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist", "**/*.d.ts"]
 } 

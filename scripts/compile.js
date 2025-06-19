@@ -8,9 +8,23 @@ if (fs.existsSync('dist')) {
   fs.rmSync('dist', { recursive: true, force: true });
 }
 
-// Gera o Prisma Client
+// Limpa o Prisma Client existente
+console.log('Limpando Prisma Client...');
+const prismaClientPath = path.join(__dirname, '..', 'node_modules', '.prisma', 'client');
+if (fs.existsSync(prismaClientPath)) {
+  fs.rmSync(prismaClientPath, { recursive: true, force: true });
+}
+
+// Gera o Prisma Client com configurações específicas
 console.log('Gerando Prisma Client...');
-execSync('npx prisma generate', { stdio: 'inherit' });
+process.env.NODE_ENV = 'production';
+execSync('npx prisma generate', {
+  stdio: 'inherit',
+  env: {
+    ...process.env,
+    PRISMA_CLIENT_ENGINE_TYPE: 'binary',
+  },
+});
 
 // Compila TypeScript para JavaScript ES5
 console.log('Compilando TypeScript para JavaScript ES5...');
