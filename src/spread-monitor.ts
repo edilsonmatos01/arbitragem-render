@@ -3,18 +3,29 @@ import { GateIoAdapter, MexcAdapter } from './exchange-adapters';
 import { calculateSpreadPercentage } from './utils';
 import { ExchangeConnector } from './types';
 
-const symbols = [
-  'BTC_USDT',
-  'ETH_USDT',
-  'SOL_USDT',
-  'BNB_USDT',
-  'XRP_USDT',
-  'DOGE_USDT',
-  'ADA_USDT',
-  'AVAX_USDT',
-  'MATIC_USDT',
-  'DOT_USDT'
-];
+// Formato dos símbolos para cada exchange
+const SYMBOLS = {
+  'BTC/USDT': {
+    gateio: 'BTC_USDT',
+    mexc: 'BTCUSDT'
+  },
+  'ETH/USDT': {
+    gateio: 'ETH_USDT',
+    mexc: 'ETHUSDT'
+  },
+  'SOL/USDT': {
+    gateio: 'SOL_USDT',
+    mexc: 'SOLUSDT'
+  },
+  'BNB/USDT': {
+    gateio: 'BNB_USDT',
+    mexc: 'BNBUSDT'
+  },
+  'XRP/USDT': {
+    gateio: 'XRP_USDT',
+    mexc: 'XRPUSDT'
+  }
+};
 
 const gateio = new GateIoAdapter(
   process.env.GATE_API_KEY || '',
@@ -38,31 +49,31 @@ async function getPrice(exchange: ExchangeConnector, symbol: string): Promise<nu
 
 async function monitorSpread() {
   try {
-    for (const symbol of symbols) {
+    for (const [baseSymbol, exchangeSymbols] of Object.entries(SYMBOLS)) {
       try {
         const [gateioPrice, mexcPrice] = await Promise.all([
-          getPrice(gateio, symbol),
-          getPrice(mexc, symbol)
+          getPrice(gateio, exchangeSymbols.gateio),
+          getPrice(mexc, exchangeSymbols.mexc)
         ]);
 
         if (!gateioPrice || !mexcPrice) {
-          console.log(`Preço não disponível para ${symbol}`);
+          console.log(`Preço não disponível para ${baseSymbol}`);
           continue;
         }
 
         const spreadPercentage = calculateSpreadPercentage(gateioPrice, mexcPrice);
 
         await db.createSpread({
-          symbol,
+          symbol: baseSymbol,
           gateioPrice,
           mexcPrice,
           spreadPercentage,
           timestamp: new Date()
         });
 
-        console.log(`${symbol}: Gate.io: ${gateioPrice}, MEXC: ${mexcPrice}, Spread: ${spreadPercentage}%`);
+        console.log(`${baseSymbol}: Gate.io: ${gateioPrice}, MEXC: ${mexcPrice}, Spread: ${spreadPercentage}%`);
       } catch (error) {
-        console.error(`Erro ao processar ${symbol}:`, error);
+        console.error(`Erro ao processar ${baseSymbol}:`, error);
       }
     }
 
