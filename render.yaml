@@ -9,11 +9,10 @@ databases:
   - source: 0.0.0.0/0
     description: everywhere
   postgresMajorVersion: "16"
-  postDeploy: npm run db:setup && npm run prisma:deploy
 - name: postgres
   plan: free
   ipAllowList: []
-  postDeploy: npm run db:setup
+
 services:
 - type: web
   name: robo-de-arbitragem
