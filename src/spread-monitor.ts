@@ -1,4 +1,3 @@
-import type { PrismaClient as PrismaClientType } from '@prisma/client';
 import { PrismaClient } from '@prisma/client';
 import cron from 'node-cron';
 import { GateIoConnector } from './gateio-connector';
@@ -6,7 +5,10 @@ import { MexcConnector } from './mexc-connector';
 import WebSocket from 'ws';
 import Decimal from 'decimal.js';
 
-const prisma: PrismaClientType = new PrismaClient();
+const prisma = new PrismaClient({
+  errorFormat: 'minimal',
+});
+
 let isCronRunning = false;
 
 // Lista de pares a serem monitorados
@@ -21,7 +23,7 @@ const TRADING_PAIRS = [
     'AVAX/USDT',
     'MATIC/USDT',
     'DOT/USDT'
-] as string[];
+];
 
 interface PriceData {
     symbol: string;
@@ -43,33 +45,18 @@ class SpreadMonitor {
         this.futuresPricesReceived = new Set();
         this.lastSaveTime = null;
 
-        // Inicializa os conectores
         this.gateioConnector = new GateIoConnector('GATEIO_SPOT', this.handlePriceUpdate.bind(this));
         this.mexcConnector = new MexcConnector(
             'MEXC_FUTURES',
             this.handlePriceUpdate.bind(this),
             () => {}
         );
-
-        console.log(`[${new Date().toISOString()}] SpreadMonitor inicializado`);
     }
 
     private handlePriceUpdate(data: { symbol: string; marketType: string; bestBid: number; bestAsk: number }): void {
         const { symbol, marketType, bestBid, bestAsk } = data;
         
-        console.log(`[${new Date().toISOString()}] Dados recebidos da exchange:`, {
-            symbol,
-            marketType,
-            bestBid,
-            bestAsk,
-            rawData: JSON.stringify(data)
-        });
-
         if (!bestBid || !bestAsk || isNaN(bestBid) || isNaN(bestAsk)) {
-            console.error(`[${new Date().toISOString()}] Preços inválidos recebidos para ${symbol} (${marketType}):`, {
-                bestBid,
-                bestAsk
-            });
             return;
         }
 
@@ -77,19 +64,19 @@ class SpreadMonitor {
 
         if (marketType === 'spot') {
             this.spotPricesReceived.add(symbol);
-            if (!this.priceData.has(symbol)) {
-                this.priceData.set(symbol, { symbol, spotPrice: averagePrice, futuresPrice: 0 });
+            const existingData = this.priceData.get(symbol);
+            if (existingData) {
+                existingData.spotPrice = averagePrice;
             } else {
-                const data = this.priceData.get(symbol)!;
-                data.spotPrice = averagePrice;
+                this.priceData.set(symbol, { symbol, spotPrice: averagePrice, futuresPrice: 0 });
             }
         } else if (marketType === 'futures') {
             this.futuresPricesReceived.add(symbol);
-            if (!this.priceData.has(symbol)) {
-                this.priceData.set(symbol, { symbol, spotPrice: 0, futuresPrice: averagePrice });
+            const existingData = this.priceData.get(symbol);
+            if (existingData) {
+                existingData.futuresPrice = averagePrice;
             } else {
-                const data = this.priceData.get(symbol)!;
-                data.futuresPrice = averagePrice;
+                this.priceData.set(symbol, { symbol, spotPrice: 0, futuresPrice: averagePrice });
             }
         }
     }
@@ -111,7 +98,7 @@ class SpreadMonitor {
             timestamp: Date;
         }> = [];
 
-        for (const [symbol, data] of this.priceData.entries()) {
+        Array.from(this.priceData.entries()).forEach(([symbol, data]) => {
             if (data.spotPrice > 0 && data.futuresPrice > 0) {
                 const spread = this.calculateSpread(data.spotPrice, data.futuresPrice);
                 spreads.push({
@@ -125,7 +112,7 @@ class SpreadMonitor {
                     timestamp
                 });
             }
-        }
+        });
 
         if (spreads.length > 0) {
             try {
@@ -141,7 +128,6 @@ class SpreadMonitor {
 
     public async monitorSpreads(): Promise<void> {
         if (isCronRunning) {
-            console.log('Monitoramento já está em execução');
             return;
         }
 
@@ -176,17 +162,14 @@ cron.schedule('*/5 * * * *', async () => {
     await spreadMonitor.monitorSpreads();
 });
 
-console.log(`[${new Date().toISOString()}] Iniciando serviço de monitoramento`);
 spreadMonitor.monitorSpreads().catch(console.error);
 
 process.on('SIGTERM', async () => {
-    console.log('Recebido sinal SIGTERM. Encerrando...');
     await prisma.$disconnect();
     process.exit(0);
 });
 
 process.on('SIGINT', async () => {
-    console.log('Recebido sinal SIGINT. Encerrando...');
     await prisma.$disconnect();
     process.exit(0);
 });

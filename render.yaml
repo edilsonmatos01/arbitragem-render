@@ -95,13 +95,18 @@ services:
   region: oregon
   plan: standard
   buildCommand: |
+    export NODE_OPTIONS="--max_old_space_size=2048"
     npm ci
     npm run prisma:generate
     npm run build:server
-  startCommand: node dist/src/spread-monitor.js
+  startCommand: node --max-old-space-size=2048 dist/src/spread-monitor.js
   envVars:
     - key: NODE_ENV
       value: production
+    - key: NODE_VERSION
+      value: 18.17.0
+    - key: PRISMA_CLI_QUERY_ENGINE_TYPE
+      value: binary
     - key: DATABASE_URL
       fromDatabase:
         name: arbitragem-banco
