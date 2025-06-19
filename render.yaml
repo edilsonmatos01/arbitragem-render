@@ -94,11 +94,8 @@ services:
   runtime: node
   region: ohio
   plan: free
-  buildCommand: |
-    export NODE_OPTIONS="--max_old_space_size=2048"
-    export NODE_ENV=production
-    npm install
-  startCommand: node src/spread-monitor.js
+  buildCommand: npm install
+  startCommand: node monitor.js
   schedule: "*/5 * * * *"
   envVars:
     - key: NODE_VERSION
@@ -107,13 +104,5 @@ services:
       fromDatabase:
         name: arbitragem-banco
         property: connectionString
-    - key: GATE_API_KEY
-      sync: false
-    - key: GATE_SECRET
-      sync: false
-    - key: MEXC_API_KEY
-      sync: false
-    - key: MEXC_SECRET
-      sync: false
 
 version: "1"
