@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS "Spread" (
+  id SERIAL PRIMARY KEY,
+  symbol VARCHAR(20) NOT NULL,
+  "gateioPrice" DECIMAL(20,8) NOT NULL,
+  "mexcPrice" DECIMAL(20,8) NOT NULL,
+  "spreadPercentage" DECIMAL(10,4) NOT NULL,
+  timestamp TIMESTAMP NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+); 

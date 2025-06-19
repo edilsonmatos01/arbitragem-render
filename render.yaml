@@ -97,13 +97,24 @@ services:
   buildCommand: |
     export NODE_OPTIONS="--max_old_space_size=2048"
     export NODE_ENV=production
-    export PRISMA_CLIENT_ENGINE_TYPE=binary
-    export PRISMA_CLI_QUERY_ENGINE_TYPE=binary
-    node scripts/compile.js
+    npm install
+    npm run build:monitor
   startCommand: node dist/src/spread-monitor.js
   schedule: "*/5 * * * *"
   envVars:
     - key: NODE_VERSION
       value: 18.17.0
+    - key: DATABASE_URL
+      fromDatabase:
+        name: arbitragem-banco
+        property: connectionString
+    - key: GATE_API_KEY
+      sync: false
+    - key: GATE_SECRET
+      sync: false
+    - key: MEXC_API_KEY
+      sync: false
+    - key: MEXC_SECRET
+      sync: false
 
 version: "1"
