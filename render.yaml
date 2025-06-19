@@ -9,9 +9,6 @@ databases:
   - source: 0.0.0.0/0
     description: everywhere
   postgresMajorVersion: "16"
-- name: postgres
-  plan: free
-  ipAllowList: []
 
 services:
 - type: web
@@ -74,9 +71,10 @@ services:
   autoDeploy: true
   branch: default
 
-- type: worker
-  name: arbitragem-worker
+- type: web
+  name: robo-de-arbitragem-background
   env: node
+  region: oregon
   plan: free
   buildCommand: npm install && npm run db:setup
   startCommand: node scripts/worker.js
