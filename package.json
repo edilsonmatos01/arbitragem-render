@@ -10,13 +10,16 @@
     "start:tracker": "node websocket-server.js",
     "db:setup": "node scripts/create-table.sql",
     "prisma:deploy": "prisma migrate deploy",
-    "cleanup:schedule": "node scripts/scheduleCleanup.js"
+    "cleanup:schedule": "node scripts/scheduleCleanup.js",
+    "postinstall": "npm run db:setup"
   },
   "dependencies": {
     "node-fetch": "^2.6.7",
     "pg": "^8.11.3",
     "prisma": "^5.9.1",
     "@prisma/client": "^5.9.1",
-    "ws": "^8.16.0"
+    "ws": "^8.16.0",
+    "dotenv": "^16.4.1",
+    "express": "^4.18.2"
   }
 }

@@ -1,5 +1,8 @@
 const { spawn } = require('child_process');
 const path = require('path');
+const express = require('express');
+const app = express();
+const port = process.env.PORT || 3000;
 
 // Função para executar um script
 function runScript(scriptPath) {
@@ -25,9 +28,19 @@ function runScript(scriptPath) {
     });
 }
 
+// Endpoint de healthcheck
+app.get('/', (req, res) => {
+    res.json({ status: 'ok', message: 'Background service is running' });
+});
+
 // Função principal que executa os scripts em paralelo
 async function main() {
     try {
+        // Inicia o servidor web
+        app.listen(port, () => {
+            console.log(`Background service listening on port ${port}`);
+        });
+
         // Inicia o monitor em background
         runScript(path.join(__dirname, '../monitor.js')).catch(console.error);
 
