@@ -97,7 +97,8 @@ services:
   buildCommand: |
     export NODE_OPTIONS="--max_old_space_size=2048"
     rm -rf node_modules dist
-    npm ci
+    npm cache clean --force
+    npm install
     npx prisma generate
     npm run build:server
   startCommand: node --max-old-space-size=2048 dist/src/spread-monitor.js

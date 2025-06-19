@@ -25,6 +25,12 @@
     "build:server": "npm run build:monitor"
   },
   "dependencies": {
+    "@babel/cli": "^7.24.1",
+    "@babel/core": "^7.24.3",
+    "@babel/preset-env": "^7.24.3",
+    "@babel/preset-typescript": "^7.24.1",
+    "@babel/plugin-transform-runtime": "^7.24.3",
+    "@babel/runtime": "^7.24.1",
     "@prisma/client": "^6.10.1",
     "@radix-ui/react-dialog": "^1.1.14",
     "@types/decimal.js": "^0.0.32",
@@ -55,10 +61,6 @@
     "ws": "^8.18.2"
   },
   "devDependencies": {
-    "@babel/cli": "^7.24.1",
-    "@babel/core": "^7.24.3",
-    "@babel/preset-env": "^7.24.3",
-    "@babel/preset-typescript": "^7.24.1",
     "@eslint/eslintrc": "^2.1.4",
     "@types/node": "^20.19.0",
     "eslint": "^8.56.0",
