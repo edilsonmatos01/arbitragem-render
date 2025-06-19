@@ -97,7 +97,6 @@ services:
   buildCommand: |
     export NODE_OPTIONS="--max_old_space_size=2048"
     rm -rf node_modules dist
-    npm install -g @babel/cli @babel/core @babel/preset-env @babel/preset-typescript
     npm ci
     npx prisma generate
     npm run build:server
