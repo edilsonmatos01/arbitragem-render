@@ -8,12 +8,14 @@ if (fs.existsSync('dist')) {
   fs.rmSync('dist', { recursive: true, force: true });
 }
 
-// Limpa o Prisma Client existente
-console.log('Limpando Prisma Client...');
-const prismaClientPath = path.join(__dirname, '..', 'node_modules', '.prisma', 'client');
-if (fs.existsSync(prismaClientPath)) {
-  fs.rmSync(prismaClientPath, { recursive: true, force: true });
+// Remove node_modules e reinstala
+console.log('Reinstalando dependências...');
+if (fs.existsSync('node_modules')) {
+  fs.rmSync('node_modules', { recursive: true, force: true });
 }
+
+// Instala dependências com npm ci
+execSync('npm ci --production=false', { stdio: 'inherit' });
 
 // Gera o Prisma Client com configurações específicas
 console.log('Gerando Prisma Client...');
@@ -23,11 +25,26 @@ execSync('npx prisma generate', {
   env: {
     ...process.env,
     PRISMA_CLIENT_ENGINE_TYPE: 'binary',
+    PRISMA_CLI_QUERY_ENGINE_TYPE: 'binary'
   },
 });
 
 // Compila TypeScript para JavaScript ES5
 console.log('Compilando TypeScript para JavaScript ES5...');
 execSync('npx tsc --project tsconfig.compile.json', { stdio: 'inherit' });
+
+// Move os arquivos necessários para dist
+console.log('Movendo arquivos para dist...');
+if (!fs.existsSync('dist/node_modules')) {
+  fs.mkdirSync('dist/node_modules', { recursive: true });
+}
+
+// Copia o Prisma Client gerado para dist
+const prismaClientPath = path.join('node_modules', '.prisma', 'client');
+if (fs.existsSync(prismaClientPath)) {
+  const distPrismaPath = path.join('dist', 'node_modules', '.prisma', 'client');
+  fs.mkdirSync(distPrismaPath, { recursive: true });
+  fs.cpSync(prismaClientPath, distPrismaPath, { recursive: true });
+}
 
 console.log('Compilação concluída!'); 

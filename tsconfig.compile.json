@@ -2,13 +2,13 @@
   "compilerOptions": {
     "target": "ES5",
     "module": "CommonJS",
-    "lib": ["ES5", "ES2015.Promise", "ES2015.Collection", "ES2015.Iterable"],
+    "lib": ["ES5"],
     "moduleResolution": "node",
     "outDir": "./dist/src",
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "strict": true,
-    "skipLibCheck": true,
+    "skipLibCheck": false,
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
@@ -20,10 +20,19 @@
     "allowJs": true,
     "noEmit": false,
     "downlevelIteration": true,
-    "isolatedModules": true,
+    "isolatedModules": false,
     "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
+    "emitDecoratorMetadata": true,
+    "useDefineForClassFields": false,
+    "noImplicitOverride": true,
+    "preserveConstEnums": true
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "**/*.d.ts"]
+  "include": [
+    "src/**/*.ts",
+    "node_modules/.prisma/client/index.d.ts"
+  ],
+  "exclude": [
+    "node_modules/@prisma/client/runtime/**/*.d.ts",
+    "dist"
+  ]
 } 

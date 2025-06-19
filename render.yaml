@@ -97,19 +97,13 @@ services:
   buildCommand: |
     export NODE_OPTIONS="--max_old_space_size=2048"
     export NODE_ENV=production
-    rm -rf node_modules dist .next
-    npm cache clean --force
-    npm install typescript@4.9.5 -g
-    npm ci
-    rm -rf node_modules/.prisma
-    npm run prisma:generate
+    export PRISMA_CLIENT_ENGINE_TYPE=binary
+    export PRISMA_CLI_QUERY_ENGINE_TYPE=binary
     node scripts/compile.js
   startCommand: node dist/src/spread-monitor.js
   schedule: "*/5 * * * *"
   envVars:
     - key: NODE_VERSION
       value: 18.17.0
-    - key: PRISMA_CLIENT_ENGINE_TYPE
-      value: binary
 
 version: "1"
