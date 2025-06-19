@@ -12,8 +12,10 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./*"]
-    }
+    },
+    "esModuleInterop": true,
+    "skipLibCheck": true
   },
-  "include": ["websocket-server.ts", "src/**/*.ts", "src/spread-monitor.ts"],
+  "include": ["src/**/*.ts", "src/spread-monitor.ts"],
   "exclude": ["node_modules", "src/app", "app"]
 } 

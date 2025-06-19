@@ -2,11 +2,10 @@ import { PrismaClient } from '@prisma/client';
 import cron from 'node-cron';
 import { GateIoConnector } from './gateio-connector';
 import { MexcConnector } from './mexc-connector';
-import prisma from '@/lib/prisma';
 import WebSocket from 'ws';
 import Decimal from 'decimal.js';
 
-const prismaClient = new PrismaClient();
+const prisma = new PrismaClient();
 let isCronRunning = false;
 
 // Lista de pares a serem monitorados
@@ -134,8 +133,8 @@ class SpreadMonitor {
                     exchangeSell: 'MEXC',
                     direction: 'SPOT_TO_FUTURES',
                     spread,
-                    spotPrice: Number(data.spotPrice.toFixed(8)), // Garante que é um número com 8 casas decimais
-                    futuresPrice: Number(data.futuresPrice.toFixed(8)), // Garante que é um número com 8 casas decimais
+                    spotPrice: Number(data.spotPrice.toFixed(8)),
+                    futuresPrice: Number(data.futuresPrice.toFixed(8)),
                     timestamp
                 });
 
@@ -147,7 +146,7 @@ class SpreadMonitor {
 
         if (spreads.length > 0) {
             try {
-                await prismaClient.spreadHistory.createMany({
+                await prisma.spreadHistory.createMany({
                     data: spreads
                 });
                 console.log(`[${timestamp.toISOString()}] Salvos ${spreads.length} spreads no banco de dados`);
@@ -229,13 +228,13 @@ spreadMonitor.monitorSpreads().catch(console.error);
 // Tratamento de encerramento gracioso
 process.on('SIGTERM', async () => {
     console.log('Recebido sinal SIGTERM. Encerrando...');
-    await prismaClient.$disconnect();
+    await prisma.$disconnect();
     process.exit(0);
 });
 
 process.on('SIGINT', async () => {
     console.log('Recebido sinal SIGINT. Encerrando...');
-    await prismaClient.$disconnect();
+    await prisma.$disconnect();
     process.exit(0);
 });
 
@@ -251,7 +250,7 @@ async function savePrices(symbol: string, spotPrice: number, futuresPrice: numbe
     const direction = spread.greaterThanOrEqualTo(0) ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT';
 
     // Salva no banco
-    await prismaClient.spreadHistory.create({
+    await prisma.spreadHistory.create({
       data: {
         symbol,
         exchangeBuy: 'gateio',
