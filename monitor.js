@@ -100,24 +100,35 @@ async function getMexcPrice(symbol) {
 // Função para enviar dados para o websocket server
 function broadcastPrice(exchange, symbol, bestBid, bestAsk) {
   const wsUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:10000';
-  const wsServer = new WebSocket(wsUrl.replace('wss:', 'ws:'));
+  const wsServer = new WebSocket(wsUrl);
   
   wsServer.on('open', () => {
-    const data = {
-      type: 'price-update',
-      exchange,
-      symbol,
-      bestBid,
-      bestAsk,
-      timestamp: Date.now()
-    };
-    
-    wsServer.send(JSON.stringify(data));
-    wsServer.close();
+    try {
+      const data = {
+        type: 'price-update',
+        exchange,
+        symbol,
+        bestBid,
+        bestAsk,
+        timestamp: Date.now()
+      };
+      
+      wsServer.send(JSON.stringify(data));
+      console.log(`Dados enviados com sucesso para ${exchange} ${symbol}`);
+    } catch (error) {
+      console.error(`Erro ao enviar dados para ${exchange} ${symbol}:`, error);
+    } finally {
+      wsServer.close();
+    }
   });
 
   wsServer.on('error', (error) => {
     console.error(`WebSocket error for ${exchange} ${symbol}:`, error);
+    wsServer.close();
+  });
+
+  wsServer.on('close', () => {
+    console.log(`WebSocket connection closed for ${exchange} ${symbol}`);
   });
 }
 

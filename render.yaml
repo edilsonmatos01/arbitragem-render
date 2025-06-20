@@ -30,6 +30,6 @@ services:
     - key: NODE_VERSION
       value: "18.17.0"
     - key: NEXT_PUBLIC_WEBSOCKET_URL
-      value: "wss://robo-de-arbitragem.onrender.com"
+      value: "wss://robo-de-arbitragem-5n8k.onrender.com"
 
 version: "1"
