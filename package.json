@@ -8,7 +8,7 @@
     "build": "npm install",
     "build:tracker": "npm install",
     "start:tracker": "node websocket-server.js",
-    "db:setup": "node scripts/create-table.sql",
+    "db:setup": "node scripts/db-setup.js",
     "prisma:deploy": "prisma migrate deploy",
     "cleanup:schedule": "node scripts/scheduleCleanup.js",
     "postinstall": "npm run db:setup"
