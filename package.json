@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "tsc --project scripts/tsconfig.json && next build",
     "start": "node server.js",
     "lint": "next lint",
     "db:setup": "node scripts/db-setup.js",
