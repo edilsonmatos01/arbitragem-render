@@ -1,6 +1,18 @@
 const fetch = require('node-fetch');
 const { Pool } = require('pg');
+const http = require('http');
 require('dotenv').config();
+
+// Criar servidor HTTP simples para health check
+const server = http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end('Monitor is running');
+});
+
+const port = process.env.PORT || 10000;
+server.listen(port, () => {
+  console.log(`Health check server listening on port ${port}`);
+});
 
 // Configuração do banco de dados
 const pool = new Pool({
