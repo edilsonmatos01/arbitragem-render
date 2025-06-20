@@ -1,5 +1,6 @@
 const fetch = require('node-fetch');
 const { Pool } = require('pg');
+require('dotenv').config();
 
 // Configuração do banco de dados
 const pool = new Pool({
@@ -90,6 +91,7 @@ async function saveSpread(data) {
 
   try {
     await pool.query(query, values);
+    console.log(`Spread saved successfully for ${data.symbol}`);
   } catch (error) {
     console.error('Error saving spread:', error);
   }
@@ -104,6 +106,7 @@ async function cleanOldSpreads(days) {
   
   try {
     await pool.query(query);
+    console.log(`Cleaned spreads older than ${days} days`);
   } catch (error) {
     console.error('Error cleaning old spreads:', error);
   }
@@ -112,6 +115,7 @@ async function cleanOldSpreads(days) {
 // Função principal de monitoramento
 async function monitorSpread() {
   try {
+    console.log('Starting spread monitoring...');
     for (const [baseSymbol, exchangeSymbols] of Object.entries(SYMBOLS)) {
       try {
         const [gateioPrice, mexcPrice] = await Promise.all([
@@ -148,7 +152,9 @@ async function monitorSpread() {
 }
 
 // Executa a cada 5 minutos
-setInterval(monitorSpread, 5 * 60 * 1000);
+const INTERVAL = 5 * 60 * 1000; // 5 minutos em milissegundos
+console.log(`Monitor iniciado. Executando a cada ${INTERVAL/1000} segundos...`);
+setInterval(monitorSpread, INTERVAL);
 
 // Primeira execução
 monitorSpread(); 
