@@ -2,12 +2,15 @@
   "presets": [
     ["@babel/preset-env", {
       "targets": {
-        "node": "18.17.0"
+        "node": "current"
       }
     }],
-    "@babel/preset-typescript"
+    "@babel/preset-typescript",
+    "@babel/preset-react"
   ],
   "plugins": [
-    "@babel/plugin-transform-runtime"
+    ["@babel/plugin-transform-runtime", {
+      "regenerator": true
+    }]
   ]
 } 
