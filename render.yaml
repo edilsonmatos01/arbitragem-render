@@ -12,6 +12,21 @@ databases:
 
 services:
 - type: web
+  name: arbitragem-render
+  env: node
+  region: oregon
+  plan: free
+  buildCommand: npm install && npm run build
+  startCommand: npm start
+  envVars:
+    - key: NODE_ENV
+      value: production
+    - key: PORT
+      value: 10000
+  healthCheckPath: /
+  autoDeploy: true
+
+- type: web
   name: robo-de-arbitragem
   env: node
   region: oregon
