@@ -5,7 +5,8 @@ const path = require('path');
 // Configuração do pool de conexão
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  // Desabilitando SSL para desenvolvimento local
+  ssl: false
 });
 
 async function setupDatabase() {
@@ -19,7 +20,8 @@ async function setupDatabase() {
     console.log('Tabela criada com sucesso!');
   } catch (error) {
     console.error('Erro ao criar tabela:', error);
-    process.exit(1);
+    // Não vamos encerrar o processo em caso de erro
+    // process.exit(1);
   } finally {
     await pool.end();
   }

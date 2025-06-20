@@ -35,12 +35,11 @@ function roundToNearestInterval(date: Date, intervalMinutes: number): Date {
   return rounded;
 }
 
-export async function GET(
-  request: Request,
-  { params }: { params: { symbol: string } }
-) {
+export async function GET(request: Request) {
   try {
-    const symbol = params.symbol;
+    const { searchParams } = new URL(request.url);
+    const symbol = searchParams.get('symbol');
+
     if (!symbol) {
       return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
     }

@@ -9,16 +9,12 @@ try {
   console.warn('Aviso: Não foi possível conectar ao banco de dados');
 }
 
-// Configuração para tornar a rota dinâmica
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// Temporariamente retornando valores nulos para limpar os gráficos
-export async function GET(
-  request: Request,
-  { params }: { params: { symbol: string } }
-) {
-  const symbol = params.symbol;
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const symbol = searchParams.get('symbol');
 
   if (!symbol) {
     return NextResponse.json({ error: 'O símbolo é obrigatório' }, { status: 400 });
