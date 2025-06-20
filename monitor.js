@@ -1,6 +1,7 @@
 const fetch = require('node-fetch');
 const { Pool } = require('pg');
 const WebSocket = require('ws');
+const http = require('http');
 require('dotenv').config();
 
 // Criar servidor HTTP simples para health check
@@ -98,7 +99,8 @@ async function getMexcPrice(symbol) {
 
 // Função para enviar dados para o websocket server
 function broadcastPrice(exchange, symbol, bestBid, bestAsk) {
-  const wsServer = new WebSocket('ws://localhost:10000');
+  const wsUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:10000';
+  const wsServer = new WebSocket(wsUrl.replace('wss:', 'ws:'));
   
   wsServer.on('open', () => {
     const data = {

@@ -19,9 +19,7 @@ services:
   buildCommand: |
     npm install
     npm run build:tracker
-  startCommand: |
-    node websocket-server.js &
-    node monitor.js
+  startCommand: node monitor.js
   envVars:
     - key: NODE_ENV
       value: production
