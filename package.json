@@ -8,6 +8,7 @@
     "build": "next build",
     "build:tracker": "tsc --project scripts/tsconfig.json",
     "start": "node server.js",
+    "start:tracker": "node scripts/dist/spread-monitor.js",
     "lint": "next lint",
     "db:setup": "node scripts/db-setup.js",
     "prisma:deploy": "prisma migrate deploy",
