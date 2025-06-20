@@ -10,7 +10,8 @@
     "downlevelIteration": true,
     "resolveJsonModule": true,
     "outDir": ".",
-    "rootDir": "."
+    "rootDir": ".",
+    "baseUrl": "."
   },
   "include": ["./**/*.ts"],
   "exclude": ["node_modules", "dist"]

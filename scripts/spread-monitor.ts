@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import ccxt from 'ccxt';
-import { calculateSpread } from '../app/utils/spreadUtils';
+import { calculateSpread } from './utils';
 import cron from 'node-cron';
 
 // Inicializa o cliente Prisma
