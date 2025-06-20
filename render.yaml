@@ -11,13 +11,17 @@ databases:
   postgresMajorVersion: "16"
 
 services:
-- type: worker
+- type: web
   name: robo-de-arbitragem
   env: node
   region: oregon
   plan: free
-  buildCommand: npm install
-  startCommand: node monitor.js
+  buildCommand: |
+    npm install
+    npm run build:tracker
+  startCommand: |
+    node websocket-server.js &
+    node monitor.js
   envVars:
     - key: NODE_ENV
       value: production
@@ -27,5 +31,7 @@ services:
       sync: false
     - key: NODE_VERSION
       value: "18.17.0"
+    - key: NEXT_PUBLIC_WEBSOCKET_URL
+      value: "wss://robo-de-arbitragem.onrender.com"
 
 version: "1"

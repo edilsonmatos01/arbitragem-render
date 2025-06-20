@@ -1,6 +1,6 @@
 const fetch = require('node-fetch');
 const { Pool } = require('pg');
-const http = require('http');
+const WebSocket = require('ws');
 require('dotenv').config();
 
 // Criar servidor HTTP simples para health check
@@ -64,7 +64,12 @@ async function getGateioPrice(symbol) {
 
     const buy = Number(ticker.highest_bid);
     const sell = Number(ticker.lowest_ask);
-    return (buy + sell) / 2;
+    const price = (buy + sell) / 2;
+
+    // Envia os dados para o websocket server
+    broadcastPrice('GATEIO', symbol, buy, sell);
+
+    return price;
   } catch (error) {
     console.error(`Error fetching Gate.io price for ${symbol}:`, error);
     return 0;
@@ -79,11 +84,39 @@ async function getMexcPrice(symbol) {
     
     const buy = Number(ticker.bidPrice);
     const sell = Number(ticker.askPrice);
-    return (buy + sell) / 2;
+    const price = (buy + sell) / 2;
+
+    // Envia os dados para o websocket server
+    broadcastPrice('MEXC', symbol, buy, sell);
+
+    return price;
   } catch (error) {
     console.error(`Error fetching MEXC price for ${symbol}:`, error);
     return 0;
   }
+}
+
+// Função para enviar dados para o websocket server
+function broadcastPrice(exchange, symbol, bestBid, bestAsk) {
+  const wsServer = new WebSocket('ws://localhost:10000');
+  
+  wsServer.on('open', () => {
+    const data = {
+      type: 'price-update',
+      exchange,
+      symbol,
+      bestBid,
+      bestAsk,
+      timestamp: Date.now()
+    };
+    
+    wsServer.send(JSON.stringify(data));
+    wsServer.close();
+  });
+
+  wsServer.on('error', (error) => {
+    console.error(`WebSocket error for ${exchange} ${symbol}:`, error);
+  });
 }
 
 // Função para salvar spread no banco
