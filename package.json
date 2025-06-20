@@ -31,6 +31,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@types/recharts": "^1.8.29",
+    "autoprefixer": "^10.4.17",
     "axios": "^1.6.7",
     "ccxt": "^4.2.15",
     "class-variance-authority": "^0.7.0",
@@ -46,20 +47,19 @@
     "node-cron": "^4.1.1",
     "node-fetch": "^2.6.7",
     "pg": "^8.11.3",
+    "postcss": "^8.4.35",
     "prisma": "^5.9.1",
     "react": "^18",
     "react-dom": "^18",
     "recharts": "^2.12.0",
     "tailwind-merge": "^2.2.1",
+    "tailwindcss": "^3.4.1",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5",
     "ws": "^8.16.0"
   },
   "devDependencies": {
-    "autoprefixer": "^10.0.1",
     "eslint": "^8",
-    "eslint-config-next": "14.1.0",
-    "postcss": "^8",
-    "tailwindcss": "^3.3.0"
+    "eslint-config-next": "14.1.0"
   }
 }
