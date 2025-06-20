@@ -4,15 +4,39 @@ const WebSocket = require('ws');
 const http = require('http');
 require('dotenv').config();
 
-// Criar servidor HTTP simples para health check
+// Criar servidor HTTP para health check
 const server = http.createServer((req, res) => {
   res.writeHead(200);
   res.end('Monitor is running');
 });
 
+// Criar servidor WebSocket
+const wss = new WebSocket.Server({ server });
+const clients = new Set();
+
+wss.on('connection', (ws) => {
+  clients.add(ws);
+  console.log('Cliente WebSocket conectado. Total:', clients.size);
+
+  ws.on('close', () => {
+    clients.delete(ws);
+    console.log('Cliente WebSocket desconectado. Total:', clients.size);
+  });
+});
+
+// Função para broadcast das mensagens
+function broadcast(data) {
+  const message = JSON.stringify(data);
+  clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(message);
+    }
+  });
+}
+
 const port = process.env.PORT || 10000;
 server.listen(port, () => {
-  console.log(`Health check server listening on port ${port}`);
+  console.log(`Servidor rodando na porta ${port}`);
 });
 
 // Configuração do banco de dados
@@ -67,8 +91,15 @@ async function getGateioPrice(symbol) {
     const sell = Number(ticker.lowest_ask);
     const price = (buy + sell) / 2;
 
-    // Envia os dados para o websocket server
-    broadcastPrice('GATEIO', symbol, buy, sell);
+    // Envia os dados via broadcast
+    broadcast({
+      type: 'price-update',
+      exchange: 'GATEIO',
+      symbol,
+      bestBid: buy,
+      bestAsk: sell,
+      timestamp: Date.now()
+    });
 
     return price;
   } catch (error) {
@@ -87,49 +118,21 @@ async function getMexcPrice(symbol) {
     const sell = Number(ticker.askPrice);
     const price = (buy + sell) / 2;
 
-    // Envia os dados para o websocket server
-    broadcastPrice('MEXC', symbol, buy, sell);
+    // Envia os dados via broadcast
+    broadcast({
+      type: 'price-update',
+      exchange: 'MEXC',
+      symbol,
+      bestBid: buy,
+      bestAsk: sell,
+      timestamp: Date.now()
+    });
 
     return price;
   } catch (error) {
     console.error(`Error fetching MEXC price for ${symbol}:`, error);
     return 0;
   }
-}
-
-// Função para enviar dados para o websocket server
-function broadcastPrice(exchange, symbol, bestBid, bestAsk) {
-  const wsUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:10000';
-  const wsServer = new WebSocket(wsUrl);
-  
-  wsServer.on('open', () => {
-    try {
-      const data = {
-        type: 'price-update',
-        exchange,
-        symbol,
-        bestBid,
-        bestAsk,
-        timestamp: Date.now()
-      };
-      
-      wsServer.send(JSON.stringify(data));
-      console.log(`Dados enviados com sucesso para ${exchange} ${symbol}`);
-    } catch (error) {
-      console.error(`Erro ao enviar dados para ${exchange} ${symbol}:`, error);
-    } finally {
-      wsServer.close();
-    }
-  });
-
-  wsServer.on('error', (error) => {
-    console.error(`WebSocket error for ${exchange} ${symbol}:`, error);
-    wsServer.close();
-  });
-
-  wsServer.on('close', () => {
-    console.log(`WebSocket connection closed for ${exchange} ${symbol}`);
-  });
 }
 
 // Função para salvar spread no banco
@@ -194,6 +197,16 @@ async function monitorSpread() {
           mexcPrice,
           spreadPercentage,
           timestamp: new Date()
+        });
+
+        // Envia o spread via broadcast
+        broadcast({
+          type: 'spread-update',
+          symbol: baseSymbol,
+          gateioPrice,
+          mexcPrice,
+          spreadPercentage,
+          timestamp: Date.now()
         });
 
         console.log(`${baseSymbol}: Gate.io: ${gateioPrice}, MEXC: ${mexcPrice}, Spread: ${spreadPercentage}%`);

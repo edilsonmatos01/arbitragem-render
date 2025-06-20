@@ -16,9 +16,7 @@ services:
   env: node
   region: oregon
   plan: free
-  buildCommand: |
-    npm install
-    npm run build:tracker
+  buildCommand: npm install
   startCommand: node monitor.js
   envVars:
     - key: NODE_ENV
@@ -29,7 +27,5 @@ services:
       sync: false
     - key: NODE_VERSION
       value: "18.17.0"
-    - key: NEXT_PUBLIC_WEBSOCKET_URL
-      value: "wss://robo-de-arbitragem-5n8k.onrender.com"
 
 version: "1"
