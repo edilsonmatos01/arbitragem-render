@@ -11,22 +11,18 @@ databases:
   postgresMajorVersion: "16"
 
 services:
-- type: web
+- type: worker
   name: arbitragem-render
   env: node
   region: oregon
   plan: free
   buildCommand: npm install
-  startCommand: node server.js
+  startCommand: node monitor.js
   envVars:
     - key: NODE_ENV
       value: production
-    - key: PORT
-      value: "10000"
     - key: DATABASE_URL
       sync: false
-  healthCheckPath: /
-  autoDeploy: true
 
 - type: web
   name: robo-de-arbitragem
