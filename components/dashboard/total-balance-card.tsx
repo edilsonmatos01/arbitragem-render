@@ -1,146 +1,70 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Loader2, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { RefreshCw } from 'lucide-react';
 
-// Tipos para as respostas das APIs de saldo
-interface BalanceItem {
-  currency?: string; // Gate.io usa currency
-  asset?: string;    // Binance, MEXC usam asset
-  available?: string; // Gate.io
-  free?: string;       // Binance, MEXC
-  locked?: string;
-  // Para Bybit, os campos relevantes estão dentro de BybitCoinData
-}
-
-interface BybitCoinData {
-  coin: string; // Nome da moeda, ex: USDT
-  walletBalance: string;
-  availableToWithdraw?: string; // Outros campos que podem ser úteis
-  free?: string; // Bybit também pode ter 'free' em outros contextos
-}
-
-interface ApiResponse {
-  balances?: BalanceItem[]; // Usado por Binance, Gate.io, MEXC
-  error?: string;
-  details?: string; 
-  // Campos específicos da Bybit
-  retCode?: number;
-  retMsg?: string;
-  result?: {
-    list?: {
-      coin: BybitCoinData[];
-    }[];
-  };
+interface Balance {
+  asset: string;
+  free: string;
+  locked: string;
+  total: string;
+  usdValue: string;
 }
 
 export default function TotalBalanceCard() {
-  const [totalBalance, setTotalBalance] = useState<string>('0.00');
-  const [isLoading, setIsLoading] = useState(true);
+  const [totalBalance, setTotalBalance] = useState('0.00');
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const fetchBalances = async () => {
-    if (!isRefreshing) setIsLoading(true);
+  const fetchTotalBalance = async () => {
+    setIsLoading(true);
     setError(null);
-    let total = 0;
-    let hasError = false;
-
-    const exchangeEndpoints = [
-      { name: 'Gate.io', endpoint: '/api/gateio/wallet-balance' },
-      { name: 'MEXC', endpoint: '/api/mexc/wallet-balance' },
-    ];
 
     try {
-      for (const exchange of exchangeEndpoints) {
-        try {
-          const response = await fetch(exchange.endpoint);
-          
-          if (!response.ok) {
-            const textResponse = await response.text();
-            console.error(`Erro na API ${exchange.name}: Status ${response.status}, Resposta: ${textResponse}`);
-            const specificError = `Falha ao buscar da ${exchange.name}: ${response.status}`;
-            setError(prevError => prevError ? `${prevError}; ${specificError}` : specificError);
-            hasError = true;
-            continue;
-          }
-          const data: ApiResponse = await response.json();
+      // Simular dados de exemplo
+      const mockBalances: Balance[] = [
+        { asset: 'USDT', free: '1000.00', locked: '0.00', total: '1000.00', usdValue: '1000.00' },
+        { asset: 'BTC', free: '0.05', locked: '0.00', total: '0.05', usdValue: '2500.00' },
+        { asset: 'ETH', free: '1.5', locked: '0.00', total: '1.5', usdValue: '3000.00' },
+      ];
 
-          let usdtBalanceValue = 0;
-          if (data.balances) { 
-            const usdtEntry = data.balances.find(b => (b.asset === 'USDT' || b.currency === 'USDT'));
-            if (usdtEntry) {
-              // Prioriza 'available' se existir (Gate.io), senão usa 'free' (Binance, MEXC)
-              const availableAmount = parseFloat(usdtEntry.available || usdtEntry.free || '0');
-              const lockedAmount = parseFloat(usdtEntry.locked || '0');
-              usdtBalanceValue = availableAmount + lockedAmount; // Soma o disponível/livre com o bloqueado para ter o total em USDT
-            }
-          }
-          total += usdtBalanceValue;
-        } catch (e: any) {
-          console.error(`Erro ao processar ${exchange.name}:`, e);
-          const specificError = e.message.includes("fetch") ? `Falha de conexão com ${exchange.name}. Verifique a API ou a rede.` : `Erro ao processar dados da ${exchange.name}.`;
-          setError(prevError => prevError ? `${prevError}; ${specificError}` : specificError);
-          hasError = true;
-        }
-      }
-
-      if (!hasError) {
-        setTotalBalance(total.toFixed(2));
-      }
-
-    } catch (globalError) {
-      console.error("Erro global em fetchBalances:", globalError);
-      setError(globalError instanceof Error ? globalError.message : 'Erro desconhecido ao calcular saldo total');
+      const total = mockBalances.reduce((acc, balance) => acc + parseFloat(balance.usdValue), 0);
+      setTotalBalance(total.toFixed(2));
+    } catch (err) {
+      setError('Erro ao carregar saldo total');
+      console.error('Erro ao buscar saldo total:', err);
     } finally {
       setIsLoading(false);
-      setIsRefreshing(false);
     }
   };
 
   useEffect(() => {
-    fetchBalances(); // Mantém a busca inicial ao montar o componente
-    // Remove o intervalo de atualização automática
-    // const intervalId = setInterval(fetchBalances, 60000);
-    // return () => clearInterval(intervalId);
-  }, []); // Array de dependências vazio para executar apenas na montagem
-
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    fetchBalances();
-  };
+    fetchTotalBalance();
+  }, []);
 
   return (
     <div className="bg-dark-card p-6 rounded-lg shadow">
-      <div className="flex justify-between items-start mb-4">
+      <div className="flex justify-between items-center mb-4">
         <div>
-          <h3 className="text-lg font-medium text-white">Saldo Total Exchanges</h3>
-          <p className="text-sm text-gray-400">Somatório de todas as carteiras (USDT)</p>
+          <h3 className="text-lg font-medium text-white">Saldo Total</h3>
+          <p className="text-sm text-gray-400">Valor total em USD</p>
         </div>
-        <button 
-          onClick={handleRefresh}
-          disabled={isLoading || isRefreshing}
-          className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-gray-800 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Atualizar saldo"
+        <button
+          onClick={fetchTotalBalance}
+          disabled={isLoading}
+          className="p-2 hover:bg-dark-bg rounded-full transition-colors"
         >
-          <RefreshCw className={`h-5 w-5 ${isRefreshing || (isLoading && !isRefreshing) ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} />
         </button>
       </div>
 
-      <div className="mt-2">
-        {(isLoading && !isRefreshing) ? (
-          <div className="flex items-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin text-custom-cyan" />
-            <span className="text-sm text-gray-400">Carregando...</span>
-          </div>
-        ) : error ? (
-          <p className="text-sm text-red-400">{error}</p>
-        ) : (
-          <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-bold text-white">US$ {totalBalance}</span>
-          </div>
-        )}
-      </div>
+      {error ? (
+        <div className="text-red-500">{error}</div>
+      ) : (
+        <div className="text-3xl font-bold text-custom-cyan">
+          ${totalBalance}
+        </div>
+      )}
     </div>
   );
 } 

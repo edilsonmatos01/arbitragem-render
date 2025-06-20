@@ -245,22 +245,28 @@ async function findAndBroadcastArbitrage() {
             if (spreadValue >= MIN_PROFIT_PERCENTAGE && spreadValue < 10) {
                 const opportunity: ArbitrageOpportunity = {
                     type: 'arbitrage',
+                    symbol: spotSymbol,
                     baseSymbol: spotData.baseSymbol,
+                    buyExchange: spotId,
+                    sellExchange: futuresId,
+                    buyPrice: spotAsk,
+                    sellPrice: futuresBid,
+                    spread: spreadValue,
                     profitPercentage: spreadValue,
+                    timestamp: Date.now(),
                     buyAt: { 
-                        exchange: spotId, 
+                        exchange: spotId,
                         price: spotAsk,
-                        marketType: 'spot', 
-                        originalSymbol: spotSymbol 
+                        marketType: 'spot',
+                        originalSymbol: spotSymbol
                     },
-                    sellAt: { 
-                        exchange: futuresId, 
+                    sellAt: {
+                        exchange: futuresId,
                         price: futuresBid,
-                        marketType: 'futures', 
-                        originalSymbol: futuresSymbol 
+                        marketType: 'futures',
+                        originalSymbol: futuresSymbol
                     },
-                    arbitrageType: 'spot_to_futures_inter',
-                    timestamp: Date.now()
+                    arbitrageType: 'spot-futures'
                 };
 
                 await recordSpread(opportunity);

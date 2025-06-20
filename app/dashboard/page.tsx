@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import Sidebar from '@/components/dashboard/sidebar';
 import MetricCard from '@/components/dashboard/metric-card';
 import ArbitrageHistoryChart from '@/components/dashboard/arbitrage-history-chart';
 import AccumulatedPercentageGauge from '@/components/dashboard/accumulated-percentage-gauge';
 import TotalBalanceCard from '@/components/dashboard/total-balance-card';
-import { LayoutDashboard, Repeat, Wallet, History, Settings, AlertCircle, RefreshCw } from 'lucide-react';
-import SpreadDisplay from '../components/SpreadDisplay';
+import { LayoutDashboard, Repeat, Wallet, History, Settings, AlertCircle } from 'lucide-react';
+import SpreadDisplay from '@/components/dashboard/spread-display';
 
 // Ícones Lucide com estilo
 const iconProps = { className: "h-5 w-5" };
@@ -27,7 +27,6 @@ interface Balance {
 
 interface BinanceAccountInfo {
   balances: Balance[];
-  // Adicione outros campos que você espera da resposta da Binance se necessário
 }
 
 interface BybitWalletCoinInfo {

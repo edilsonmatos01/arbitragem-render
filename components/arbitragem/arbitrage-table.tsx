@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useState, useEffect, useRef, useMemo } from "react";
-import { Play, RefreshCw, AlertTriangle, CheckCircle2, Clock } from 'lucide-react'; // Removido BarChart2
+import { Play, RefreshCw, AlertTriangle, CheckCircle2, Clock, ArrowUpDown, ArrowDownUp } from 'lucide-react'; // Removido BarChart2
 import { useArbitrageWebSocket } from './useArbitrageWebSocket';
 import MaxSpreadCell from './MaxSpreadCell'; // Importar o novo componente
 import React from 'react';
@@ -187,7 +187,7 @@ const OpportunityRow = ({
                 {formatSpread(liveSpread)}%
             </td>
             <td className="py-4 px-4">
-                <MaxSpreadCell symbol={opportunity.symbol} />
+                <MaxSpreadCell spread={liveSpread} />
             </td>
             <td className="py-4 px-4 text-center">
                 <button

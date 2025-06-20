@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 // Idealmente, esta interface ArbitrageOpportunity seria importada de um local compartilhado
 // entre o backend (websocket-server.ts) e o frontend.
@@ -44,104 +44,72 @@ interface LivePrices {
 export function useArbitrageWebSocket() {
   const [opportunities, setOpportunities] = useState<ArbitrageOpportunity[]>([]);
   const [livePrices, setLivePrices] = useState<LivePrices>({});
-  const ws = useRef<WebSocket | null>(null);
-  const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
-  // Ref para rastrear se o componente está montado e evitar ações assíncronas
-  // após o desmonte, especialmente útil no Strict Mode do React.
-  const isMounted = useRef(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const getWebSocketURL = () => {
-    // A URL agora é lida da variável de ambiente, que é definida no processo de build.
-    const wsURL = process.env.NEXT_PUBLIC_WEBSOCKET_URL;
+  const connect = useCallback(() => {
+    try {
+      const ws = new WebSocket('ws://localhost:3001');
 
-    if (!wsURL) {
-      console.error("A variável de ambiente NEXT_PUBLIC_WEBSOCKET_URL não está definida!");
-      // Em desenvolvimento, podemos ter um fallback para a configuração antiga
-      if (process.env.NODE_ENV === 'development') {
-        if (typeof window === 'undefined') return '';
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host;
-        return `${protocol}//${host}`;
-      }
-      return '';
-    }
-    return wsURL;
-  };
+      ws.onopen = () => {
+        setIsConnected(true);
+        setError(null);
+      };
 
-  const connect = () => {
-    // Limpa qualquer timeout de reconexão pendente
-    if (reconnectTimeout.current) {
-      clearTimeout(reconnectTimeout.current);
-    }
-    // Previne novas conexões se já houver uma ou se o componente estiver desmontado.
-    if (ws.current || !isMounted.current) return;
-
-    const wsURL = getWebSocketURL();
-    if (!wsURL) return; // Não tenta conectar se não houver URL (SSR)
-
-    ws.current = new WebSocket(wsURL);
-    console.log(`[WS Hook] Tentando conectar ao servidor WebSocket em ${wsURL}...`);
-
-    ws.current.onopen = () => {
-      console.log('[WS Hook] Conexão WebSocket estabelecida.');
-    };
-
-    ws.current.onmessage = (event) => {
-      if (!isMounted.current) return;
-      try {
-        const message = JSON.parse(event.data);
-        
-        if (message.type === 'arbitrage') {
-          setOpportunities((prev) => [message, ...prev.slice(0, 99)]);
-        }
-        if (message.type === 'price-update') {
-            const { symbol, marketType, bestAsk, bestBid } = message;
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'arbitrage') {
+            setOpportunities((prev) => [...prev, {
+              ...data,
+              timestamp: new Date(data.timestamp)
+            }].slice(-100)); // Manter apenas as últimas 100 oportunidades
+          }
+          if (data.type === 'price-update') {
+            const { symbol, marketType, bestAsk, bestBid } = data;
             setLivePrices(prev => ({
-                ...prev,
-                [symbol]: {
-                    ...prev[symbol],
-                    [marketType]: { bestAsk, bestBid }
-                }
+              ...prev,
+              [symbol]: {
+                ...prev[symbol],
+                [marketType]: { bestAsk, bestBid }
+              }
             }));
+          }
+        } catch (err) {
+          console.error('Erro ao processar mensagem:', err);
         }
-      } catch (error) {
-        console.error('[WS Hook] Erro ao processar mensagem do WebSocket:', error);
-      }
-    };
+      };
 
-    ws.current.onerror = (error) => {
-      console.error('[WS Hook] Erro na conexão WebSocket:', error);
-      // O evento 'onclose' será disparado em seguida para tratar a reconexão.
-    };
+      ws.onclose = () => {
+        setIsConnected(false);
+        setTimeout(connect, 5000); // Tentar reconectar após 5 segundos
+      };
 
-    ws.current.onclose = () => {
-      console.log('[WS Hook] Conexão WebSocket fechada.');
-      // Só tenta reconectar se o componente ainda estiver montado.
-      if (isMounted.current) {
-        console.log('[WS Hook] Tentando reconectar em 5 segundos...');
-        ws.current = null; // Limpa a instância antiga do socket.
-        reconnectTimeout.current = setTimeout(connect, 5000);
-      }
-    };
-  };
+      ws.onerror = (err) => {
+        setError('Erro na conexão WebSocket');
+        console.error('Erro WebSocket:', err);
+      };
 
-  useEffect(() => {
-    isMounted.current = true;
-    connect();
-
-    // A função de cleanup é executada quando o componente é desmontado.
-    return () => {
-      isMounted.current = false;
-      if (reconnectTimeout.current) {
-        clearTimeout(reconnectTimeout.current);
-      }
-      if (ws.current) {
-        // Fechar a conexão não acionará mais a reconexão devido à verificação isMounted.current.
-        ws.current.close(); 
-        console.log('[WS Hook] Limpeza da conexão WebSocket concluída.');
-      }
-    };
+      return () => {
+        ws.close();
+      };
+    } catch (err) {
+      setError('Erro ao conectar ao WebSocket');
+      console.error('Erro ao criar WebSocket:', err);
+    }
   }, []);
 
-  return { opportunities, livePrices };
+  useEffect(() => {
+    const cleanup = connect();
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, [connect]);
+
+  return {
+    opportunities,
+    livePrices,
+    isConnected,
+    error
+  };
 } 

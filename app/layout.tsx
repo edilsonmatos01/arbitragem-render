@@ -1,5 +1,6 @@
 import './globals.css'; // Assumindo que você terá um arquivo globals.css
 import type { Metadata } from 'next'
+import { Providers } from './providers'
 
 export const metadata: Metadata = {
   title: 'Robô de Arbitragem',
@@ -12,9 +13,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR">
-      <body className="">{/* Removido bg-red-500 */}
-        {children}
+    <html lang="pt-BR" suppressHydrationWarning>
+      <body suppressHydrationWarning>
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
   );

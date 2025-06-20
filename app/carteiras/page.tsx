@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import Sidebar from '@/components/dashboard/sidebar';
 import ExchangeBalancesCard from '@/components/dashboard/exchange-balances-card';
 import { LayoutDashboard, Repeat, Wallet, History, Settings } from 'lucide-react';
@@ -16,7 +17,7 @@ const AppIcons = {
 
 export default function CarteirasPage() {
   const sidebarNavItems = [
-    { title: 'Dashboards', href: '/dashboard', icon: AppIcons.LayoutDashboard },
+    { title: 'Dashboard', href: '/dashboard', icon: AppIcons.LayoutDashboard },
     { title: 'Arbitragem', href: '/arbitragem', icon: AppIcons.Repeat },
     { title: 'Carteiras', href: '/carteiras', icon: AppIcons.Wallet },
     { title: 'Históricos', href: '/historicos', icon: AppIcons.History },

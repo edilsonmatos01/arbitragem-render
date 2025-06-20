@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import ArbitrageTable from '@/components/arbitragem/arbitrage-table';
 import Sidebar from '@/components/dashboard/sidebar';
 import { LayoutDashboard, Repeat, Wallet, History, Settings } from 'lucide-react';
@@ -32,6 +33,10 @@ export default function ArbitragemPage() {
         navItems={sidebarNavItems}
       />
       <main className="flex-1 p-8">
+        <header className="mb-8">
+          <h1 className="text-3xl font-semibold text-white">Arbitragem</h1>
+          <p className="text-custom-cyan">Oportunidades de arbitragem em tempo real</p>
+        </header>
         <ArbitrageTable />
       </main>
     </div>
