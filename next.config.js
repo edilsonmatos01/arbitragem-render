@@ -1,3 +1,5 @@
+const path = require('path');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   eslint: {
@@ -7,7 +9,8 @@ const nextConfig = {
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,
-      '@/components': './components'
+      '@': path.resolve(__dirname),
+      '@/components': path.resolve(__dirname, 'components')
     };
     return config;
   }
