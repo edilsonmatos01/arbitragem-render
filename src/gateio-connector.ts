@@ -18,182 +18,115 @@ type PriceUpdateCallback = (update: {
  */
 export class GateIoConnector {
     private ws: WebSocket | null = null;
-    private marketIdentifier: string; // Ex: 'GATEIO_SPOT' ou 'GATEIO_FUTURES'
-    private marketType: 'spot' | 'futures';
-    private onPriceUpdate: PriceUpdateCallback;
-    private onConnectedCallback: (() => void) | null;
-    
-    private subscriptionQueue: string[] = [];
+    private readonly identifier: string;
+    private readonly onPriceUpdate: Function;
+    private readonly onConnect: Function;
     private isConnected: boolean = false;
-    private pingInterval: NodeJS.Timeout | null = null;
-    private reconnectTimeout: NodeJS.Timeout | null = null;
+    private reconnectAttempts: number = 0;
+    private readonly maxReconnectAttempts: number = 5;
+    private readonly reconnectDelay: number = 5000;
 
-    constructor(identifier: string, onPriceUpdate: PriceUpdateCallback, onConnected: () => void) {
-        this.marketIdentifier = identifier;
-        this.marketType = identifier.includes('_SPOT') ? 'spot' : 'futures';
+    constructor(identifier: string, onPriceUpdate: Function, onConnect: Function) {
+        this.identifier = identifier;
         this.onPriceUpdate = onPriceUpdate;
-        this.onConnectedCallback = onConnected;
-        console.log(`[${this.marketIdentifier}] Conector inicializado.`);
+        this.onConnect = onConnect;
     }
 
-    public async getTradablePairs(): Promise<string[]> {
-        const endpoint = this.marketType === 'spot'
-            ? 'https://api.gateio.ws/api/v4/spot/currency_pairs'
-            : 'https://api.gateio.ws/api/v4/futures/usdt/contracts';
-
+    async connect() {
         try {
-            console.log(`[${this.marketIdentifier}] Buscando pares negociáveis de ${endpoint}`);
-            const response = await fetch(endpoint);
-            if (!response.ok) {
-                throw new Error(`Falha na API: ${response.statusText}`);
-            }
+            console.log('\n[GateIO] Iniciando conexão WebSocket...');
+            this.ws = new WebSocket('wss://api.gateio.ws/ws/v4/');
+
+            this.ws.on('open', () => {
+                console.log('[GateIO] WebSocket conectado');
+                this.isConnected = true;
+                this.reconnectAttempts = 0;
+                this.onConnect();
+            });
+
+            this.ws.on('message', (data: WebSocket.Data) => {
+                try {
+                    const message = JSON.parse(data.toString());
+                    
+                    if (message.event === 'update' && message.channel === 'spot.book_ticker') {
+                        const { currency_pair, ask, bid } = message.result;
+                        console.log(`\n[GateIO] Atualização de preço para ${currency_pair}`);
+                        console.log(`Ask: ${ask}, Bid: ${bid}`);
+                        
+                        this.onPriceUpdate({
+                            type: 'price-update',
+                            symbol: currency_pair,
+                            marketType: 'spot',
+                            bestAsk: parseFloat(ask),
+                            bestBid: parseFloat(bid),
+                            identifier: this.identifier
+                        });
+                    }
+                } catch (error) {
+                    console.error('[GateIO] Erro ao processar mensagem:', error);
+                }
+            });
+
+            this.ws.on('close', (code: number, reason: string) => {
+                console.log(`[GateIO] WebSocket fechado. Código: ${code}, Razão: ${reason}`);
+                this.isConnected = false;
+
+                if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                    console.log(`[GateIO] Tentando reconectar em ${this.reconnectDelay}ms...`);
+                    setTimeout(() => this.connect(), this.reconnectDelay);
+                    this.reconnectAttempts++;
+                } else {
+                    console.error('[GateIO] Número máximo de tentativas de reconexão atingido');
+                }
+            });
+
+            this.ws.on('error', (error: Error) => {
+                console.error('[GateIO] Erro na conexão WebSocket:', error);
+            });
+
+        } catch (error) {
+            console.error('[GateIO] Erro ao conectar:', error);
+            throw error;
+        }
+    }
+
+    async getTradablePairs(): Promise<string[]> {
+        try {
+            console.log('[GateIO] Buscando pares negociáveis...');
+            const response = await fetch('https://api.gateio.ws/api/v4/spot/currency_pairs');
             const data = await response.json();
-
-            if (!Array.isArray(data)) {
-                 console.warn(`[${this.marketIdentifier}] A resposta da API não foi uma lista (possível geoblocking).`);
-                 return [];
-            }
-
-            if (this.marketType === 'spot') {
-                return data
-                    .filter(p => p.trade_status === 'tradable' && p.quote === 'USDT')
-                    .map(p => p.id.replace('_', '/')); // Converte 'BTC_USDT' para 'BTC/USDT'
-            } else {
-                return data
-                    .filter(c => c.in_delisting === false)
-                    .map(c => c.name.replace('_', '/')); // Converte 'BTC_USDT' para 'BTC/USDT'
-            }
+            const pairs = data
+                .filter((pair: any) => pair.trade_status === 'tradable')
+                .map((pair: any) => pair.id);
+            console.log(`[GateIO] ${pairs.length} pares encontrados`);
+            console.log('Primeiros 5 pares:', pairs.slice(0, 5));
+            return pairs;
         } catch (error) {
-            console.error(`[${this.marketIdentifier}] Erro ao buscar pares negociáveis:`, error);
-            return [];
+            console.error('[GateIO] Erro ao buscar pares:', error);
+            throw error;
         }
     }
 
-    public connect(): Promise<void> {
-        return new Promise((resolve, reject) => {
-            if (this.ws) {
-                this.ws.close();
-            }
-
-            console.log(`[${this.marketIdentifier}] Conectando a ${GATEIO_WS_URL}`);
-            this.ws = new WebSocket(GATEIO_WS_URL);
-
-            this.ws.once('open', () => {
-                this.onOpen();
-                resolve();
-            });
-
-            this.ws.once('error', (error) => {
-                reject(error);
-            });
-
-            this.ws.on('message', this.onMessage.bind(this));
-            this.ws.on('close', this.onClose.bind(this));
-        });
-    }
-
-    public subscribe(pairs: string[]): void {
-        this.subscriptionQueue = pairs.map(p => p.replace('/', '_')); // Gate.io usa '_'
-        if (this.isConnected) {
-            this.processSubscriptionQueue();
-        }
-    }
-
-    private onOpen(): void {
-        console.log(`[${this.marketIdentifier}] Conexão WebSocket estabelecida.`);
-        this.isConnected = true;
-        this.startPinging();
-        this.processSubscriptionQueue();
-        
-        if (this.onConnectedCallback) {
-            this.onConnectedCallback();
-        }
-    }
-
-    private onMessage(data: WebSocket.Data): void {
-        try {
-            const message = JSON.parse(data.toString());
-            
-            if (message.channel === 'spot.ping' || message.channel === 'futures.ping') {
-                return; // Ignora pongs
-            }
-
-            if (message.event === 'update' && message.result) {
-                this.handleTickerUpdate(message.result);
-            }
-        } catch (error) {
-            console.error(`[${this.marketIdentifier}] Erro ao processar mensagem:`, error);
-        }
-    }
-
-    private handleTickerUpdate(ticker: any): void {
-        const pair = (ticker.currency_pair || ticker.contract).replace('_', '/');
-        
-        const bestAsk = parseFloat(ticker.lowest_ask || ticker.ask1);
-        const bestBid = parseFloat(ticker.highest_bid || ticker.bid1);
-
-        if (!bestAsk || !bestBid) return;
-
-        // Chama o callback centralizado no servidor
-        this.onPriceUpdate({
-            type: 'price-update',
-            symbol: pair,
-            marketType: this.marketType,
-            bestAsk,
-            bestBid,
-            identifier: this.marketIdentifier
-        });
-    }
-
-    private processSubscriptionQueue(): void {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.subscriptionQueue.length === 0) {
+    subscribe(pairs: string[]) {
+        if (!this.ws || !this.isConnected) {
+            console.error('[GateIO] WebSocket não está conectado');
             return;
         }
 
-        const channel = this.marketType === 'spot' ? 'spot.tickers' : 'futures.tickers';
-        
-        // Gate.io aceita múltiplas inscrições em uma única mensagem
-        const payload = this.subscriptionQueue;
-        this.subscriptionQueue = []; // Limpa a fila
+        try {
+            console.log(`\n[GateIO] Inscrevendo-se em ${pairs.length} pares`);
+            const subscribeMessage = {
+                time: Math.floor(Date.now() / 1000),
+                channel: 'spot.book_ticker',
+                event: 'subscribe',
+                payload: pairs
+            };
 
-        const msg = {
-            time: Math.floor(Date.now() / 1000),
-            channel: channel,
-            event: 'subscribe',
-            payload: payload,
-        };
-
-        this.ws.send(JSON.stringify(msg));
-        console.log(`[${this.marketIdentifier}] Enviada inscrição para ${payload.length} pares.`);
-    }
-
-    private onClose(): void {
-        console.warn(`[${this.marketIdentifier}] Conexão fechada. Tentando reconectar em 5s...`);
-        this.isConnected = false;
-        this.stopPinging();
-        this.ws = null;
-        if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
-        this.reconnectTimeout = setTimeout(() => {
-            this.connect().catch(error => {
-                console.error(`[${this.marketIdentifier}] Erro ao reconectar:`, error);
-            });
-        }, 5000);
-    }
-
-    private startPinging(): void {
-        this.stopPinging();
-        this.pingInterval = setInterval(() => {
-            if (this.ws?.readyState === WebSocket.OPEN) {
-                const channel = this.marketType === 'spot' ? 'spot.ping' : 'futures.ping';
-                this.ws.send(JSON.stringify({ time: Math.floor(Date.now() / 1000), channel }));
-            }
-        }, 20000);
-    }
-
-    private stopPinging(): void {
-        if (this.pingInterval) {
-            clearInterval(this.pingInterval);
-            this.pingInterval = null;
+            this.ws.send(JSON.stringify(subscribeMessage));
+            console.log('[GateIO] Mensagem de inscrição enviada');
+            console.log('Primeiros 5 pares inscritos:', pairs.slice(0, 5));
+        } catch (error) {
+            console.error('[GateIO] Erro ao se inscrever nos pares:', error);
         }
     }
 } 

@@ -1,14 +1,11 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.calculateSpread = calculateSpread;
 exports.normalizeSpread = normalizeSpread;
 exports.formatValue = formatValue;
 exports.compareSpread = compareSpread;
 exports.isValidSpread = isValidSpread;
-var decimal_js_1 = __importDefault(require("decimal.js"));
+var decimal_js_1 = require("decimal.js");
 /**
  * Calcula o spread percentual entre preço de venda e compra
  * @param sellPrice Preço de venda

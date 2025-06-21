@@ -59,10 +59,10 @@ export function useArbitrageWebSocket() {
     const wsProtocol = isSecure ? 'wss:' : 'ws:';
     
     if (process.env.NODE_ENV === 'production') {
-      return 'wss://robo-de-arbitragem-tracker.onrender.com';
+      return 'wss://robo-de-arbitragem-tracker.onrender.com:10000';
     }
     
-    return 'ws://localhost:3001';
+    return 'ws://localhost:10000';
   }, []);
 
   const checkServerHealth = useCallback(async () => {

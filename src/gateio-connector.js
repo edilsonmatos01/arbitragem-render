@@ -1,18 +1,51 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+var __generator = (this && this.__generator) || function (thisArg, body) {
+    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g = Object.create((typeof Iterator === "function" ? Iterator : Object).prototype);
+    return g.next = verb(0), g["throw"] = verb(1), g["return"] = verb(2), typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+    function verb(n) { return function (v) { return step([n, v]); }; }
+    function step(op) {
+        if (f) throw new TypeError("Generator is already executing.");
+        while (g && (g = 0, op[0] && (_ = 0)), _) try {
+            if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+            if (y = 0, t) op = [op[0] & 2, t.value];
+            switch (op[0]) {
+                case 0: case 1: t = op; break;
+                case 4: _.label++; return { value: op[1], done: false };
+                case 5: _.label++; y = op[1]; op = [0]; continue;
+                case 7: op = _.ops.pop(); _.trys.pop(); continue;
+                default:
+                    if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
+                    if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
+                    if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
+                    if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
+                    if (t[2]) _.ops.pop();
+                    _.trys.pop(); continue;
+            }
+            op = body.call(thisArg, _);
+        } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
+        if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
+    }
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.GateIoConnector = void 0;
-const ws_1 = __importDefault(require("ws"));
-const node_fetch_1 = __importDefault(require("node-fetch"));
-const GATEIO_WS_URL = 'wss://api.gateio.ws/ws/v4/';
+var ws_1 = require("ws");
+var node_fetch_1 = require("node-fetch");
+var GATEIO_WS_URL = 'wss://api.gateio.ws/ws/v4/';
 /**
  * Gerencia a conexão WebSocket e as inscrições para os feeds da Gate.io.
  * Pode ser configurado para SPOT ou FUTURES.
  */
-class GateIoConnector {
-    constructor(identifier, marketPrices) {
+var GateIoConnector = /** @class */ (function () {
+    function GateIoConnector(identifier, onPriceUpdate, onConnected) {
         this.ws = null;
         this.subscriptionQueue = [];
         this.isConnected = false;
@@ -20,61 +53,93 @@ class GateIoConnector {
         this.reconnectTimeout = null;
         this.marketIdentifier = identifier;
         this.marketType = identifier.includes('_SPOT') ? 'spot' : 'futures';
-        this.marketPrices = marketPrices;
-        console.log(`[${this.marketIdentifier}] Conector inicializado.`);
+        this.onPriceUpdate = onPriceUpdate;
+        this.onConnectedCallback = onConnected;
+        console.log("[".concat(this.marketIdentifier, "] Conector inicializado."));
     }
-    async getTradablePairs() {
-        const endpoint = this.marketType === 'spot'
-            ? 'https://api.gateio.ws/api/v4/spot/currency_pairs'
-            : 'https://api.gateio.ws/api/v4/futures/usdt/contracts';
-        try {
-            console.log(`[${this.marketIdentifier}] Buscando pares negociáveis de ${endpoint}`);
-            const response = await (0, node_fetch_1.default)(endpoint);
-            if (!response.ok) {
-                throw new Error(`Falha na API: ${response.statusText}`);
+    GateIoConnector.prototype.getTradablePairs = function () {
+        return __awaiter(this, void 0, void 0, function () {
+            var endpoint, response, data, error_1;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        endpoint = this.marketType === 'spot'
+                            ? 'https://api.gateio.ws/api/v4/spot/currency_pairs'
+                            : 'https://api.gateio.ws/api/v4/futures/usdt/contracts';
+                        _a.label = 1;
+                    case 1:
+                        _a.trys.push([1, 4, , 5]);
+                        console.log("[".concat(this.marketIdentifier, "] Buscando pares negoci\u00E1veis de ").concat(endpoint));
+                        return [4 /*yield*/, (0, node_fetch_1.default)(endpoint)];
+                    case 2:
+                        response = _a.sent();
+                        if (!response.ok) {
+                            throw new Error("Falha na API: ".concat(response.statusText));
+                        }
+                        return [4 /*yield*/, response.json()];
+                    case 3:
+                        data = _a.sent();
+                        if (!Array.isArray(data)) {
+                            console.warn("[".concat(this.marketIdentifier, "] A resposta da API n\u00E3o foi uma lista (poss\u00EDvel geoblocking)."));
+                            return [2 /*return*/, []];
+                        }
+                        if (this.marketType === 'spot') {
+                            return [2 /*return*/, data
+                                    .filter(function (p) { return p.trade_status === 'tradable' && p.quote === 'USDT'; })
+                                    .map(function (p) { return p.id.replace('_', '/'); })]; // Converte 'BTC_USDT' para 'BTC/USDT'
+                        }
+                        else {
+                            return [2 /*return*/, data
+                                    .filter(function (c) { return c.in_delisting === false; })
+                                    .map(function (c) { return c.name.replace('_', '/'); })]; // Converte 'BTC_USDT' para 'BTC/USDT'
+                        }
+                        return [3 /*break*/, 5];
+                    case 4:
+                        error_1 = _a.sent();
+                        console.error("[".concat(this.marketIdentifier, "] Erro ao buscar pares negoci\u00E1veis:"), error_1);
+                        return [2 /*return*/, []];
+                    case 5: return [2 /*return*/];
+                }
+            });
+        });
+    };
+    GateIoConnector.prototype.connect = function () {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (_this.ws) {
+                _this.ws.close();
             }
-            const data = await response.json();
-            if (!Array.isArray(data)) {
-                console.warn(`[${this.marketIdentifier}] A resposta da API não foi uma lista (possível geoblocking).`);
-                return [];
-            }
-            if (this.marketType === 'spot') {
-                return data
-                    .filter(p => p.trade_status === 'tradable' && p.quote === 'USDT')
-                    .map(p => p.id.replace('_', '/')); // Converte 'BTC_USDT' para 'BTC/USDT'
-            }
-            else {
-                return data
-                    .filter(c => c.in_delisting === false)
-                    .map(c => c.name.replace('_', '/')); // Converte 'BTC_USDT' para 'BTC/USDT'
-            }
+            console.log("[".concat(_this.marketIdentifier, "] Conectando a ").concat(GATEIO_WS_URL));
+            _this.ws = new ws_1.default(GATEIO_WS_URL);
+            _this.ws.once('open', function () {
+                _this.onOpen();
+                resolve();
+            });
+            _this.ws.once('error', function (error) {
+                reject(error);
+            });
+            _this.ws.on('message', _this.onMessage.bind(_this));
+            _this.ws.on('close', _this.onClose.bind(_this));
+        });
+    };
+    GateIoConnector.prototype.subscribe = function (pairs) {
+        this.subscriptionQueue = pairs.map(function (p) { return p.replace('/', '_'); }); // Gate.io usa '_'
+        if (this.isConnected) {
+            this.processSubscriptionQueue();
         }
-        catch (error) {
-            console.error(`[${this.marketIdentifier}] Erro ao buscar pares negociáveis:`, error);
-            return [];
-        }
-    }
-    connect(pairs) {
-        this.subscriptionQueue = pairs.map(p => p.replace('/', '_')); // Gate.io usa '_'
-        if (this.ws) {
-            this.ws.close();
-        }
-        console.log(`[${this.marketIdentifier}] Conectando a ${GATEIO_WS_URL}`);
-        this.ws = new ws_1.default(GATEIO_WS_URL);
-        this.ws.on('open', this.onOpen.bind(this));
-        this.ws.on('message', this.onMessage.bind(this));
-        this.ws.on('close', this.onClose.bind(this));
-        this.ws.on('error', this.onError.bind(this));
-    }
-    onOpen() {
-        console.log(`[${this.marketIdentifier}] Conexão WebSocket estabelecida.`);
+    };
+    GateIoConnector.prototype.onOpen = function () {
+        console.log("[".concat(this.marketIdentifier, "] Conex\u00E3o WebSocket estabelecida."));
         this.isConnected = true;
         this.startPinging();
         this.processSubscriptionQueue();
-    }
-    onMessage(data) {
+        if (this.onConnectedCallback) {
+            this.onConnectedCallback();
+        }
+    };
+    GateIoConnector.prototype.onMessage = function (data) {
         try {
-            const message = JSON.parse(data.toString());
+            var message = JSON.parse(data.toString());
             if (message.channel === 'spot.ping' || message.channel === 'futures.ping') {
                 return; // Ignora pongs
             }
@@ -83,67 +148,73 @@ class GateIoConnector {
             }
         }
         catch (error) {
-            console.error(`[${this.marketIdentifier}] Erro ao processar mensagem:`, error);
+            console.error("[".concat(this.marketIdentifier, "] Erro ao processar mensagem:"), error);
         }
-    }
-    handleTickerUpdate(ticker) {
-        const pair = (ticker.currency_pair || ticker.contract).replace('_', '/');
-        const priceData = {
-            bestAsk: parseFloat(ticker.lowest_ask || ticker.ask1),
-            bestBid: parseFloat(ticker.highest_bid || ticker.bid1),
-            timestamp: Date.now()
-        };
-        if (!priceData.bestAsk || !priceData.bestBid)
+    };
+    GateIoConnector.prototype.handleTickerUpdate = function (ticker) {
+        var pair = (ticker.currency_pair || ticker.contract).replace('_', '/');
+        var bestAsk = parseFloat(ticker.lowest_ask || ticker.ask1);
+        var bestBid = parseFloat(ticker.highest_bid || ticker.bid1);
+        if (!bestAsk || !bestBid)
             return;
-        if (!this.marketPrices[this.marketIdentifier]) {
-            this.marketPrices[this.marketIdentifier] = {};
-        }
-        this.marketPrices[this.marketIdentifier][pair] = priceData;
-    }
-    processSubscriptionQueue() {
+        // Chama o callback centralizado no servidor
+        this.onPriceUpdate({
+            type: 'price-update',
+            symbol: pair,
+            marketType: this.marketType,
+            bestAsk: bestAsk,
+            bestBid: bestBid,
+            identifier: this.marketIdentifier
+        });
+    };
+    GateIoConnector.prototype.processSubscriptionQueue = function () {
         if (!this.ws || this.ws.readyState !== ws_1.default.OPEN || this.subscriptionQueue.length === 0) {
             return;
         }
-        const channel = this.marketType === 'spot' ? 'spot.tickers' : 'futures.tickers';
+        var channel = this.marketType === 'spot' ? 'spot.tickers' : 'futures.tickers';
         // Gate.io aceita múltiplas inscrições em uma única mensagem
-        const payload = this.subscriptionQueue;
+        var payload = this.subscriptionQueue;
         this.subscriptionQueue = []; // Limpa a fila
-        const msg = {
+        var msg = {
             time: Math.floor(Date.now() / 1000),
             channel: channel,
             event: 'subscribe',
             payload: payload,
         };
         this.ws.send(JSON.stringify(msg));
-        console.log(`[${this.marketIdentifier}] Enviada inscrição para ${payload.length} pares.`);
-    }
-    onClose() {
-        console.warn(`[${this.marketIdentifier}] Conexão fechada. Tentando reconectar em 5s...`);
+        console.log("[".concat(this.marketIdentifier, "] Enviada inscri\u00E7\u00E3o para ").concat(payload.length, " pares."));
+    };
+    GateIoConnector.prototype.onClose = function () {
+        var _this = this;
+        console.warn("[".concat(this.marketIdentifier, "] Conex\u00E3o fechada. Tentando reconectar em 5s..."));
         this.isConnected = false;
         this.stopPinging();
         this.ws = null;
         if (this.reconnectTimeout)
             clearTimeout(this.reconnectTimeout);
-        this.reconnectTimeout = setTimeout(() => this.connect(this.subscriptionQueue.map(p => p.replace('_', '/'))), 5000);
-    }
-    onError(error) {
-        console.error(`[${this.marketIdentifier}] Erro no WebSocket:`, error.message);
-        // O evento 'close' geralmente é disparado após um erro, cuidando da reconexão.
-    }
-    startPinging() {
+        this.reconnectTimeout = setTimeout(function () {
+            _this.connect().catch(function (error) {
+                console.error("[".concat(_this.marketIdentifier, "] Erro ao reconectar:"), error);
+            });
+        }, 5000);
+    };
+    GateIoConnector.prototype.startPinging = function () {
+        var _this = this;
         this.stopPinging();
-        this.pingInterval = setInterval(() => {
-            if (this.ws?.readyState === ws_1.default.OPEN) {
-                const channel = this.marketType === 'spot' ? 'spot.ping' : 'futures.ping';
-                this.ws.send(JSON.stringify({ time: Math.floor(Date.now() / 1000), channel }));
+        this.pingInterval = setInterval(function () {
+            var _a;
+            if (((_a = _this.ws) === null || _a === void 0 ? void 0 : _a.readyState) === ws_1.default.OPEN) {
+                var channel = _this.marketType === 'spot' ? 'spot.ping' : 'futures.ping';
+                _this.ws.send(JSON.stringify({ time: Math.floor(Date.now() / 1000), channel: channel }));
             }
         }, 20000);
-    }
-    stopPinging() {
+    };
+    GateIoConnector.prototype.stopPinging = function () {
         if (this.pingInterval) {
             clearInterval(this.pingInterval);
             this.pingInterval = null;
         }
-    }
-}
+    };
+    return GateIoConnector;
+}());
 exports.GateIoConnector = GateIoConnector;

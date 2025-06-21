@@ -33,17 +33,14 @@ services:
   env: node
   region: oregon
   plan: free
-  buildCommand: npm install && tsc websocket-server.ts --outDir dist
-  startCommand: node dist/websocket-server.js
+  buildCommand: npm install && npm run build
+  startCommand: npm run start
+  autoDeploy: true
   envVars:
     - key: NODE_ENV
       value: production
-    - key: DATABASE_URL
-      sync: false
     - key: PORT
-      value: "10000"
-  healthCheckPath: /health
-  autoDeploy: true
+      value: 10000
   headers:
     - path: /*
       name: Access-Control-Allow-Origin
@@ -54,5 +51,7 @@ services:
     - path: /*
       name: Access-Control-Allow-Headers
       value: "Content-Type"
+  healthCheckPath: /health
+  healthCheckTimeout: 100
 
 version: "1"

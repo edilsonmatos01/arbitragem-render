@@ -1,133 +1,127 @@
 require('dotenv').config();
 
+import * as http from 'http';
 import WebSocket from 'ws';
-import { createServer, IncomingMessage } from 'http';
+import { Server as WebSocketServer } from 'ws';
+import { PrismaClient } from '@prisma/client';
+import { IncomingMessage } from 'http';
 import { GateIoConnector } from './src/gateio-connector';
 import { MexcConnector } from './src/mexc-connector';
 import { MarketPrices, ArbitrageOpportunity } from './src/types';
-import { PrismaClient } from '@prisma/client';
 import { calculateSpread } from './app/utils/spreadUtils';
 
-const prisma = new PrismaClient();
-const PORT = process.env.PORT || 3001;
-const MIN_PROFIT_PERCENTAGE = 0.1;
-
-let marketPrices: MarketPrices = {};
-let targetPairs: string[] = [];
-
 interface CustomWebSocket extends WebSocket {
-    isAlive?: boolean;
+    isAlive: boolean;
+    lastPing: number;
 }
 
-let clients: CustomWebSocket[] = [];
+interface VerifyClientInfo {
+    origin: string;
+    secure: boolean;
+    req: IncomingMessage;
+}
+
+const prisma = new PrismaClient();
+const PORT = process.env.PORT || 10000;
+const MIN_PROFIT_PERCENTAGE = 0.1;
+
+let clients: WebSocket[] = [];
+let marketPrices: MarketPrices = {};
+let targetPairs: string[] = [];
 
 // ✅ Nova função centralizadora para lidar com todas as atualizações de preço
 function handlePriceUpdate(update: { type: string, symbol: string, marketType: string, bestAsk: number, bestBid: number, identifier: string }) {
     const { identifier, symbol, marketType, bestAsk, bestBid } = update;
 
+    // Log da atualização de preço
+    console.log(`\n[Preço Atualizado] ${identifier} - ${symbol}`);
+    console.log(`Ask: ${bestAsk}, Bid: ${bestBid}`);
+    console.log(`Spread interno: ${((bestAsk - bestBid) / bestBid * 100).toFixed(4)}%`);
+
     // 1. Atualiza o estado central de preços
     if (!marketPrices[identifier]) {
+        console.log(`[Novo Market] Criando entrada para ${identifier}`);
         marketPrices[identifier] = {};
     }
+    
+    const oldPrice = marketPrices[identifier][symbol];
     marketPrices[identifier][symbol] = { bestAsk, bestBid, timestamp: Date.now() };
+
+    if (oldPrice) {
+        const askChange = ((bestAsk - oldPrice.bestAsk) / oldPrice.bestAsk * 100).toFixed(4);
+        const bidChange = ((bestBid - oldPrice.bestBid) / oldPrice.bestBid * 100).toFixed(4);
+        console.log(`Variação: Ask ${askChange}%, Bid ${bidChange}%`);
+    }
     
     // 2. Transmite a atualização para todos os clientes
-    broadcast({
-        type: 'price-update',
-        symbol,
-        marketType,
-        bestAsk,
-        bestBid
-    });
+    try {
+        broadcast({
+            type: 'price-update',
+            symbol,
+            marketType,
+            bestAsk,
+            bestBid
+        });
+        console.log(`[Broadcast] Preço enviado para ${clients.length} clientes`);
+    } catch (error) {
+        console.error('[Erro Broadcast]', error);
+    }
 }
 
-export function startWebSocketServer(httpServer: ReturnType<typeof createServer>) {
-    const wss = new WebSocket.Server({ 
+export function startWebSocketServer(httpServer: http.Server) {
+    const wss = new WebSocketServer({ 
         server: httpServer,
         perMessageDeflate: false,
-        clientTracking: true,
-        maxPayload: 1024 * 1024, // 1MB
-        verifyClient: (info, cb) => {
-            // Aceita conexões de qualquer origem em produção
-            const isProduction = process.env.NODE_ENV === 'production';
-            if (isProduction) {
-                cb(true);
-                return;
-            }
-
-            // Em desenvolvimento, aceita apenas localhost
-            const origin = info.origin || '';
-            const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
-            cb(isLocalhost);
+        maxPayload: 1024 * 1024,
+        verifyClient: (info: VerifyClientInfo, cb: (verified: boolean) => void) => {
+            cb(true);
         }
     });
 
-    wss.on('connection', (ws: CustomWebSocket, req: IncomingMessage) => {
-        ws.isAlive = true;
+    wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
+        const customWs = ws as CustomWebSocket;
+        customWs.isAlive = true;
+        customWs.lastPing = Date.now();
+        clients.push(ws);
 
-        // Configura o ping-pong para manter a conexão ativa
-        const pingInterval = setInterval(() => {
-            if (ws.isAlive === false) {
-                clearInterval(pingInterval);
-                return ws.terminate();
-            }
-            ws.isAlive = false;
-            try {
-                ws.ping();
-            } catch (error) {
-                console.error('Erro ao enviar ping:', error);
-                clearInterval(pingInterval);
-                ws.terminate();
-            }
-        }, 30000);
+        console.log(`[Conexão] Novo cliente conectado. Total: ${clients.length}`);
 
         ws.on('pong', () => {
-            ws.isAlive = true;
+            heartbeat(ws);
         });
 
-        ws.on('error', (error) => {
-            console.error('Erro na conexão WebSocket:', error);
-            clearInterval(pingInterval);
+        ws.on('error', (error: Error) => {
+            console.error('[WebSocket] Erro na conexão:', error);
             ws.terminate();
         });
 
-        const clientIp = req.socket.remoteAddress || req.headers['x-forwarded-for'];
-        clients.push(ws);
-        console.log(`[WS Server] Cliente conectado: ${clientIp}. Total: ${clients.length}`);
-
-        // Envia o estado inicial
-        if (Object.keys(marketPrices).length > 0) {
+        ws.on('message', (message: WebSocket.Data) => {
             try {
-                ws.send(JSON.stringify({ 
-                    type: 'full_book', 
-                    data: marketPrices,
-                    timestamp: Date.now()
-                }));
+                const data = JSON.parse(message.toString());
+                console.log('[Mensagem] Recebida:', data);
             } catch (error) {
-                console.error('Erro ao enviar estado inicial:', error);
+                console.error('[Mensagem] Erro ao processar:', error);
             }
-        }
+        });
 
-        ws.on('close', (code, reason) => {
-            clients = clients.filter(c => c !== ws);
-            clearInterval(pingInterval);
-            console.log(`[WS Server] Cliente desconectado: ${clientIp}. Código: ${code}, Razão: ${reason}. Total: ${clients.length}`);
+        ws.on('close', (code: number, reason: string) => {
+            console.log(`[Conexão] Cliente desconectado. Código: ${code}, Razão: ${reason}`);
+            clients = clients.filter(client => client !== ws);
+            console.log(`[Conexão] Total de clientes restantes: ${clients.length}`);
         });
     });
 
-    wss.on('close', () => {
-        console.log('Servidor WebSocket fechado');
-    });
+    // Inicia o monitoramento de conexões
+    setInterval(checkConnections, 30000);
 
-    console.log(`Servidor WebSocket iniciado e anexado ao servidor HTTP.`);
-    startFeeds();
+    return wss;
 }
 
 // --- Início: Adição para Servidor Standalone ---
 
 // Esta função cria e inicia um servidor HTTP que usa a nossa lógica WebSocket.
 function initializeStandaloneServer() {
-    const httpServer = createServer((req, res) => {
+    const httpServer = http.createServer((req, res) => {
         // Adiciona headers CORS para todas as respostas HTTP
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -143,12 +137,7 @@ function initializeStandaloneServer() {
         // Health check endpoint
         if (req.url === '/health') {
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ 
-                status: 'ok', 
-                message: 'WebSocket server is running',
-                clients: clients.length,
-                timestamp: new Date().toISOString()
-            }));
+            res.end(JSON.stringify({ status: 'healthy', clients: clients.length }));
             return;
         }
 
@@ -171,11 +160,10 @@ function initializeStandaloneServer() {
     // Anexa a lógica do WebSocket ao nosso servidor HTTP.
     startWebSocketServer(httpServer);
 
-    const port = process.env.PORT || 3001;
-    httpServer.listen(port, () => {
-        console.log(`[Servidor Standalone] HTTP e WebSocket escutando na porta ${port}`);
-        console.log(`Health check disponível em: http://localhost:${port}/health`);
-        console.log(`Status disponível em: http://localhost:${port}/status`);
+    httpServer.listen(PORT, () => {
+        console.log(`\n[Servidor] WebSocket iniciado na porta ${PORT}`);
+        console.log(`Health check disponível em: http://localhost:${PORT}/health`);
+        console.log(`Status disponível em: http://localhost:${PORT}/status`);
     });
 
     // Tratamento de erros do servidor
@@ -200,28 +188,43 @@ if (require.main === module) {
 
 // --- Fim: Adição para Servidor Standalone ---
 
+function heartbeat(ws: WebSocket) {
+    (ws as CustomWebSocket).isAlive = true;
+    (ws as CustomWebSocket).lastPing = Date.now();
+}
+
+function checkConnections() {
+    const now = Date.now();
+    clients.forEach((ws) => {
+        const customWs = ws as CustomWebSocket;
+        if (!customWs.isAlive && (now - customWs.lastPing) > 30000) {
+            console.log('[Conexão] Cliente inativo removido');
+            ws.terminate();
+            return;
+        }
+
+        customWs.isAlive = false;
+        try {
+            ws.ping();
+        } catch (error) {
+            console.error('[Ping] Erro ao enviar ping:', error);
+            ws.terminate();
+        }
+    });
+}
+
 function broadcast(data: any) {
     const serializedData = JSON.stringify(data);
-    const deadClients: CustomWebSocket[] = [];
-
-    clients.forEach(client => {
+    clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN) {
             try {
                 client.send(serializedData);
             } catch (error) {
-                console.error('Erro ao enviar mensagem para cliente:', error);
-                deadClients.push(client);
+                console.error('[Broadcast] Erro ao enviar mensagem:', error);
+                client.terminate();
             }
-        } else {
-            deadClients.push(client);
         }
     });
-
-    // Remove clientes mortos
-    if (deadClients.length > 0) {
-        clients = clients.filter(c => !deadClients.includes(c));
-        console.log(`Removidos ${deadClients.length} clientes mortos. Total restante: ${clients.length}`);
-    }
 }
 
 // Versão corrigida da função com logs de depuração
@@ -300,16 +303,37 @@ function getNormalizedData(symbol: string): { baseSymbol: string, factor: number
 
 async function findAndBroadcastArbitrage() {
     const exchangeIdentifiers = Object.keys(marketPrices);
-    if (exchangeIdentifiers.length < 2) return;
+    console.log('\n[Arbitragem] Exchanges disponíveis:', exchangeIdentifiers);
+    
+    if (exchangeIdentifiers.length < 2) {
+        console.log('[Arbitragem] Aguardando dados de pelo menos 2 exchanges...');
+        return;
+    }
 
     const spotId = exchangeIdentifiers.find(id => id === 'GATEIO_SPOT');
     const futuresId = exchangeIdentifiers.find(id => id === 'MEXC_FUTURES');
 
-    if (!spotId || !futuresId) return;
+    if (!spotId || !futuresId) {
+        console.log('[Arbitragem] Aguardando dados do Gate.io Spot e MEXC Futures...');
+        console.log('Spot:', spotId ? 'OK' : 'Aguardando');
+        console.log('Futures:', futuresId ? 'OK' : 'Aguardando');
+        return;
+    }
 
     const spotPrices = marketPrices[spotId];
     const futuresPrices = marketPrices[futuresId];
 
+    console.log('\n[Preços] Gate.io Spot:');
+    Object.entries(spotPrices).slice(0, 5).forEach(([symbol, data]) => {
+        console.log(`${symbol}: Ask ${data.bestAsk}, Bid ${data.bestBid}`);
+    });
+
+    console.log('\n[Preços] MEXC Futures:');
+    Object.entries(futuresPrices).slice(0, 5).forEach(([symbol, data]) => {
+        console.log(`${symbol}: Ask ${data.bestAsk}, Bid ${data.bestBid}`);
+    });
+
+    let opportunitiesFound = 0;
     for (const symbol in spotPrices) {
         if (futuresPrices[symbol]) {
             const spotAsk = spotPrices[symbol].bestAsk;
@@ -319,6 +343,7 @@ async function findAndBroadcastArbitrage() {
                 const profitPercentage = ((futuresBid - spotAsk) / spotAsk) * 100;
 
                 if (profitPercentage >= MIN_PROFIT_PERCENTAGE) {
+                    opportunitiesFound++;
                     const opportunity: ArbitrageOpportunity = {
                         type: 'arbitrage',
                         baseSymbol: symbol,
@@ -337,44 +362,63 @@ async function findAndBroadcastArbitrage() {
                         timestamp: Date.now()
                     };
 
+                    console.log('\n[OPORTUNIDADE ENCONTRADA]');
+                    console.log(`Par: ${symbol}`);
+                    console.log(`Compra: ${spotAsk} (${spotId})`);
+                    console.log(`Venda: ${futuresBid} (${futuresId})`);
+                    console.log(`Lucro: ${profitPercentage.toFixed(2)}%`);
+
                     broadcastOpportunity(opportunity);
                 }
             }
         }
     }
+
+    if (opportunitiesFound === 0) {
+        console.log('\n[Arbitragem] Nenhuma oportunidade encontrada neste ciclo');
+    } else {
+        console.log(`\n[Arbitragem] Total de oportunidades encontradas: ${opportunitiesFound}`);
+    }
 }
 
 async function startFeeds() {
     try {
-        console.log("Iniciando feeds de dados...");
+        console.log("\n[Iniciando] Conectando aos feeds de dados...");
 
         const gateioConnector = new GateIoConnector('GATEIO_SPOT', handlePriceUpdate, () => {
-            console.log('GateIO WebSocket conectado');
+            console.log('[GateIO] WebSocket conectado e pronto');
         });
 
         const mexcConnector = new MexcConnector('MEXC_FUTURES', handlePriceUpdate, () => {
-            console.log('MEXC WebSocket conectado');
+            console.log('[MEXC] WebSocket conectado e pronto');
         });
 
         // Primeiro, conecta os WebSockets
+        console.log('\n[Conexão] Iniciando conexão com as exchanges...');
         await Promise.all([
             gateioConnector.connect(),
             mexcConnector.connect()
         ]);
+        console.log('[Conexão] Conectado com sucesso às exchanges');
 
         // Depois, busca os pares negociáveis
+        console.log('\n[Pares] Buscando pares negociáveis...');
         const spotPairs = await gateioConnector.getTradablePairs();
-        console.log(`[GATEIO_SPOT] Pares disponíveis: ${spotPairs.length}`);
+        console.log(`[GateIO] ${spotPairs.length} pares disponíveis`);
+        console.log('Primeiros 5 pares:', spotPairs.slice(0, 5));
 
         // Inscreve-se nos pares
+        console.log('\n[Inscrição] Inscrevendo-se nos pares...');
         gateioConnector.subscribe(spotPairs);
         mexcConnector.subscribe(spotPairs.map(p => p.replace('/', '_')));
+        console.log('[Inscrição] Inscrição nos pares concluída');
 
         // Inicia o monitoramento de arbitragem
+        console.log('\n[Monitor] Iniciando monitoramento de arbitragem...');
         setInterval(findAndBroadcastArbitrage, 5000);
 
-        console.log('Feeds iniciados com sucesso');
+        console.log('\n[Sistema] Feeds iniciados com sucesso');
     } catch (error) {
-        console.error('Erro ao iniciar os feeds:', error);
+        console.error('\n[ERRO] Falha ao iniciar os feeds:', error);
     }
 }
