@@ -99,7 +99,7 @@ export function useArbitrageWebSocket() {
     
     // Fallback para a URL específica do Render
     console.log('[DEBUG] ⚠️ USANDO URL DE FALLBACK');
-    return 'wss://robo-de-arbitragem.onrender.com';
+    return 'wss://robo-de-arbitragem-5n8k.onrender.com';
   };
 
   const connect = () => {
