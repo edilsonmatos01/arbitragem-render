@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && npm run build:ws",
     "build:tracker": "tsc --project scripts/tsconfig.json && mkdir -p scripts/dist && cp scripts/spread-monitor.js scripts/dist/",
     "start": "next start",
     "start:tracker": "node scripts/spread-monitor.js",
@@ -16,7 +16,8 @@
     "postinstall": "npm run db:setup",
     "build:ws": "tsc --project tsconfig.server.json",
     "start:ws": "node dist/websocket-server.js",
-    "dev:ws": "npm run build:ws && npm run start:ws"
+    "dev:ws": "npm run build:ws && npm run start:ws",
+    "start:prod": "npm run start:ws"
   },
   "dependencies": {
     "@babel/core": "^7.23.9",

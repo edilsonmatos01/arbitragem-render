@@ -8,7 +8,7 @@ exports.normalizeSpread = normalizeSpread;
 exports.formatValue = formatValue;
 exports.compareSpread = compareSpread;
 exports.isValidSpread = isValidSpread;
-var decimal_js_1 = __importDefault(require("decimal.js"));
+const decimal_js_1 = __importDefault(require("decimal.js"));
 /**
  * Calcula o spread percentual entre preço de venda e compra
  * @param sellPrice Preço de venda
@@ -18,8 +18,8 @@ var decimal_js_1 = __importDefault(require("decimal.js"));
 function calculateSpread(sellPrice, buyPrice) {
     try {
         // Garante que os valores são strings para evitar erros de precisão do JavaScript
-        var sell = new decimal_js_1.default(sellPrice.toString().trim());
-        var buy = new decimal_js_1.default(buyPrice.toString().trim());
+        const sell = new decimal_js_1.default(sellPrice.toString().trim());
+        const buy = new decimal_js_1.default(buyPrice.toString().trim());
         // Validações rigorosas
         if (buy.isZero() || buy.isNegative() || sell.isNegative() ||
             !buy.isFinite() || !sell.isFinite() ||
@@ -31,9 +31,9 @@ function calculateSpread(sellPrice, buyPrice) {
             return null;
         }
         // Cálculo do spread mantendo precisão máxima em cada etapa
-        var difference = sell.minus(buy);
-        var ratio = difference.dividedBy(buy);
-        var percentageSpread = ratio.times(100);
+        const difference = sell.minus(buy);
+        const ratio = difference.dividedBy(buy);
+        const percentageSpread = ratio.times(100);
         // Validação do resultado
         if (percentageSpread.isNegative() || percentageSpread.isZero() || !percentageSpread.isFinite()) {
             return null;
@@ -54,7 +54,7 @@ function calculateSpread(sellPrice, buyPrice) {
  */
 function normalizeSpread(spread) {
     try {
-        var decimalSpread = new decimal_js_1.default(spread.toString());
+        const decimalSpread = new decimal_js_1.default(spread.toString());
         if (decimalSpread.isNegative() || decimalSpread.isZero() || !decimalSpread.isFinite()) {
             return null;
         }
@@ -71,15 +71,13 @@ function normalizeSpread(spread) {
  * @param minDecimals Mínimo de casas decimais
  * @param maxDecimals Máximo de casas decimais
  */
-function formatValue(value, minDecimals, maxDecimals) {
-    if (minDecimals === void 0) { minDecimals = 2; }
-    if (maxDecimals === void 0) { maxDecimals = 8; }
+function formatValue(value, minDecimals = 2, maxDecimals = 8) {
     try {
-        var decimal = new decimal_js_1.default(value.toString().trim());
+        const decimal = new decimal_js_1.default(value.toString().trim());
         // Determina o número de casas decimais significativas
-        var stringValue = decimal.toString();
-        var decimalPart = stringValue.split('.')[1] || '';
-        var significantDecimals = Math.min(Math.max(decimalPart.length, minDecimals), maxDecimals);
+        const stringValue = decimal.toString();
+        const decimalPart = stringValue.split('.')[1] || '';
+        const significantDecimals = Math.min(Math.max(decimalPart.length, minDecimals), maxDecimals);
         return decimal.toDecimalPlaces(significantDecimals, decimal_js_1.default.ROUND_HALF_UP).toString();
     }
     catch (_a) {
@@ -97,8 +95,8 @@ function compareSpread(a, b) {
     if (b === null)
         return 1;
     try {
-        var decimalA = new decimal_js_1.default(a.trim());
-        var decimalB = new decimal_js_1.default(b.trim());
+        const decimalA = new decimal_js_1.default(a.trim());
+        const decimalB = new decimal_js_1.default(b.trim());
         return decimalA.comparedTo(decimalB);
     }
     catch (_a) {
@@ -112,7 +110,7 @@ function isValidSpread(spread) {
     if (!spread)
         return false;
     try {
-        var value = new decimal_js_1.default(spread.trim());
+        const value = new decimal_js_1.default(spread.trim());
         return !value.isNegative() && value.isFinite() && !value.isZero();
     }
     catch (_a) {

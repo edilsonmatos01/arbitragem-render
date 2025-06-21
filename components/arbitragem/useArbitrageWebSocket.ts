@@ -70,12 +70,10 @@ export function useArbitrageWebSocket() {
   const getWebSocketUrl = useCallback(() => {
     const isSecure = window.location.protocol === 'https:';
     const wsProtocol = isSecure ? 'wss:' : 'ws:';
+    const host = window.location.host;
     
-    if (process.env.NODE_ENV === 'production') {
-      return 'wss://robo-de-arbitragem-tracker.onrender.com:10000';
-    }
-    
-    return 'ws://localhost:10000';
+    // Usa o mesmo host da aplicação, mas com o protocolo WebSocket
+    return `${wsProtocol}//${host}/ws`;
   }, []);
 
   const checkServerHealth = useCallback(async () => {
