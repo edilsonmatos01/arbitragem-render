@@ -3,18 +3,6 @@ const path = require('path');
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  async rewrites() {
-    return {
-      beforeFiles: [
-        {
-          source: '/ws',
-          destination: process.env.NODE_ENV === 'production' 
-            ? 'https://robo-de-arbitragem-tracker.onrender.com/ws'
-            : 'http://localhost:10000/ws'
-        }
-      ]
-    }
-  },
   typescript: {
     ignoreBuildErrors: true,
   },

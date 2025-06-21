@@ -67,8 +67,12 @@ export function useArbitrageWebSocket() {
   const isMounted = useRef(false);
 
   const getWebSocketURL = () => {
+    console.log('[DEBUG] NODE_ENV:', process.env.NODE_ENV);
+    console.log('[DEBUG] window location:', typeof window !== 'undefined' ? window.location.href : 'undefined');
+    
     // Em desenvolvimento, sempre usar URL local
     if (process.env.NODE_ENV === 'development') {
+      console.log('[DEBUG] Usando URL de desenvolvimento');
       return 'ws://localhost:10000';
     }
     
@@ -76,10 +80,13 @@ export function useArbitrageWebSocket() {
     if (typeof window !== 'undefined') {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.host;
-      return `${protocol}//${host}`;
+      const wsUrl = `${protocol}//${host}`;
+      console.log('[DEBUG] URL WebSocket construída:', wsUrl);
+      return wsUrl;
     }
     
     // Fallback para a URL específica do Render
+    console.log('[DEBUG] Usando URL de fallback');
     return 'wss://robo-de-arbitragem.onrender.com';
   };
 
