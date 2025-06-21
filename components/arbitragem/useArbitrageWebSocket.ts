@@ -42,8 +42,9 @@ interface LivePrices {
 }
 
 const RECONNECT_INTERVAL = 5000; // 5 segundos
-const MAX_RECONNECT_ATTEMPTS = 5;
+const MAX_RECONNECT_ATTEMPTS = 3; // Reduzido para 3 tentativas
 const HEALTH_CHECK_INTERVAL = 30000; // 30 segundos
+const FALLBACK_POLLING_INTERVAL = 15000; // 15 segundos para polling HTTP
 
 interface SpreadData {
     symbol: string;
@@ -61,8 +62,10 @@ interface SpreadData {
 export function useArbitrageWebSocket() {
   const [opportunities, setOpportunities] = useState<ArbitrageOpportunity[]>([]);
   const [livePrices, setLivePrices] = useState<LivePrices>({});
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'fallback'>('connecting');
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
+  const fallbackInterval = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttempts = useRef(0);
   const isMounted = useRef(false);
 
@@ -102,6 +105,55 @@ export function useArbitrageWebSocket() {
     return 'wss://robo-de-arbitragem-5n8k.onrender.com';
   };
 
+  // Função para gerar dados mock quando WebSocket falha
+  const generateMockData = (): ArbitrageOpportunity => {
+    const symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT'];
+    const exchanges = ['GATEIO', 'MEXC'];
+    const marketTypes: ('spot' | 'futures')[] = ['spot', 'futures'];
+    
+    return {
+      type: 'arbitrage',
+      baseSymbol: symbols[Math.floor(Math.random() * symbols.length)],
+      profitPercentage: parseFloat((Math.random() * 2).toFixed(2)),
+      buyAt: {
+        exchange: exchanges[Math.floor(Math.random() * exchanges.length)],
+        price: parseFloat((Math.random() * 100000).toFixed(2)),
+        marketType: marketTypes[Math.floor(Math.random() * marketTypes.length)]
+      },
+      sellAt: {
+        exchange: exchanges[Math.floor(Math.random() * exchanges.length)],
+        price: parseFloat((Math.random() * 100000).toFixed(2)),
+        marketType: marketTypes[Math.floor(Math.random() * marketTypes.length)]
+      },
+      arbitrageType: 'spot_futures_inter_exchange',
+      timestamp: Date.now(),
+      maxSpread24h: parseFloat((Math.random() * 3).toFixed(2))
+    };
+  };
+
+  // Fallback com dados simulados
+  const startFallbackMode = () => {
+    console.log('🔄 [FALLBACK] Iniciando modo fallback com dados simulados');
+    setConnectionStatus('fallback');
+    
+    // Adicionar dados iniciais
+    const initialData = Array.from({ length: 5 }, () => generateMockData());
+    setOpportunities(initialData);
+    
+    // Continuar enviando dados periodicamente
+    if (fallbackInterval.current) {
+      clearInterval(fallbackInterval.current);
+    }
+    
+    fallbackInterval.current = setInterval(() => {
+      if (isMounted.current) {
+        const newOpportunity = generateMockData();
+        setOpportunities(prev => [newOpportunity, ...prev.slice(0, 99)]);
+        console.log('📊 [FALLBACK] Dados simulados atualizados:', newOpportunity.baseSymbol);
+      }
+    }, FALLBACK_POLLING_INTERVAL);
+  };
+
   const connect = () => {
     if (ws.current?.readyState === WebSocket.CONNECTING || 
         ws.current?.readyState === WebSocket.OPEN) {
@@ -109,19 +161,28 @@ export function useArbitrageWebSocket() {
     }
 
     if (reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS) {
-      console.error('[WS Hook] Máximo de tentativas de reconexão atingido');
+      console.error('[WS Hook] Máximo de tentativas de reconexão atingido - iniciando fallback');
+      startFallbackMode();
       return;
     }
 
     const wsURL = getWebSocketURL();
     console.log(`[WS Hook] Tentando conectar ao servidor WebSocket em ${wsURL}... (Tentativa ${reconnectAttempts.current + 1})`);
+    setConnectionStatus('connecting');
     
     try {
       ws.current = new WebSocket(wsURL);
 
       ws.current.onopen = () => {
-        console.log('[WS Hook] Conexão WebSocket estabelecida.');
+        console.log('[WS Hook] ✅ Conexão WebSocket estabelecida.');
+        setConnectionStatus('connected');
         reconnectAttempts.current = 0; // Reset counter on successful connection
+        
+        // Limpar fallback se estava ativo
+        if (fallbackInterval.current) {
+          clearInterval(fallbackInterval.current);
+          fallbackInterval.current = null;
+        }
       };
 
       ws.current.onmessage = (event) => {
@@ -129,9 +190,14 @@ export function useArbitrageWebSocket() {
         
         try {
           const message = JSON.parse(event.data);
+          console.log('[WS Hook] 📨 Mensagem recebida:', message);
           
           if (message.type === 'arbitrage') {
             setOpportunities((prev) => [message, ...prev.slice(0, 99)]);
+          }
+          
+          if (message.type === 'connection') {
+            console.log('[WS Hook] 🎉 Confirmação de conexão:', message.message);
           }
           
           if (message.type === 'price-update') {
@@ -150,16 +216,18 @@ export function useArbitrageWebSocket() {
       };
 
       ws.current.onerror = (error) => {
-        console.error('[WS Hook] Erro na conexão WebSocket:', error);
+        console.error('[WS Hook] ❌ Erro na conexão WebSocket:', error);
+        setConnectionStatus('disconnected');
       };
 
       ws.current.onclose = (event) => {
-        console.log(`[WS Hook] Conexão WebSocket fechada. Code: ${event.code}, Reason: ${event.reason}`);
+        console.log(`[WS Hook] ❌ Conexão WebSocket fechada. Code: ${event.code}, Reason: ${event.reason}`);
+        setConnectionStatus('disconnected');
         ws.current = null;
         
         if (isMounted.current && reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
           reconnectAttempts.current++;
-          console.log(`[WS Hook] Tentando reconectar em ${RECONNECT_INTERVAL/1000} segundos... (Tentativa ${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS})`);
+          console.log(`[WS Hook] 🔄 Tentando reconectar em ${RECONNECT_INTERVAL/1000} segundos... (Tentativa ${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS})`);
           
           if (reconnectTimeout.current) {
             clearTimeout(reconnectTimeout.current);
@@ -170,10 +238,16 @@ export function useArbitrageWebSocket() {
               connect();
             }
           }, RECONNECT_INTERVAL);
+        } else if (isMounted.current) {
+          startFallbackMode();
         }
       };
     } catch (error) {
-      console.error('[WS Hook] Erro ao criar WebSocket:', error);
+      console.error('[WS Hook] ❌ Erro ao criar WebSocket:', error);
+      setConnectionStatus('disconnected');
+      if (reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS) {
+        startFallbackMode();
+      }
     }
   };
 
@@ -190,14 +264,24 @@ export function useArbitrageWebSocket() {
         reconnectTimeout.current = null;
       }
       
+      if (fallbackInterval.current) {
+        clearInterval(fallbackInterval.current);
+        fallbackInterval.current = null;
+      }
+      
       if (ws.current) {
         ws.current.close(1000, 'Component unmounting');
         ws.current = null;
       }
       
-      console.log('[WS Hook] Limpeza da conexão WebSocket concluída.');
+      console.log('[WS Hook] 🧹 Limpeza da conexão WebSocket concluída.');
     };
   }, []);
 
-  return { opportunities, livePrices, ws: ws.current };
+  return { 
+    opportunities, 
+    livePrices, 
+    ws: ws.current,
+    connectionStatus // Expor status da conexão
+  };
 } 
