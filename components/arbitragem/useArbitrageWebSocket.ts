@@ -153,5 +153,5 @@ export function useArbitrageWebSocket() {
     };
   }, []);
 
-  return { opportunities, livePrices };
+  return { opportunities, livePrices, ws: ws.current };
 } 
