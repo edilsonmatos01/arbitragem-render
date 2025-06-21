@@ -1,11 +1,4 @@
 import React from 'react';
-import {
-    Select,
-    SelectTrigger,
-    SelectValue,
-    SelectContent,
-    SelectItem,
-} from "../ui/select";
 
 interface ExchangeConfig {
     spot: string;
@@ -18,49 +11,36 @@ interface ExchangeSelectorProps {
 }
 
 export function ExchangeSelector({ currentConfig, onConfigChange }: ExchangeSelectorProps) {
-    const combinations = [
-        {
-            label: "Gate.io (Spot) → MEXC (Futures)",
-            value: "gate_mexc",
-            config: { spot: "GATE_SPOT", futures: "MEXC_FUTURES" }
-        },
-        {
-            label: "MEXC (Spot) → Gate.io (Futures)",
-            value: "mexc_gate",
-            config: { spot: "MEXC_SPOT", futures: "GATE_FUTURES" }
+    const handleChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+        const value = event.target.value;
+        
+        if (value === "gate_mexc") {
+            onConfigChange({ spot: "GATE_SPOT", futures: "MEXC_FUTURES" });
+        } else if (value === "mexc_gate") {
+            onConfigChange({ spot: "MEXC_SPOT", futures: "GATE_FUTURES" });
         }
-    ];
+    };
 
     const getCurrentValue = () => {
-        const current = combinations.find(
-            combo => combo.config.spot === currentConfig.spot && combo.config.futures === currentConfig.futures
-        );
-        return current?.value || combinations[0].value;
+        if (currentConfig.spot === "GATE_SPOT" && currentConfig.futures === "MEXC_FUTURES") {
+            return "gate_mexc";
+        } else if (currentConfig.spot === "MEXC_SPOT" && currentConfig.futures === "GATE_FUTURES") {
+            return "mexc_gate";
+        }
+        return "gate_mexc"; // default
     };
 
     return (
         <div className="flex items-center space-x-4">
-            <label className="text-sm font-medium">Combinação de Exchanges:</label>
-            <Select
+            <label className="text-sm font-medium text-white">Combinação de Exchanges:</label>
+            <select
                 value={getCurrentValue()}
-                onValueChange={(value) => {
-                    const selected = combinations.find(combo => combo.value === value);
-                    if (selected) {
-                        onConfigChange(selected.config);
-                    }
-                }}
+                onChange={handleChange}
+                className="w-[300px] px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-                <SelectTrigger className="w-[300px]">
-                    <SelectValue placeholder="Selecione a combinação" />
-                </SelectTrigger>
-                <SelectContent>
-                    {combinations.map((combo) => (
-                        <SelectItem key={combo.value} value={combo.value}>
-                            {combo.label}
-                        </SelectItem>
-                    ))}
-                </SelectContent>
-            </Select>
+                <option value="gate_mexc">Gate.io (Spot) → MEXC (Futures)</option>
+                <option value="mexc_gate">MEXC (Spot) → Gate.io (Futures)</option>
+            </select>
         </div>
     );
 } 
