@@ -42,45 +42,81 @@ function handlePriceUpdate(update: { type: string, symbol: string, marketType: s
 }
 
 export function startWebSocketServer(httpServer: ReturnType<typeof createServer>) {
-    const wss = new WebSocket.Server({ server: httpServer });
+    const wss = new WebSocket.Server({ 
+        server: httpServer,
+        perMessageDeflate: false,
+        clientTracking: true,
+        maxPayload: 1024 * 1024, // 1MB
+        verifyClient: (info, cb) => {
+            // Aceita conexões de qualquer origem em produção
+            const isProduction = process.env.NODE_ENV === 'production';
+            if (isProduction) {
+                cb(true);
+                return;
+            }
+
+            // Em desenvolvimento, aceita apenas localhost
+            const origin = info.origin || '';
+            const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
+            cb(isLocalhost);
+        }
+    });
 
     wss.on('connection', (ws: CustomWebSocket, req: IncomingMessage) => {
         ws.isAlive = true;
 
+        // Configura o ping-pong para manter a conexão ativa
+        const pingInterval = setInterval(() => {
+            if (ws.isAlive === false) {
+                clearInterval(pingInterval);
+                return ws.terminate();
+            }
+            ws.isAlive = false;
+            try {
+                ws.ping();
+            } catch (error) {
+                console.error('Erro ao enviar ping:', error);
+                clearInterval(pingInterval);
+                ws.terminate();
+            }
+        }, 30000);
+
         ws.on('pong', () => {
             ws.isAlive = true;
+        });
+
+        ws.on('error', (error) => {
+            console.error('Erro na conexão WebSocket:', error);
+            clearInterval(pingInterval);
+            ws.terminate();
         });
 
         const clientIp = req.socket.remoteAddress || req.headers['x-forwarded-for'];
         clients.push(ws);
         console.log(`[WS Server] Cliente conectado: ${clientIp}. Total: ${clients.length}`);
 
+        // Envia o estado inicial
         if (Object.keys(marketPrices).length > 0) {
-            ws.send(JSON.stringify({ type: 'full_book', data: marketPrices }));
+            try {
+                ws.send(JSON.stringify({ 
+                    type: 'full_book', 
+                    data: marketPrices,
+                    timestamp: Date.now()
+                }));
+            } catch (error) {
+                console.error('Erro ao enviar estado inicial:', error);
+            }
         }
 
-        ws.on('close', () => {
+        ws.on('close', (code, reason) => {
             clients = clients.filter(c => c !== ws);
-            console.log(`[WS Server] Cliente desconectado: ${clientIp}. Total: ${clients.length}`);
+            clearInterval(pingInterval);
+            console.log(`[WS Server] Cliente desconectado: ${clientIp}. Código: ${code}, Razão: ${reason}. Total: ${clients.length}`);
         });
     });
 
-    const interval = setInterval(() => {
-        wss.clients.forEach((client: WebSocket) => {
-            const ws = client as CustomWebSocket;
-
-            if (ws.isAlive === false) {
-                console.log('[WS Server] Conexão inativa terminada.');
-                return ws.terminate();
-            }
-
-            ws.isAlive = false;
-            ws.ping();
-        });
-    }, 30000);
-
     wss.on('close', () => {
-        clearInterval(interval);
+        console.log('Servidor WebSocket fechado');
     });
 
     console.log(`Servidor WebSocket iniciado e anexado ao servidor HTTP.`);
@@ -92,29 +128,72 @@ export function startWebSocketServer(httpServer: ReturnType<typeof createServer>
 // Esta função cria e inicia um servidor HTTP que usa a nossa lógica WebSocket.
 function initializeStandaloneServer() {
     const httpServer = createServer((req, res) => {
-        // O servidor HTTP básico não fará nada além de fornecer uma base para o WebSocket.
-        // Podemos adicionar um endpoint de health check simples.
+        // Adiciona headers CORS para todas as respostas HTTP
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+        // Responde imediatamente a requisições OPTIONS
+        if (req.method === 'OPTIONS') {
+            res.writeHead(200);
+            res.end();
+            return;
+        }
+
+        // Health check endpoint
         if (req.url === '/health') {
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ status: 'ok', message: 'WebSocket server is running' }));
-        } else {
-            res.writeHead(404);
-            res.end();
+            res.end(JSON.stringify({ 
+                status: 'ok', 
+                message: 'WebSocket server is running',
+                clients: clients.length,
+                timestamp: new Date().toISOString()
+            }));
+            return;
         }
+
+        // Rota de status do WebSocket
+        if (req.url === '/status') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                status: 'ok',
+                connectedClients: clients.length,
+                exchanges: Object.keys(marketPrices),
+                timestamp: new Date().toISOString()
+            }));
+            return;
+        }
+
+        res.writeHead(404);
+        res.end();
     });
 
     // Anexa a lógica do WebSocket ao nosso servidor HTTP.
     startWebSocketServer(httpServer);
 
-    httpServer.listen(PORT, () => {
-        console.log(`[Servidor Standalone] Servidor HTTP e WebSocket escutando na porta ${PORT}`);
+    const port = process.env.PORT || 3001;
+    httpServer.listen(port, () => {
+        console.log(`[Servidor Standalone] HTTP e WebSocket escutando na porta ${port}`);
+        console.log(`Health check disponível em: http://localhost:${port}/health`);
+        console.log(`Status disponível em: http://localhost:${port}/status`);
+    });
+
+    // Tratamento de erros do servidor
+    httpServer.on('error', (error) => {
+        console.error('Erro no servidor HTTP:', error);
+    });
+
+    // Graceful shutdown
+    process.on('SIGTERM', () => {
+        console.log('Recebido sinal SIGTERM, iniciando shutdown...');
+        httpServer.close(() => {
+            console.log('Servidor HTTP fechado.');
+            process.exit(0);
+        });
     });
 }
 
 // Inicia o servidor standalone.
-// O `require.main === module` garante que este código só rode quando
-// o arquivo é executado diretamente (ex: `node dist/websocket-server.js`),
-// mas não quando é importado por outro arquivo (como o `server.js` em dev).
 if (require.main === module) {
     initializeStandaloneServer();
 }
@@ -123,11 +202,26 @@ if (require.main === module) {
 
 function broadcast(data: any) {
     const serializedData = JSON.stringify(data);
+    const deadClients: CustomWebSocket[] = [];
+
     clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
-            client.send(serializedData);
+            try {
+                client.send(serializedData);
+            } catch (error) {
+                console.error('Erro ao enviar mensagem para cliente:', error);
+                deadClients.push(client);
+            }
+        } else {
+            deadClients.push(client);
         }
     });
+
+    // Remove clientes mortos
+    if (deadClients.length > 0) {
+        clients = clients.filter(c => !deadClients.includes(c));
+        console.log(`Removidos ${deadClients.length} clientes mortos. Total restante: ${clients.length}`);
+    }
 }
 
 // Versão corrigida da função com logs de depuração

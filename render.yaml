@@ -26,6 +26,7 @@ services:
     - key: NEXT_PUBLIC_WS_URL
       value: wss://robo-de-arbitragem-tracker.onrender.com
   healthCheckPath: /
+  autoDeploy: true
 
 - type: web
   name: robo-de-arbitragem-tracker
@@ -39,6 +40,19 @@ services:
       value: production
     - key: DATABASE_URL
       sync: false
+    - key: PORT
+      value: "10000"
   healthCheckPath: /health
+  autoDeploy: true
+  headers:
+    - path: /*
+      name: Access-Control-Allow-Origin
+      value: "*"
+    - path: /*
+      name: Access-Control-Allow-Methods
+      value: "GET, POST, OPTIONS"
+    - path: /*
+      name: Access-Control-Allow-Headers
+      value: "Content-Type"
 
 version: "1"

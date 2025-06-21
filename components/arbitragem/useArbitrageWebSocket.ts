@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 // Idealmente, esta interface ArbitrageOpportunity seria importada de um local compartilhado
 // entre o backend (websocket-server.ts) e o frontend.
@@ -41,43 +41,85 @@ interface LivePrices {
     }
 }
 
-function getWebSocketUrl() {
-  // Em produção, use o protocolo wss:// se a página estiver em https://
-  const isSecure = window.location.protocol === 'https:';
-  const wsProtocol = isSecure ? 'wss:' : 'ws:';
-  
-  // Use a mesma origem do site em produção
-  if (process.env.NODE_ENV === 'production') {
-    const host = window.location.host;
-    // Se estiver no domínio principal, conecte ao subdomínio do tracker
-    if (host.includes('robo-de-arbitragem')) {
-      return 'wss://robo-de-arbitragem-tracker.onrender.com';
-    }
-    // Caso contrário, use o mesmo host
-    return `${wsProtocol}//${host}`;
-  }
-  
-  // Em desenvolvimento, use localhost:3001
-  return 'ws://localhost:3001';
-}
+const RECONNECT_INTERVAL = 5000; // 5 segundos
+const MAX_RECONNECT_ATTEMPTS = 5;
+const HEALTH_CHECK_INTERVAL = 30000; // 30 segundos
 
 export function useArbitrageWebSocket() {
   const [opportunities, setOpportunities] = useState<ArbitrageOpportunity[]>([]);
   const [livePrices, setLivePrices] = useState<LivePrices>({});
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectAttempts = useRef(0);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const getWebSocketUrl = useCallback(() => {
+    const isSecure = window.location.protocol === 'https:';
+    const wsProtocol = isSecure ? 'wss:' : 'ws:';
+    
+    if (process.env.NODE_ENV === 'production') {
+      return 'wss://robo-de-arbitragem-tracker.onrender.com';
+    }
+    
+    return 'ws://localhost:3001';
+  }, []);
+
+  const checkServerHealth = useCallback(async () => {
+    if (!isConnected) return;
+
+    try {
+      const wsUrl = getWebSocketUrl();
+      const httpUrl = wsUrl.replace('ws:', 'https:').replace('wss:', 'https:');
+      const response = await fetch(`${httpUrl}/health`);
+      
+      if (!response.ok) {
+        throw new Error('Servidor não está saudável');
+      }
+
+      const data = await response.json();
+      console.log('Health check:', data);
+    } catch (error) {
+      console.error('Erro no health check:', error);
+      reconnect();
+    }
+  }, [isConnected, getWebSocketUrl]);
+
+  const reconnect = useCallback(() => {
+    if (reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS) {
+      setError('Número máximo de tentativas de reconexão atingido');
+      return;
+    }
+
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+    }
+
+    reconnectTimeoutRef.current = setTimeout(() => {
+      reconnectAttempts.current += 1;
+      console.log(`Tentativa de reconexão ${reconnectAttempts.current} de ${MAX_RECONNECT_ATTEMPTS}`);
+      connect();
+    }, RECONNECT_INTERVAL);
+  }, []);
 
   const connect = useCallback(() => {
     try {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        console.log('WebSocket já está conectado');
+        return;
+      }
+
       const wsUrl = getWebSocketUrl();
       console.log('Conectando ao WebSocket:', wsUrl);
       
       const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
       ws.onopen = () => {
         console.log('WebSocket conectado com sucesso');
         setIsConnected(true);
         setError(null);
+        reconnectAttempts.current = 0;
       };
 
       ws.onmessage = (event) => {
@@ -100,6 +142,10 @@ export function useArbitrageWebSocket() {
               }
             }));
           }
+          if (data.type === 'full_book') {
+            console.log('Recebido book completo:', data);
+            setLivePrices(data.data);
+          }
         } catch (err) {
           console.error('Erro ao processar mensagem:', err);
         }
@@ -108,7 +154,12 @@ export function useArbitrageWebSocket() {
       ws.onclose = (event) => {
         console.log('WebSocket desconectado, código:', event.code, 'razão:', event.reason);
         setIsConnected(false);
-        setTimeout(connect, 5000); // Tentar reconectar após 5 segundos
+        
+        // Códigos específicos que indicam que não devemos tentar reconectar
+        const terminalCodes = [1000, 1001]; // Normal closure, Going away
+        if (!terminalCodes.includes(event.code)) {
+          reconnect();
+        }
       };
 
       ws.onerror = (err) => {
@@ -116,21 +167,32 @@ export function useArbitrageWebSocket() {
         console.error('Erro WebSocket:', err);
       };
 
+      // Inicia o health check
+      const healthCheckInterval = setInterval(checkServerHealth, HEALTH_CHECK_INTERVAL);
+
       return () => {
+        clearInterval(healthCheckInterval);
         if (ws.readyState === WebSocket.OPEN) {
-          ws.close();
+          ws.close(1000, 'Fechamento normal');
         }
       };
     } catch (err) {
       setError('Erro ao conectar ao WebSocket');
       console.error('Erro ao criar WebSocket:', err);
+      reconnect();
     }
-  }, []);
+  }, [getWebSocketUrl, reconnect, checkServerHealth]);
 
   useEffect(() => {
     const cleanup = connect();
     return () => {
       if (cleanup) cleanup();
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.close(1000, 'Componente desmontado');
+      }
     };
   }, [connect]);
 
@@ -138,6 +200,10 @@ export function useArbitrageWebSocket() {
     opportunities,
     livePrices,
     isConnected,
-    error
+    error,
+    reconnect: () => {
+      reconnectAttempts.current = 0;
+      connect();
+    }
   };
 } 
