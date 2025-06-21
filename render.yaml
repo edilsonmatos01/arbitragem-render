@@ -17,14 +17,28 @@ services:
   region: oregon
   plan: free
   buildCommand: npm install && npm install typescript @types/node --save && npm run build
-  startCommand: npm start
+  startCommand: next start
   envVars:
     - key: NODE_ENV
       value: production
     - key: DATABASE_URL
       sync: false
     - key: NEXT_PUBLIC_WS_URL
-      value: wss://robo-de-arbitragem-5n8k.onrender.com
+      value: wss://robo-de-arbitragem-tracker.onrender.com
   healthCheckPath: /
+
+- type: web
+  name: robo-de-arbitragem-tracker
+  env: node
+  region: oregon
+  plan: free
+  buildCommand: npm install && tsc websocket-server.ts --outDir dist
+  startCommand: node dist/websocket-server.js
+  envVars:
+    - key: NODE_ENV
+      value: production
+    - key: DATABASE_URL
+      sync: false
+  healthCheckPath: /health
 
 version: "1"

@@ -49,9 +49,13 @@ export function useArbitrageWebSocket() {
 
   const connect = useCallback(() => {
     try {
-      const ws = new WebSocket('ws://localhost:3001');
+      const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001';
+      console.log('Conectando ao WebSocket:', wsUrl);
+      
+      const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
+        console.log('WebSocket conectado com sucesso');
         setIsConnected(true);
         setError(null);
       };
@@ -60,6 +64,7 @@ export function useArbitrageWebSocket() {
         try {
           const data = JSON.parse(event.data);
           if (data.type === 'arbitrage') {
+            console.log('Recebida oportunidade de arbitragem:', data);
             setOpportunities((prev) => [...prev, {
               ...data,
               timestamp: new Date(data.timestamp)
@@ -81,6 +86,7 @@ export function useArbitrageWebSocket() {
       };
 
       ws.onclose = () => {
+        console.log('WebSocket desconectado, tentando reconectar...');
         setIsConnected(false);
         setTimeout(connect, 5000); // Tentar reconectar após 5 segundos
       };
