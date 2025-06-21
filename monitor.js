@@ -1,28 +1,10 @@
 const fetch = require('node-fetch');
 const { Pool } = require('pg');
 const WebSocket = require('ws');
-const http = require('http');
 require('dotenv').config();
 
-// Criar servidor HTTP para health check
-const server = http.createServer((req, res) => {
-  res.writeHead(200);
-  res.end('Monitor is running');
-});
-
-// Criar servidor WebSocket
-const wss = new WebSocket.Server({ server });
+let wss;
 const clients = new Set();
-
-wss.on('connection', (ws) => {
-  clients.add(ws);
-  console.log('Cliente WebSocket conectado. Total:', clients.size);
-
-  ws.on('close', () => {
-    clients.delete(ws);
-    console.log('Cliente WebSocket desconectado. Total:', clients.size);
-  });
-});
 
 // Função para broadcast das mensagens
 function broadcast(data) {
@@ -34,10 +16,25 @@ function broadcast(data) {
   });
 }
 
-const port = process.env.PORT || 10000;
-server.listen(port, () => {
-  console.log(`Servidor rodando na porta ${port}`);
-});
+// Função para iniciar o monitor
+function startMonitor(webSocketServer) {
+  wss = webSocketServer;
+
+  wss.on('connection', (ws) => {
+    clients.add(ws);
+    console.log('Cliente WebSocket conectado. Total:', clients.size);
+
+    ws.on('close', () => {
+      clients.delete(ws);
+      console.log('Cliente WebSocket desconectado. Total:', clients.size);
+    });
+  });
+
+  // Inicia o monitoramento
+  console.log('Monitor iniciado. Executando a cada 5 minutos...');
+  setInterval(monitorSpread, INTERVAL);
+  monitorSpread();
+}
 
 // Configuração do banco de dados
 const pool = new Pool({
@@ -224,8 +221,5 @@ async function monitorSpread() {
 
 // Executa a cada 5 minutos
 const INTERVAL = 5 * 60 * 1000; // 5 minutos em milissegundos
-console.log(`Monitor iniciado. Executando a cada ${INTERVAL/1000} segundos...`);
-setInterval(monitorSpread, INTERVAL);
 
-// Primeira execução
-monitorSpread(); 
+module.exports = { startMonitor, broadcast }; 

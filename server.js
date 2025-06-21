@@ -5,10 +5,9 @@ const WebSocket = require('ws');
 require('dotenv').config();
 
 const dev = process.env.NODE_ENV !== 'production';
-const hostname = 'localhost';
 const port = process.env.PORT || 10000;
 
-const app = next({ dev, hostname, port });
+const app = next({ dev });
 const handle = app.getRequestHandler();
 
 // Importa as funções do monitor
@@ -42,6 +41,6 @@ app.prepare().then(() => {
 
   server.listen(port, (err) => {
     if (err) throw err;
-    console.log(`> Ready on http://localhost:${port}`);
+    console.log(`> Ready on port ${port}`);
   });
 }); 
