@@ -3,35 +3,53 @@ import { MarketPrices } from './types';
 
 const MEXC_FUTURES_WS_URL = 'wss://contract.mexc.com/edge';
 
+type PriceUpdateCallback = (update: { 
+    type: string;
+    symbol: string;
+    marketType: string;
+    bestAsk: number;
+    bestBid: number;
+    identifier: string;
+}) => void;
+
 export class MexcConnector {
     private ws: WebSocket | null = null;
     private subscriptions: Set<string> = new Set();
     private pingInterval: NodeJS.Timeout | null = null;
-    private marketPrices: MarketPrices;
+    private onPriceUpdate: PriceUpdateCallback;
     private onConnectedCallback: (() => void) | null;
     private isConnected: boolean = false;
     private marketIdentifier: string;
 
-    constructor(identifier: string, marketPrices: MarketPrices, onConnected: () => void) {
+    constructor(identifier: string, onPriceUpdate: PriceUpdateCallback, onConnected: () => void) {
         this.marketIdentifier = identifier;
-        this.marketPrices = marketPrices;
+        this.onPriceUpdate = onPriceUpdate;
         this.onConnectedCallback = onConnected;
         console.log(`[${this.marketIdentifier}] Conector instanciado.`);
     }
 
-    public connect(): void {
-        if (this.ws) {
-            console.log(`[${this.marketIdentifier}] Conexão já existe. Fechando a antiga...`);
-            this.ws.close();
-        }
+    public connect(): Promise<void> {
+        return new Promise((resolve, reject) => {
+            if (this.ws) {
+                console.log(`[${this.marketIdentifier}] Conexão já existe. Fechando a antiga...`);
+                this.ws.close();
+            }
 
-        console.log(`[${this.marketIdentifier}] Conectando a ${MEXC_FUTURES_WS_URL}`);
-        this.ws = new WebSocket(MEXC_FUTURES_WS_URL);
+            console.log(`[${this.marketIdentifier}] Conectando a ${MEXC_FUTURES_WS_URL}`);
+            this.ws = new WebSocket(MEXC_FUTURES_WS_URL);
 
-        this.ws.on('open', () => this.onOpen());
-        this.ws.on('message', (data) => this.onMessage(data));
-        this.ws.on('close', (code, reason) => this.onClose(code, reason));
-        this.ws.on('error', (error) => this.onError(error));
+            this.ws.once('open', () => {
+                this.onOpen();
+                resolve();
+            });
+
+            this.ws.once('error', (error) => {
+                reject(error);
+            });
+
+            this.ws.on('message', (data) => this.onMessage(data));
+            this.ws.on('close', (code, reason) => this.onClose(code, reason));
+        });
     }
 
     public subscribe(symbols: string[]): void {
@@ -92,17 +110,18 @@ export class MexcConnector {
             // Processamento de dados do ticker
             if (message.channel === 'push.ticker' && message.data) {
                 const ticker = message.data;
-                const pair = ticker.symbol.replace('_', '/');
+                const symbol = ticker.symbol.replace('_', '/');
+                const bestAsk = parseFloat(ticker.ask1);
+                const bestBid = parseFloat(ticker.bid1);
 
-                if (!this.marketPrices[this.marketIdentifier]) {
-                    this.marketPrices[this.marketIdentifier] = {};
-                }
-
-                this.marketPrices[this.marketIdentifier][pair] = {
-                    bestAsk: parseFloat(ticker.ask1),
-                    bestBid: parseFloat(ticker.bid1),
-                    timestamp: ticker.timestamp
-                };
+                this.onPriceUpdate({
+                    type: 'price-update',
+                    symbol,
+                    marketType: 'futures',
+                    bestAsk,
+                    bestBid,
+                    identifier: this.marketIdentifier
+                });
             }
         } catch (error) {
             console.error(`[${this.marketIdentifier}] Erro ao processar mensagem:`, error);

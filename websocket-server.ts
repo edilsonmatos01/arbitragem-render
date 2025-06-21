@@ -23,7 +23,7 @@ let clients: CustomWebSocket[] = [];
 
 // ✅ Nova função centralizadora para lidar com todas as atualizações de preço
 function handlePriceUpdate(update: { type: string, symbol: string, marketType: string, bestAsk: number, bestBid: number, identifier: string }) {
-    const { identifier, symbol, priceData, marketType, bestAsk, bestBid } = update as any;
+    const { identifier, symbol, marketType, bestAsk, bestBid } = update;
 
     // 1. Atualiza o estado central de preços
     if (!marketPrices[identifier]) {
@@ -251,32 +251,36 @@ async function findAndBroadcastArbitrage() {
 }
 
 async function startFeeds() {
-    console.log("Iniciando feeds de dados...");
-    
-    // Passa a função 'handlePriceUpdate' para os conectores
-    const gateIoSpotConnector = new GateIoConnector('GATEIO_SPOT', handlePriceUpdate);
-    const gateIoFuturesConnector = new GateIoConnector('GATEIO_FUTURES', handlePriceUpdate);
-    
-    const mexcConnector = new MexcConnector('MEXC_FUTURES', handlePriceUpdate, () => {
-        const mexcPairs = targetPairs.map(p => p.replace('/', '_'));
-        mexcConnector.subscribe(mexcPairs);
-    });
-
     try {
-        const spotPairs = await gateIoSpotConnector.getTradablePairs();
-        const futuresPairs = await gateIoFuturesConnector.getTradablePairs();
-        
-        targetPairs = spotPairs.filter(p => futuresPairs.includes(p));
-        
-        console.log(`Encontrados ${targetPairs.length} pares em comum.`);
-        
-        gateIoSpotConnector.connect(targetPairs);
-        gateIoFuturesConnector.connect(targetPairs);
-        mexcConnector.connect();
+        console.log("Iniciando feeds de dados...");
 
-        console.log(`Monitorando ${targetPairs.length} pares.`);
+        const gateioConnector = new GateIoConnector('GATEIO_SPOT', handlePriceUpdate, () => {
+            console.log('GateIO WebSocket conectado');
+        });
+
+        const mexcConnector = new MexcConnector('MEXC_FUTURES', handlePriceUpdate, () => {
+            console.log('MEXC WebSocket conectado');
+        });
+
+        // Primeiro, conecta os WebSockets
+        await Promise.all([
+            gateioConnector.connect(),
+            mexcConnector.connect()
+        ]);
+
+        // Depois, busca os pares negociáveis
+        const spotPairs = await gateioConnector.getTradablePairs();
+        console.log(`[GATEIO_SPOT] Pares disponíveis: ${spotPairs.length}`);
+
+        // Inscreve-se nos pares
+        gateioConnector.subscribe(spotPairs);
+        mexcConnector.subscribe(spotPairs.map(p => p.replace('/', '_')));
+
+        // Inicia o monitoramento de arbitragem
         setInterval(findAndBroadcastArbitrage, 5000);
+
+        console.log('Feeds iniciados com sucesso');
     } catch (error) {
-        console.error("Erro fatal ao iniciar os feeds:", error);
+        console.error('Erro ao iniciar os feeds:', error);
     }
 }

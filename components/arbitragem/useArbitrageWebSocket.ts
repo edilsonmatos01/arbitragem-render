@@ -41,6 +41,26 @@ interface LivePrices {
     }
 }
 
+function getWebSocketUrl() {
+  // Em produção, use o protocolo wss:// se a página estiver em https://
+  const isSecure = window.location.protocol === 'https:';
+  const wsProtocol = isSecure ? 'wss:' : 'ws:';
+  
+  // Use a mesma origem do site em produção
+  if (process.env.NODE_ENV === 'production') {
+    const host = window.location.host;
+    // Se estiver no domínio principal, conecte ao subdomínio do tracker
+    if (host.includes('robo-de-arbitragem')) {
+      return 'wss://robo-de-arbitragem-tracker.onrender.com';
+    }
+    // Caso contrário, use o mesmo host
+    return `${wsProtocol}//${host}`;
+  }
+  
+  // Em desenvolvimento, use localhost:3001
+  return 'ws://localhost:3001';
+}
+
 export function useArbitrageWebSocket() {
   const [opportunities, setOpportunities] = useState<ArbitrageOpportunity[]>([]);
   const [livePrices, setLivePrices] = useState<LivePrices>({});
@@ -49,7 +69,7 @@ export function useArbitrageWebSocket() {
 
   const connect = useCallback(() => {
     try {
-      const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001';
+      const wsUrl = getWebSocketUrl();
       console.log('Conectando ao WebSocket:', wsUrl);
       
       const ws = new WebSocket(wsUrl);
@@ -85,8 +105,8 @@ export function useArbitrageWebSocket() {
         }
       };
 
-      ws.onclose = () => {
-        console.log('WebSocket desconectado, tentando reconectar...');
+      ws.onclose = (event) => {
+        console.log('WebSocket desconectado, código:', event.code, 'razão:', event.reason);
         setIsConnected(false);
         setTimeout(connect, 5000); // Tentar reconectar após 5 segundos
       };
@@ -97,7 +117,9 @@ export function useArbitrageWebSocket() {
       };
 
       return () => {
-        ws.close();
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.close();
+        }
       };
     } catch (err) {
       setError('Erro ao conectar ao WebSocket');

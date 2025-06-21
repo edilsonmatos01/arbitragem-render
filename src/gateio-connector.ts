@@ -3,6 +3,15 @@ import fetch from 'node-fetch';
 
 const GATEIO_WS_URL = 'wss://api.gateio.ws/ws/v4/';
 
+type PriceUpdateCallback = (update: { 
+    type: string;
+    symbol: string;
+    marketType: string;
+    bestAsk: number;
+    bestBid: number;
+    identifier: string;
+}) => void;
+
 /**
  * Gerencia a conexão WebSocket e as inscrições para os feeds da Gate.io.
  * Pode ser configurado para SPOT ou FUTURES.
@@ -11,17 +20,19 @@ export class GateIoConnector {
     private ws: WebSocket | null = null;
     private marketIdentifier: string; // Ex: 'GATEIO_SPOT' ou 'GATEIO_FUTURES'
     private marketType: 'spot' | 'futures';
-    private priceUpdateCallback: (data: any) => void;
+    private onPriceUpdate: PriceUpdateCallback;
+    private onConnectedCallback: (() => void) | null;
     
     private subscriptionQueue: string[] = [];
     private isConnected: boolean = false;
     private pingInterval: NodeJS.Timeout | null = null;
     private reconnectTimeout: NodeJS.Timeout | null = null;
 
-    constructor(identifier: string, priceUpdateCallback: (data: any) => void) {
+    constructor(identifier: string, onPriceUpdate: PriceUpdateCallback, onConnected: () => void) {
         this.marketIdentifier = identifier;
         this.marketType = identifier.includes('_SPOT') ? 'spot' : 'futures';
-        this.priceUpdateCallback = priceUpdateCallback;
+        this.onPriceUpdate = onPriceUpdate;
+        this.onConnectedCallback = onConnected;
         console.log(`[${this.marketIdentifier}] Conector inicializado.`);
     }
 
@@ -58,20 +69,34 @@ export class GateIoConnector {
         }
     }
 
-    public connect(pairs: string[]): void {
+    public connect(): Promise<void> {
+        return new Promise((resolve, reject) => {
+            if (this.ws) {
+                this.ws.close();
+            }
+
+            console.log(`[${this.marketIdentifier}] Conectando a ${GATEIO_WS_URL}`);
+            this.ws = new WebSocket(GATEIO_WS_URL);
+
+            this.ws.once('open', () => {
+                this.onOpen();
+                resolve();
+            });
+
+            this.ws.once('error', (error) => {
+                reject(error);
+            });
+
+            this.ws.on('message', this.onMessage.bind(this));
+            this.ws.on('close', this.onClose.bind(this));
+        });
+    }
+
+    public subscribe(pairs: string[]): void {
         this.subscriptionQueue = pairs.map(p => p.replace('/', '_')); // Gate.io usa '_'
-
-        if (this.ws) {
-            this.ws.close();
+        if (this.isConnected) {
+            this.processSubscriptionQueue();
         }
-
-        console.log(`[${this.marketIdentifier}] Conectando a ${GATEIO_WS_URL}`);
-        this.ws = new WebSocket(GATEIO_WS_URL);
-
-        this.ws.on('open', this.onOpen.bind(this));
-        this.ws.on('message', this.onMessage.bind(this));
-        this.ws.on('close', this.onClose.bind(this));
-        this.ws.on('error', this.onError.bind(this));
     }
 
     private onOpen(): void {
@@ -79,6 +104,10 @@ export class GateIoConnector {
         this.isConnected = true;
         this.startPinging();
         this.processSubscriptionQueue();
+        
+        if (this.onConnectedCallback) {
+            this.onConnectedCallback();
+        }
     }
 
     private onMessage(data: WebSocket.Data): void {
@@ -100,20 +129,19 @@ export class GateIoConnector {
     private handleTickerUpdate(ticker: any): void {
         const pair = (ticker.currency_pair || ticker.contract).replace('_', '/');
         
-        const priceData = {
-            bestAsk: parseFloat(ticker.lowest_ask || ticker.ask1),
-            bestBid: parseFloat(ticker.highest_bid || ticker.bid1),
-        };
+        const bestAsk = parseFloat(ticker.lowest_ask || ticker.ask1);
+        const bestBid = parseFloat(ticker.highest_bid || ticker.bid1);
 
-        if (!priceData.bestAsk || !priceData.bestBid) return;
+        if (!bestAsk || !bestBid) return;
 
         // Chama o callback centralizado no servidor
-        this.priceUpdateCallback({
-            identifier: this.marketIdentifier,
+        this.onPriceUpdate({
+            type: 'price-update',
             symbol: pair,
             marketType: this.marketType,
-            bestAsk: priceData.bestAsk,
-            bestBid: priceData.bestBid,
+            bestAsk,
+            bestBid,
+            identifier: this.marketIdentifier
         });
     }
 
@@ -145,12 +173,11 @@ export class GateIoConnector {
         this.stopPinging();
         this.ws = null;
         if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
-        this.reconnectTimeout = setTimeout(() => this.connect(this.subscriptionQueue.map(p => p.replace('_','/'))), 5000);
-    }
-
-    private onError(error: Error): void {
-        console.error(`[${this.marketIdentifier}] Erro no WebSocket:`, error.message);
-        // O evento 'close' geralmente é disparado após um erro, cuidando da reconexão.
+        this.reconnectTimeout = setTimeout(() => {
+            this.connect().catch(error => {
+                console.error(`[${this.marketIdentifier}] Erro ao reconectar:`, error);
+            });
+        }, 5000);
     }
 
     private startPinging(): void {
