@@ -72,19 +72,15 @@ export function useArbitrageWebSocket() {
       return 'ws://localhost:10000';
     }
     
-    // Em produção, usar a variável de ambiente
-    if (process.env.NEXT_PUBLIC_WEBSOCKET_URL) {
-      return process.env.NEXT_PUBLIC_WEBSOCKET_URL;
-    }
-    
-    // Fallback para produção
+    // Em produção, usar a mesma URL do Next.js com protocolo WebSocket
     if (typeof window !== 'undefined') {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.host;
       return `${protocol}//${host}`;
     }
     
-    return 'ws://localhost:10000';
+    // Fallback para a URL específica do Render
+    return 'wss://robo-de-arbitragem.onrender.com';
   };
 
   const connect = () => {

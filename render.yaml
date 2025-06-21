@@ -17,41 +17,13 @@ services:
   region: oregon
   plan: free
   buildCommand: npm install && npm install typescript @types/node --save && npm run build
-  startCommand: next start
+  startCommand: node server.js
   envVars:
     - key: NODE_ENV
       value: production
     - key: DATABASE_URL
       sync: false
-    - key: NEXT_PUBLIC_WS_URL
-      value: wss://robo-de-arbitragem-tracker.onrender.com
   healthCheckPath: /
   autoDeploy: true
-
-- type: web
-  name: robo-de-arbitragem-tracker
-  env: node
-  region: oregon
-  plan: free
-  buildCommand: npm install && npm run build
-  startCommand: npm run start
-  autoDeploy: true
-  envVars:
-    - key: NODE_ENV
-      value: production
-    - key: PORT
-      value: 10000
-  headers:
-    - path: /*
-      name: Access-Control-Allow-Origin
-      value: "*"
-    - path: /*
-      name: Access-Control-Allow-Methods
-      value: "GET, POST, OPTIONS"
-    - path: /*
-      name: Access-Control-Allow-Headers
-      value: "Content-Type"
-  healthCheckPath: /health
-  healthCheckTimeout: 100
 
 version: "1"
