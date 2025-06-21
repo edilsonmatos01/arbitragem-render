@@ -63,78 +63,97 @@ export function useArbitrageWebSocket() {
   const [livePrices, setLivePrices] = useState<LivePrices>({});
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttempts = useRef(0);
   const isMounted = useRef(false);
 
   const getWebSocketURL = () => {
-    // Primeiro tenta usar a variável de ambiente
-    const wsURL = process.env.NEXT_PUBLIC_WEBSOCKET_URL;
-
-    if (!wsURL) {
-      console.log("NEXT_PUBLIC_WEBSOCKET_URL não definida, usando URL local...");
-      // Em desenvolvimento, usa a URL do próprio host
-      if (process.env.NODE_ENV === 'development') {
-        if (typeof window === 'undefined') return '';
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = 'localhost:10000';
-        return `${protocol}//${host}`;
-      }
-      return '';
+    // Use a variável de ambiente se definida
+    if (process.env.NEXT_PUBLIC_WEBSOCKET_URL) {
+      return process.env.NEXT_PUBLIC_WEBSOCKET_URL;
     }
-    return wsURL;
+    
+    // Fallback para desenvolvimento
+    if (typeof window !== 'undefined') {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${protocol}//localhost:10000`;
+    }
+    
+    return 'ws://localhost:10000';
   };
 
   const connect = () => {
-    if (reconnectTimeout.current) {
-      clearTimeout(reconnectTimeout.current);
+    if (ws.current?.readyState === WebSocket.CONNECTING || 
+        ws.current?.readyState === WebSocket.OPEN) {
+      return;
     }
 
-    if (ws.current || !isMounted.current) return;
+    if (reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS) {
+      console.error('[WS Hook] Máximo de tentativas de reconexão atingido');
+      return;
+    }
 
     const wsURL = getWebSocketURL();
-    if (!wsURL) return;
+    console.log(`[WS Hook] Tentando conectar ao servidor WebSocket em ${wsURL}... (Tentativa ${reconnectAttempts.current + 1})`);
+    
+    try {
+      ws.current = new WebSocket(wsURL);
 
-    console.log(`[WS Hook] Tentando conectar ao servidor WebSocket em ${wsURL}...`);
-    ws.current = new WebSocket(wsURL);
+      ws.current.onopen = () => {
+        console.log('[WS Hook] Conexão WebSocket estabelecida.');
+        reconnectAttempts.current = 0; // Reset counter on successful connection
+      };
 
-    ws.current.onopen = () => {
-      console.log('[WS Hook] Conexão WebSocket estabelecida.');
-    };
-
-    ws.current.onmessage = (event) => {
-      if (!isMounted.current) return;
-      try {
-        const message = JSON.parse(event.data);
+      ws.current.onmessage = (event) => {
+        if (!isMounted.current) return;
         
-        if (message.type === 'arbitrage') {
-          setOpportunities((prev) => [message, ...prev.slice(0, 99)]);
+        try {
+          const message = JSON.parse(event.data);
+          
+          if (message.type === 'arbitrage') {
+            setOpportunities((prev) => [message, ...prev.slice(0, 99)]);
+          }
+          
+          if (message.type === 'price-update') {
+            const { symbol, marketType, bestAsk, bestBid } = message;
+            setLivePrices(prev => ({
+              ...prev,
+              [symbol]: {
+                ...prev[symbol],
+                [marketType]: { bestAsk, bestBid }
+              }
+            }));
+          }
+        } catch (error) {
+          console.error('[WS Hook] Erro ao processar mensagem do WebSocket:', error);
         }
-        if (message.type === 'price-update') {
-          const { symbol, marketType, bestAsk, bestBid } = message;
-          setLivePrices(prev => ({
-            ...prev,
-            [symbol]: {
-              ...prev[symbol],
-              [marketType]: { bestAsk, bestBid }
-            }
-          }));
-        }
-      } catch (error) {
-        console.error('[WS Hook] Erro ao processar mensagem do WebSocket:', error);
-      }
-    };
+      };
 
-    ws.current.onerror = (error) => {
-      console.error('[WS Hook] Erro na conexão WebSocket:', error);
-    };
+      ws.current.onerror = (error) => {
+        console.error('[WS Hook] Erro na conexão WebSocket:', error);
+      };
 
-    ws.current.onclose = () => {
-      console.log('[WS Hook] Conexão WebSocket fechada.');
-      if (isMounted.current) {
-        console.log('[WS Hook] Tentando reconectar em 5 segundos...');
+      ws.current.onclose = (event) => {
+        console.log(`[WS Hook] Conexão WebSocket fechada. Code: ${event.code}, Reason: ${event.reason}`);
         ws.current = null;
-        reconnectTimeout.current = setTimeout(connect, 5000);
-      }
-    };
+        
+        if (isMounted.current && reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
+          reconnectAttempts.current++;
+          console.log(`[WS Hook] Tentando reconectar em ${RECONNECT_INTERVAL/1000} segundos... (Tentativa ${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS})`);
+          
+          if (reconnectTimeout.current) {
+            clearTimeout(reconnectTimeout.current);
+          }
+          
+          reconnectTimeout.current = setTimeout(() => {
+            if (isMounted.current) {
+              connect();
+            }
+          }, RECONNECT_INTERVAL);
+        }
+      };
+    } catch (error) {
+      console.error('[WS Hook] Erro ao criar WebSocket:', error);
+    }
   };
 
   useEffect(() => {
@@ -143,13 +162,19 @@ export function useArbitrageWebSocket() {
 
     return () => {
       isMounted.current = false;
+      reconnectAttempts.current = 0;
+      
       if (reconnectTimeout.current) {
         clearTimeout(reconnectTimeout.current);
+        reconnectTimeout.current = null;
       }
+      
       if (ws.current) {
-        ws.current.close();
-        console.log('[WS Hook] Limpeza da conexão WebSocket concluída.');
+        ws.current.close(1000, 'Component unmounting');
+        ws.current = null;
       }
+      
+      console.log('[WS Hook] Limpeza da conexão WebSocket concluída.');
     };
   }, []);
 
