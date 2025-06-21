@@ -67,12 +67,21 @@ export function useArbitrageWebSocket() {
   const isMounted = useRef(false);
 
   const getWebSocketURL = () => {
+    console.log('[DEBUG] ========== CONSTRUÇÃO URL WEBSOCKET ==========');
     console.log('[DEBUG] NODE_ENV:', process.env.NODE_ENV);
-    console.log('[DEBUG] window location:', typeof window !== 'undefined' ? window.location.href : 'undefined');
+    console.log('[DEBUG] typeof window:', typeof window);
+    
+    if (typeof window !== 'undefined') {
+      console.log('[DEBUG] window.location.href:', window.location.href);
+      console.log('[DEBUG] window.location.protocol:', window.location.protocol);
+      console.log('[DEBUG] window.location.host:', window.location.host);
+      console.log('[DEBUG] window.location.hostname:', window.location.hostname);
+      console.log('[DEBUG] window.location.port:', window.location.port);
+    }
     
     // Em desenvolvimento, sempre usar URL local
     if (process.env.NODE_ENV === 'development') {
-      console.log('[DEBUG] Usando URL de desenvolvimento');
+      console.log('[DEBUG] ⚠️ USANDO URL DE DESENVOLVIMENTO');
       return 'ws://localhost:10000';
     }
     
@@ -81,12 +90,15 @@ export function useArbitrageWebSocket() {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.host;
       const wsUrl = `${protocol}//${host}`;
-      console.log('[DEBUG] URL WebSocket construída:', wsUrl);
+      console.log('[DEBUG] ✅ CONSTRUINDO URL DINÂMICA:');
+      console.log('[DEBUG] - protocol:', protocol);
+      console.log('[DEBUG] - host:', host);
+      console.log('[DEBUG] - wsUrl FINAL:', wsUrl);
       return wsUrl;
     }
     
     // Fallback para a URL específica do Render
-    console.log('[DEBUG] Usando URL de fallback');
+    console.log('[DEBUG] ⚠️ USANDO URL DE FALLBACK');
     return 'wss://robo-de-arbitragem.onrender.com';
   };
 
