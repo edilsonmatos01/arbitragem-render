@@ -67,15 +67,21 @@ export function useArbitrageWebSocket() {
   const isMounted = useRef(false);
 
   const getWebSocketURL = () => {
-    // Use a variável de ambiente se definida
+    // Em desenvolvimento, sempre usar URL local
+    if (process.env.NODE_ENV === 'development') {
+      return 'ws://localhost:10000';
+    }
+    
+    // Em produção, usar a variável de ambiente
     if (process.env.NEXT_PUBLIC_WEBSOCKET_URL) {
       return process.env.NEXT_PUBLIC_WEBSOCKET_URL;
     }
     
-    // Fallback para desenvolvimento
+    // Fallback para produção
     if (typeof window !== 'undefined') {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      return `${protocol}//localhost:10000`;
+      const host = window.location.host;
+      return `${protocol}//${host}`;
     }
     
     return 'ws://localhost:10000';
