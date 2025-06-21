@@ -10,24 +10,13 @@ interface ArbitrageOpportunity {
     exchange: string;
     price: number;
     marketType: 'spot' | 'futures';
-    fundingRate?: string;
-    originalSymbol?: string; 
   };
   sellAt: {
     exchange: string;
     price: number;
     marketType: 'spot' | 'futures';
-    fundingRate?: string;
-    originalSymbol?: string; 
   };
-  arbitrageType: 
-    | 'spot_spot_inter_exchange'
-    | 'spot_futures_inter_exchange'
-    | 'futures_spot_inter_exchange'
-    | 'spot_spot_intra_exchange'
-    | 'spot_futures_intra_exchange'
-    | 'futures_spot_intra_exchange';
-    // Considere adicionar 'futures_futures_inter_exchange' se precisar distingui-lo
+  arbitrageType: string;
   timestamp: number;
   maxSpread24h?: number;
 }
@@ -57,7 +46,7 @@ interface SpreadData {
 }
 
 // Dados estáticos iniciais que sempre funcionam
-const initialOpportunities: ArbitrageOpportunity[] = [
+const getInitialOpportunities = (): ArbitrageOpportunity[] => [
   {
     type: 'arbitrage',
     baseSymbol: 'BTC/USDT',
@@ -151,7 +140,7 @@ const initialOpportunities: ArbitrageOpportunity[] = [
 ];
 
 export function useArbitrageWebSocket() {
-  const [opportunities, setOpportunities] = useState<ArbitrageOpportunity[]>(initialOpportunities);
+  const [opportunities, setOpportunities] = useState<ArbitrageOpportunity[]>(() => getInitialOpportunities());
   const [livePrices, setLivePrices] = useState<LivePrices>({});
   const [connectionStatus] = useState<'connected'>('connected'); // Sempre conectado
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -161,7 +150,7 @@ export function useArbitrageWebSocket() {
   const generateUpdatedData = (): ArbitrageOpportunity => {
     const symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT', 'ADA/USDT', 'DOT/USDT'];
     const exchanges = ['GATEIO', 'MEXC'];
-    const marketTypes: ('spot' | 'futures')[] = ['spot', 'futures'];
+    const marketTypes = ['spot', 'futures'] as const;
     
     const basePrice = Math.random() * 100000;
     const spread = Math.random() * 2;
@@ -169,20 +158,20 @@ export function useArbitrageWebSocket() {
     return {
       type: 'arbitrage',
       baseSymbol: symbols[Math.floor(Math.random() * symbols.length)],
-      profitPercentage: parseFloat(spread.toFixed(2)),
+      profitPercentage: Number(spread.toFixed(2)),
       buyAt: {
         exchange: exchanges[Math.floor(Math.random() * exchanges.length)],
-        price: parseFloat(basePrice.toFixed(2)),
+        price: Number(basePrice.toFixed(2)),
         marketType: marketTypes[Math.floor(Math.random() * marketTypes.length)]
       },
       sellAt: {
         exchange: exchanges[Math.floor(Math.random() * exchanges.length)],
-        price: parseFloat((basePrice * (1 + spread/100)).toFixed(2)),
+        price: Number((basePrice * (1 + spread/100)).toFixed(2)),
         marketType: marketTypes[Math.floor(Math.random() * marketTypes.length)]
       },
       arbitrageType: 'spot_futures_inter_exchange',
       timestamp: Date.now(),
-      maxSpread24h: parseFloat((spread * 1.5).toFixed(2))
+      maxSpread24h: Number((spread * 1.5).toFixed(2))
     };
   };
 
@@ -194,9 +183,16 @@ export function useArbitrageWebSocket() {
     // Atualizar dados periodicamente
     intervalRef.current = setInterval(() => {
       if (isMounted.current) {
-        const newOpportunity = generateUpdatedData();
-        setOpportunities(prev => [newOpportunity, ...prev.slice(0, 19)]); // Manter 20 itens
-        console.log('🔄 [ARBITRAGEM] Dados atualizados:', newOpportunity.baseSymbol, newOpportunity.profitPercentage + '%');
+        try {
+          const newOpportunity = generateUpdatedData();
+          setOpportunities(prev => {
+            const updated = [newOpportunity, ...prev];
+            return updated.slice(0, 20); // Manter 20 itens
+          });
+          console.log('🔄 [ARBITRAGEM] Dados atualizados:', newOpportunity.baseSymbol, newOpportunity.profitPercentage + '%');
+        } catch (error) {
+          console.error('❌ [ARBITRAGEM] Erro ao atualizar dados:', error);
+        }
       }
     }, UPDATE_INTERVAL);
 
