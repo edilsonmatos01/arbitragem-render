@@ -2,159 +2,148 @@ const { createServer } = require('http');
 const { parse } = require('url');
 const next = require('next');
 const WebSocket = require('ws');
-require('dotenv').config();
 
 const dev = process.env.NODE_ENV !== 'production';
-const port = process.env.PORT || 10000;
+const hostname = '0.0.0.0';
+const port = parseInt(process.env.PORT, 10) || 10000;
 
-const app = next({ dev });
+const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
-// Dados simulados para teste
-const mockData = {
-  opportunities: [
-    {
-      type: 'arbitrage',
-      baseSymbol: 'BTC/USDT',
-      profitPercentage: 0.85,
-      buyAt: {
-        exchange: 'GATEIO',
-        price: 97250.50,
-        marketType: 'spot'
-      },
-      sellAt: {
-        exchange: 'MEXC',
-        price: 98075.25,
-        marketType: 'futures'
-      },
-      arbitrageType: 'spot_futures_inter_exchange',
-      timestamp: Date.now(),
-      maxSpread24h: 1.2
-    },
-    {
-      type: 'arbitrage',
-      baseSymbol: 'ETH/USDT',
-      profitPercentage: 0.45,
-      buyAt: {
-        exchange: 'MEXC',
-        price: 3425.80,
-        marketType: 'spot'
-      },
-      sellAt: {
-        exchange: 'GATEIO',
-        price: 3441.25,
-        marketType: 'futures'
-      },
-      arbitrageType: 'spot_futures_inter_exchange',
-      timestamp: Date.now(),
-      maxSpread24h: 0.8
-    }
-  ]
-};
+console.log(`🔧 Iniciando servidor em modo: ${dev ? 'desenvolvimento' : 'produção'}`);
+console.log(`🌐 Hostname: ${hostname}, Porta: ${port}`);
 
 app.prepare().then(() => {
+  // Criar servidor HTTP
   const server = createServer(async (req, res) => {
     try {
       const parsedUrl = parse(req.url, true);
       await handle(req, res, parsedUrl);
     } catch (err) {
-      console.error('Error occurred handling', req.url, err);
+      console.error('❌ Erro no servidor HTTP:', err);
       res.statusCode = 500;
-      res.end('Internal Server Error');
+      res.end('Internal server error');
     }
   });
 
-  // Configurar WebSocket Server
-  const wss = new WebSocket.Server({ server });
-  const clients = new Set();
-  
-  wss.on('connection', (ws, req) => {
-    const clientIp = req.socket.remoteAddress || req.headers['x-forwarded-for'];
-    clients.add(ws);
-    
-    console.log(`[WebSocket] Cliente conectado: ${clientIp}. Total: ${clients.size}`);
-    
-    // Enviar dados iniciais
-    ws.send(JSON.stringify({
-      type: 'connection',
-      message: 'Conectado ao servidor de arbitragem',
-      timestamp: Date.now()
-    }));
-    
-    // Enviar oportunidades mock iniciais
-    mockData.opportunities.forEach(opportunity => {
-      ws.send(JSON.stringify(opportunity));
-    });
-    
-    ws.on('message', (message) => {
-      try {
-        const data = JSON.parse(message.toString());
-        console.log('[WebSocket] Mensagem recebida:', data);
-      } catch (error) {
-        console.error('[WebSocket] Erro ao processar mensagem:', error);
-      }
-    });
-    
-    ws.on('close', () => {
-      clients.delete(ws);
-      console.log(`[WebSocket] Cliente desconectado: ${clientIp}. Total: ${clients.size}`);
-    });
-    
-    ws.on('error', (error) => {
-      console.error('[WebSocket] Erro na conexão:', error);
-      clients.delete(ws);
-    });
+  // Criar WebSocket Server
+  const wss = new WebSocket.Server({ 
+    server,
+    path: '/',
+    perMessageDeflate: false
   });
 
-  // Função para broadcast de dados
-  function broadcast(data) {
-    const message = JSON.stringify(data);
-    clients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
-      }
-    });
-  }
+  const clients = new Set();
 
-  // Simular dados em tempo real
-  setInterval(() => {
-    if (clients.size > 0) {
-      const randomOpportunity = {
+  wss.on('connection', function connection(ws, request) {
+    const ip = request.socket.remoteAddress;
+    clients.add(ws);
+    
+    console.log(`✅ WebSocket conectado de ${ip}, total: ${clients.size}`);
+
+    // Enviar mensagem de boas-vindas
+    ws.send(JSON.stringify({
+      type: 'connection',
+      message: 'Conectado com sucesso!',
+      timestamp: Date.now()
+    }));
+
+    // Enviar dados de teste imediatamente
+    setTimeout(() => {
+      ws.send(JSON.stringify({
         type: 'arbitrage',
-        baseSymbol: ['BTC/USDT', 'ETH/USDT', 'SOL/USDT'][Math.floor(Math.random() * 3)],
-        profitPercentage: (Math.random() * 2).toFixed(2),
+        baseSymbol: 'BTC/USDT',
+        profitPercentage: 0.75,
         buyAt: {
-          exchange: Math.random() > 0.5 ? 'GATEIO' : 'MEXC',
-          price: (50000 + Math.random() * 50000).toFixed(2),
-          marketType: Math.random() > 0.5 ? 'spot' : 'futures'
+          exchange: 'GATEIO',
+          price: 97250.50,
+          marketType: 'spot'
         },
         sellAt: {
-          exchange: Math.random() > 0.5 ? 'GATEIO' : 'MEXC',
-          price: (50000 + Math.random() * 50000).toFixed(2),
-          marketType: Math.random() > 0.5 ? 'spot' : 'futures'
+          exchange: 'MEXC',
+          price: 98075.25,
+          marketType: 'futures'
         },
         arbitrageType: 'spot_futures_inter_exchange',
         timestamp: Date.now(),
-        maxSpread24h: (Math.random() * 3).toFixed(2)
-      };
-      
-      broadcast(randomOpportunity);
-      console.log(`[WebSocket] Enviado para ${clients.size} clientes:`, randomOpportunity.baseSymbol);
-    }
-  }, 10000); // A cada 10 segundos
+        maxSpread24h: 1.2
+      }));
+    }, 1000);
+
+    ws.on('message', function message(data) {
+      console.log('📨 Mensagem recebida:', data.toString());
+    });
+
+    ws.on('close', function close() {
+      clients.delete(ws);
+      console.log(`❌ WebSocket desconectado de ${ip}, total: ${clients.size}`);
+    });
+
+    ws.on('error', function error(err) {
+      console.error('❌ Erro no WebSocket:', err);
+      clients.delete(ws);
+    });
+  });
 
   // Heartbeat para manter conexões vivas
-  setInterval(() => {
-    wss.clients.forEach((ws) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.ping();
+  const interval = setInterval(function ping() {
+    wss.clients.forEach(function each(ws) {
+      if (ws.isAlive === false) {
+        console.log('💀 Terminando conexão inativa');
+        return ws.terminate();
       }
+      
+      ws.isAlive = false;
+      ws.ping();
     });
-  }, 30000); // A cada 30 segundos
+  }, 30000);
 
-  server.listen(port, (err) => {
-    if (err) throw err;
-    console.log(`🚀 Servidor rodando na porta ${port}`);
-    console.log(`📡 WebSocket Server ativo e enviando dados simulados`);
+  wss.on('close', function close() {
+    clearInterval(interval);
+  });
+
+  // Enviar dados simulados periodicamente
+  setInterval(() => {
+    if (clients.size > 0) {
+      const symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT'];
+      const symbol = symbols[Math.floor(Math.random() * symbols.length)];
+      
+      const opportunity = {
+        type: 'arbitrage',
+        baseSymbol: symbol,
+        profitPercentage: parseFloat((Math.random() * 2).toFixed(2)),
+        buyAt: {
+          exchange: Math.random() > 0.5 ? 'GATEIO' : 'MEXC',
+          price: parseFloat((Math.random() * 100000).toFixed(2)),
+          marketType: Math.random() > 0.5 ? 'spot' : 'futures'
+        },
+        sellAt: {
+          exchange: Math.random() > 0.5 ? 'MEXC' : 'GATEIO',
+          price: parseFloat((Math.random() * 100000).toFixed(2)),
+          marketType: Math.random() > 0.5 ? 'futures' : 'spot'
+        },
+        arbitrageType: 'spot_futures_inter_exchange',
+        timestamp: Date.now(),
+        maxSpread24h: parseFloat((Math.random() * 3).toFixed(2))
+      };
+
+      clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify(opportunity));
+        }
+      });
+
+      console.log(`📡 Dados enviados para ${clients.size} clientes: ${symbol}`);
+    }
+  }, 15000); // A cada 15 segundos
+
+  // Iniciar servidor
+  server.listen(port, hostname, () => {
+    console.log(`🚀 Servidor rodando em http://${hostname}:${port}`);
+    console.log(`📡 WebSocket Server ativo`);
+  });
+
+  server.on('error', (err) => {
+    console.error('❌ Erro no servidor:', err);
   });
 }); 
