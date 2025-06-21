@@ -10,13 +10,24 @@ interface ArbitrageOpportunity {
     exchange: string;
     price: number;
     marketType: 'spot' | 'futures';
+    fundingRate?: string;
+    originalSymbol?: string; 
   };
   sellAt: {
     exchange: string;
     price: number;
     marketType: 'spot' | 'futures';
+    fundingRate?: string;
+    originalSymbol?: string; 
   };
-  arbitrageType: string;
+  arbitrageType: 
+    | 'spot_spot_inter_exchange'
+    | 'spot_futures_inter_exchange'
+    | 'futures_spot_inter_exchange'
+    | 'spot_spot_intra_exchange'
+    | 'spot_futures_intra_exchange'
+    | 'futures_spot_intra_exchange';
+    // Considere adicionar 'futures_futures_inter_exchange' se precisar distingui-lo
   timestamp: number;
   maxSpread24h?: number;
 }
@@ -140,76 +151,106 @@ const getInitialOpportunities = (): ArbitrageOpportunity[] => [
 ];
 
 export function useArbitrageWebSocket() {
-  const [opportunities, setOpportunities] = useState<ArbitrageOpportunity[]>(() => getInitialOpportunities());
+  const [opportunities, setOpportunities] = useState<ArbitrageOpportunity[]>([]);
   const [livePrices, setLivePrices] = useState<LivePrices>({});
-  const [connectionStatus] = useState<'connected'>('connected'); // Sempre conectado
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const ws = useRef<WebSocket | null>(null);
+  const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
+  // Ref para rastrear se o componente está montado e evitar ações assíncronas
+  // após o desmonte, especialmente útil no Strict Mode do React.
   const isMounted = useRef(false);
 
-  // Função para gerar dados atualizados
-  const generateUpdatedData = (): ArbitrageOpportunity => {
-    const symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT', 'ADA/USDT', 'DOT/USDT'];
-    const exchanges = ['GATEIO', 'MEXC'];
-    const marketTypes = ['spot', 'futures'] as const;
-    
-    const basePrice = Math.random() * 100000;
-    const spread = Math.random() * 2;
-    
-    return {
-      type: 'arbitrage',
-      baseSymbol: symbols[Math.floor(Math.random() * symbols.length)],
-      profitPercentage: Number(spread.toFixed(2)),
-      buyAt: {
-        exchange: exchanges[Math.floor(Math.random() * exchanges.length)],
-        price: Number(basePrice.toFixed(2)),
-        marketType: marketTypes[Math.floor(Math.random() * marketTypes.length)]
-      },
-      sellAt: {
-        exchange: exchanges[Math.floor(Math.random() * exchanges.length)],
-        price: Number((basePrice * (1 + spread/100)).toFixed(2)),
-        marketType: marketTypes[Math.floor(Math.random() * marketTypes.length)]
-      },
-      arbitrageType: 'spot_futures_inter_exchange',
-      timestamp: Date.now(),
-      maxSpread24h: Number((spread * 1.5).toFixed(2))
+  const getWebSocketURL = () => {
+    // A URL agora é lida da variável de ambiente, que é definida no processo de build.
+    const wsURL = process.env.NEXT_PUBLIC_WS_URL;
+
+    if (!wsURL) {
+      console.error("A variável de ambiente NEXT_PUBLIC_WS_URL não está definida!");
+      // Em desenvolvimento, podemos ter um fallback para a configuração antiga
+      if (process.env.NODE_ENV === 'development') {
+        if (typeof window === 'undefined') return '';
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        return `${protocol}//${host}`;
+      }
+      return '';
+    }
+    return wsURL;
+  };
+
+  const connect = () => {
+    // Limpa qualquer timeout de reconexão pendente
+    if (reconnectTimeout.current) {
+      clearTimeout(reconnectTimeout.current);
+    }
+    // Previne novas conexões se já houver uma ou se o componente estiver desmontado.
+    if (ws.current || !isMounted.current) return;
+
+    const wsURL = getWebSocketURL();
+    if (!wsURL) return; // Não tenta conectar se não houver URL (SSR)
+
+    ws.current = new WebSocket(wsURL);
+    console.log(`[WS Hook] Tentando conectar ao servidor WebSocket em ${wsURL}...`);
+
+    ws.current.onopen = () => {
+      console.log('[WS Hook] Conexão WebSocket estabelecida.');
+    };
+
+    ws.current.onmessage = (event) => {
+      if (!isMounted.current) return;
+      try {
+        const message = JSON.parse(event.data);
+        
+        if (message.type === 'arbitrage') {
+          setOpportunities((prev) => [message, ...prev.slice(0, 99)]);
+        }
+        if (message.type === 'price-update') {
+            const { symbol, marketType, bestAsk, bestBid } = message;
+            setLivePrices(prev => ({
+                ...prev,
+                [symbol]: {
+                    ...prev[symbol],
+                    [marketType]: { bestAsk, bestBid }
+                }
+            }));
+        }
+      } catch (error) {
+        console.error('[WS Hook] Erro ao processar mensagem do WebSocket:', error);
+      }
+    };
+
+    ws.current.onerror = (error) => {
+      console.error('[WS Hook] Erro na conexão WebSocket:', error);
+      // O evento 'onclose' será disparado em seguida para tratar a reconexão.
+    };
+
+    ws.current.onclose = () => {
+      console.log('[WS Hook] Conexão WebSocket fechada.');
+      // Só tenta reconectar se o componente ainda estiver montado.
+      if (isMounted.current) {
+        console.log('[WS Hook] Tentando reconectar em 5 segundos...');
+        ws.current = null; // Limpa a instância antiga do socket.
+        reconnectTimeout.current = setTimeout(connect, 5000);
+      }
     };
   };
 
   useEffect(() => {
     isMounted.current = true;
-    console.log('📊 [ARBITRAGEM] Sistema iniciado com dados estáticos funcionais');
-    console.log('✅ [ARBITRAGEM] Conexão simulada estabelecida - dados sendo atualizados');
-    
-    // Atualizar dados periodicamente
-    intervalRef.current = setInterval(() => {
-      if (isMounted.current) {
-        try {
-          const newOpportunity = generateUpdatedData();
-          setOpportunities(prev => {
-            const updated = [newOpportunity, ...prev];
-            return updated.slice(0, 20); // Manter 20 itens
-          });
-          console.log('🔄 [ARBITRAGEM] Dados atualizados:', newOpportunity.baseSymbol, newOpportunity.profitPercentage + '%');
-        } catch (error) {
-          console.error('❌ [ARBITRAGEM] Erro ao atualizar dados:', error);
-        }
-      }
-    }, UPDATE_INTERVAL);
+    connect();
 
+    // A função de cleanup é executada quando o componente é desmontado.
     return () => {
       isMounted.current = false;
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+      if (reconnectTimeout.current) {
+        clearTimeout(reconnectTimeout.current);
       }
-      console.log('🧹 [ARBITRAGEM] Limpeza concluída');
+      if (ws.current) {
+        // Fechar a conexão não acionará mais a reconexão devido à verificação isMounted.current.
+        ws.current.close(); 
+        console.log('[WS Hook] Limpeza da conexão WebSocket concluída.');
+      }
     };
   }, []);
 
-  return { 
-    opportunities, 
-    livePrices, 
-    ws: null, // Não há WebSocket
-    connectionStatus
-  };
+  return { opportunities, livePrices, ws: ws.current };
 } 
