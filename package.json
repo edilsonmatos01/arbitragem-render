@@ -13,7 +13,10 @@
     "db:setup": "node scripts/db-setup.js",
     "prisma:deploy": "prisma migrate deploy",
     "cleanup:schedule": "node scripts/scheduleCleanup.js",
-    "postinstall": "npm run db:setup"
+    "postinstall": "npm run db:setup",
+    "build:ws": "tsc --project tsconfig.server.json",
+    "start:ws": "node dist/websocket-server.js",
+    "dev:ws": "npm run build:ws && npm run start:ws"
   },
   "dependencies": {
     "@babel/core": "^7.23.9",
