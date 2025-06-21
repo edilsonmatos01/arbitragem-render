@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useArbitrageWebSocket } from './useArbitrageWebSocket';
 import { MaxSpreadCell } from './MaxSpreadCell';
 
@@ -12,71 +12,28 @@ interface ArbitrageTableProps {
     exchangeConfig: ExchangeConfig;
 }
 
-interface SpreadData {
-    symbol: string;
-    spotExchange: string;
-    futuresExchange: string;
-    spotAsk: number;
-    spotBid: number;
-    futuresAsk: number;
-    futuresBid: number;
-    spread: number;
-    maxSpread: number;
-    timestamp: number;
-}
-
 export default function ArbitrageTable({ exchangeConfig }: ArbitrageTableProps) {
-    const [opportunities, setOpportunities] = useState<SpreadData[]>([]);
     const [minSpread, setMinSpread] = useState<number>(0.1); // 0.1%
     const [minValue, setMinValue] = useState<number>(100); // $100
-    const { ws } = useArbitrageWebSocket();
+    const { opportunities, connectionStatus } = useArbitrageWebSocket();
 
-    useEffect(() => {
-        if (!ws) return;
-
-        // Envia a configuração atual para o servidor
-        ws.send(JSON.stringify({
-            type: 'config-update',
-            exchangeConfig
-        }));
-
-        const handleMessage = (event: MessageEvent) => {
-            try {
-                const message = JSON.parse(event.data);
-
-                if (message.type === 'spread-update') {
-                    const newData = message.data as SpreadData;
-                    
-                    setOpportunities(prev => {
-                        const index = prev.findIndex(item => item.symbol === newData.symbol);
-                        if (index >= 0) {
-                            const updated = [...prev];
-                            updated[index] = newData;
-                            return updated;
-                        }
-                        return [...prev, newData];
-                    });
-                }
-            } catch (error) {
-                console.error('Erro ao processar mensagem:', error);
-            }
-        };
-
-        ws.addEventListener('message', handleMessage);
-
-        return () => {
-            ws.removeEventListener('message', handleMessage);
-        };
-    }, [ws, exchangeConfig]);
+    console.log('🔍 [TABELA] Dados recebidos:', opportunities.length, 'oportunidades');
+    console.log('📊 [TABELA] Status conexão:', connectionStatus);
 
     const filteredOpportunities = opportunities
-        .filter(opp => opp.spread >= minSpread)
-        .filter(opp => calculateMinValue(opp.spotAsk) >= minValue)
-        .sort((a, b) => b.spread - a.spread);
+        .filter(opp => opp.profitPercentage >= minSpread)
+        .filter(opp => calculateMinValue(opp.buyAt.price) >= minValue)
+        .sort((a, b) => b.profitPercentage - a.profitPercentage);
 
     const calculateMinValue = (price: number) => {
         // Assume um tamanho mínimo de ordem de 0.001 BTC ou equivalente
         return price * 0.001;
+    };
+
+    const formatPrice = (price: number) => {
+        if (price > 1000) return price.toFixed(2);
+        if (price > 1) return price.toFixed(4);
+        return price.toFixed(8);
     };
 
     return (
@@ -108,40 +65,75 @@ export default function ArbitrageTable({ exchangeConfig }: ArbitrageTableProps) 
                         min="0"
                     />
                 </div>
+                <div className="flex items-end">
+                    <div className="text-sm">
+                        <div className={`px-2 py-1 rounded ${connectionStatus === 'connected' ? 'bg-green-600' : 'bg-yellow-600'}`}>
+                            {connectionStatus === 'connected' ? '🟢 Conectado' : '🟡 Simulando'}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="mb-2 text-sm text-gray-400">
+                Exibindo {filteredOpportunities.length} de {opportunities.length} oportunidades
             </div>
 
             <table className="min-w-full bg-gray-800 rounded-lg overflow-hidden">
                 <thead className="bg-gray-700">
                     <tr>
-                        <th className="px-4 py-2">Par</th>
-                        <th className="px-4 py-2">Compra (Spot)</th>
-                        <th className="px-4 py-2">Venda (Futures)</th>
-                        <th className="px-4 py-2">Spread Atual</th>
-                        <th className="px-4 py-2">Spread Máx. 24h</th>
+                        <th className="px-4 py-2 text-left">Par</th>
+                        <th className="px-4 py-2 text-left">Compra ({exchangeConfig.spot})</th>
+                        <th className="px-4 py-2 text-left">Venda ({exchangeConfig.futures})</th>
+                        <th className="px-4 py-2 text-left">Spread Atual</th>
+                        <th className="px-4 py-2 text-left">Spread Máx. 24h</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {filteredOpportunities.map((opp) => (
-                        <tr key={opp.symbol} className="border-t border-gray-700">
-                            <td className="px-4 py-2">{opp.symbol}</td>
-                            <td className="px-4 py-2">
-                                {opp.spotAsk.toFixed(8)} ({opp.spotExchange})
-                            </td>
-                            <td className="px-4 py-2">
-                                {opp.futuresBid.toFixed(8)} ({opp.futuresExchange})
-                            </td>
-                            <td className="px-4 py-2">
-                                <span className={opp.spread >= 0.5 ? 'text-green-400' : ''}>
-                                    {opp.spread.toFixed(3)}%
-                                </span>
-                            </td>
-                            <td className="px-4 py-2">
-                                <MaxSpreadCell maxSpread={opp.maxSpread} />
+                    {filteredOpportunities.length === 0 ? (
+                        <tr>
+                            <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                                {opportunities.length === 0 ? 'Carregando oportunidades...' : 'Nenhuma oportunidade encontrada com os filtros atuais'}
                             </td>
                         </tr>
-                    ))}
+                    ) : (
+                        filteredOpportunities.map((opp, index) => (
+                            <tr key={`${opp.baseSymbol}-${opp.timestamp}-${index}`} className="border-t border-gray-700 hover:bg-gray-750">
+                                <td className="px-4 py-2 font-medium">{opp.baseSymbol}</td>
+                                <td className="px-4 py-2">
+                                    <div className="text-sm">
+                                        <div className="font-medium">${formatPrice(opp.buyAt.price)}</div>
+                                        <div className="text-gray-400 text-xs">
+                                            {opp.buyAt.exchange} ({opp.buyAt.marketType})
+                                        </div>
+                                    </div>
+                                </td>
+                                <td className="px-4 py-2">
+                                    <div className="text-sm">
+                                        <div className="font-medium">${formatPrice(opp.sellAt.price)}</div>
+                                        <div className="text-gray-400 text-xs">
+                                            {opp.sellAt.exchange} ({opp.sellAt.marketType})
+                                        </div>
+                                    </div>
+                                </td>
+                                <td className="px-4 py-2">
+                                    <span className={`font-medium ${opp.profitPercentage >= 0.5 ? 'text-green-400' : 'text-yellow-400'}`}>
+                                        {opp.profitPercentage.toFixed(2)}%
+                                    </span>
+                                </td>
+                                <td className="px-4 py-2">
+                                    <MaxSpreadCell maxSpread={opp.maxSpread24h || 0} />
+                                </td>
+                            </tr>
+                        ))
+                    )}
                 </tbody>
             </table>
+            
+            {filteredOpportunities.length > 0 && (
+                <div className="mt-4 text-xs text-gray-500">
+                    Última atualização: {new Date().toLocaleTimeString('pt-BR')}
+                </div>
+            )}
         </div>
     );
 } 
