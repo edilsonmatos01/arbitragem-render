@@ -9,8 +9,8 @@ const nextConfig = {
         {
           source: '/ws',
           destination: process.env.NODE_ENV === 'production' 
-            ? 'wss://robo-de-arbitragem-tracker.onrender.com/ws'
-            : 'ws://localhost:10000/ws'
+            ? 'https://robo-de-arbitragem-tracker.onrender.com/ws'
+            : 'http://localhost:10000/ws'
         }
       ]
     }
