@@ -17,7 +17,7 @@ services:
   region: oregon
   plan: free
   buildCommand: npm install && npm install typescript @types/node --save && npm run build
-  startCommand: node server.js
+  startCommand: npm start
   envVars:
     - key: NODE_ENV
       value: production

@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "build:tracker": "tsc --project scripts/tsconfig.json && mkdir -p scripts/dist && cp scripts/spread-monitor.js scripts/dist/",
-    "start": "node server.js",
+    "start": "next start",
     "start:tracker": "node scripts/spread-monitor.js",
     "lint": "next lint",
     "db:setup": "node scripts/db-setup.js",
