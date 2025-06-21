@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 // Idealmente, esta interface ArbitrageOpportunity seria importada de um local compartilhado
 // entre o backend (websocket-server.ts) e o frontend.
@@ -61,161 +61,97 @@ interface SpreadData {
 export function useArbitrageWebSocket() {
   const [opportunities, setOpportunities] = useState<ArbitrageOpportunity[]>([]);
   const [livePrices, setLivePrices] = useState<LivePrices>({});
-  const [isConnected, setIsConnected] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectAttempts = useRef(0);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const ws = useRef<WebSocket | null>(null);
+  const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
+  const isMounted = useRef(false);
 
-  const getWebSocketUrl = useCallback(() => {
-    const isSecure = window.location.protocol === 'https:';
-    const wsProtocol = isSecure ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    
-    // Usa o mesmo host da aplicação, mas com o protocolo WebSocket
-    return `${wsProtocol}//${host}/ws`;
-  }, []);
+  const getWebSocketURL = () => {
+    // Primeiro tenta usar a variável de ambiente
+    const wsURL = process.env.NEXT_PUBLIC_WEBSOCKET_URL;
 
-  const checkServerHealth = useCallback(async () => {
-    if (!isConnected) return;
-
-    try {
-      const wsUrl = getWebSocketUrl();
-      const httpUrl = wsUrl.replace('ws:', 'https:').replace('wss:', 'https:');
-      const response = await fetch(`${httpUrl}/health`);
-      
-      if (!response.ok) {
-        throw new Error('Servidor não está saudável');
+    if (!wsURL) {
+      console.log("NEXT_PUBLIC_WEBSOCKET_URL não definida, usando URL local...");
+      // Em desenvolvimento, usa a URL do próprio host
+      if (process.env.NODE_ENV === 'development') {
+        if (typeof window === 'undefined') return '';
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = 'localhost:10000';
+        return `${protocol}//${host}`;
       }
-
-      const data = await response.json();
-      console.log('Health check:', data);
-    } catch (error) {
-      console.error('Erro no health check:', error);
-      reconnect();
+      return '';
     }
-  }, [isConnected, getWebSocketUrl]);
+    return wsURL;
+  };
 
-  const reconnect = useCallback(() => {
-    if (reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS) {
-      setError('Número máximo de tentativas de reconexão atingido');
-      return;
+  const connect = () => {
+    if (reconnectTimeout.current) {
+      clearTimeout(reconnectTimeout.current);
     }
 
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-    }
+    if (ws.current || !isMounted.current) return;
 
-    reconnectTimeoutRef.current = setTimeout(() => {
-      reconnectAttempts.current += 1;
-      console.log(`Tentativa de reconexão ${reconnectAttempts.current} de ${MAX_RECONNECT_ATTEMPTS}`);
-      connect();
-    }, RECONNECT_INTERVAL);
-  }, []);
+    const wsURL = getWebSocketURL();
+    if (!wsURL) return;
 
-  const connect = useCallback(() => {
-    try {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        console.log('WebSocket já está conectado');
-        return;
-      }
+    console.log(`[WS Hook] Tentando conectar ao servidor WebSocket em ${wsURL}...`);
+    ws.current = new WebSocket(wsURL);
 
-      const wsUrl = getWebSocketUrl();
-      console.log('Conectando ao WebSocket:', wsUrl);
-      
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
+    ws.current.onopen = () => {
+      console.log('[WS Hook] Conexão WebSocket estabelecida.');
+    };
 
-      ws.onopen = () => {
-        console.log('WebSocket conectado com sucesso');
-        setIsConnected(true);
-        setError(null);
-        reconnectAttempts.current = 0;
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'arbitrage') {
-            console.log('Recebida oportunidade de arbitragem:', data);
-            setOpportunities((prev) => [...prev, {
-              ...data,
-              timestamp: new Date(data.timestamp)
-            }].slice(-100)); // Manter apenas as últimas 100 oportunidades
-          }
-          if (data.type === 'price-update') {
-            const { symbol, marketType, bestAsk, bestBid } = data;
-            setLivePrices(prev => ({
-              ...prev,
-              [symbol]: {
-                ...prev[symbol],
-                [marketType]: { bestAsk, bestBid }
-              }
-            }));
-          }
-          if (data.type === 'full_book') {
-            console.log('Recebido book completo:', data);
-            setLivePrices(data.data);
-          }
-        } catch (err) {
-          console.error('Erro ao processar mensagem:', err);
-        }
-      };
-
-      ws.onclose = (event) => {
-        console.log('WebSocket desconectado, código:', event.code, 'razão:', event.reason);
-        setIsConnected(false);
+    ws.current.onmessage = (event) => {
+      if (!isMounted.current) return;
+      try {
+        const message = JSON.parse(event.data);
         
-        // Códigos específicos que indicam que não devemos tentar reconectar
-        const terminalCodes = [1000, 1001]; // Normal closure, Going away
-        if (!terminalCodes.includes(event.code)) {
-          reconnect();
+        if (message.type === 'arbitrage') {
+          setOpportunities((prev) => [message, ...prev.slice(0, 99)]);
         }
-      };
-
-      ws.onerror = (err) => {
-        setError('Erro na conexão WebSocket');
-        console.error('Erro WebSocket:', err);
-      };
-
-      // Inicia o health check
-      const healthCheckInterval = setInterval(checkServerHealth, HEALTH_CHECK_INTERVAL);
-
-      return () => {
-        clearInterval(healthCheckInterval);
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.close(1000, 'Fechamento normal');
+        if (message.type === 'price-update') {
+          const { symbol, marketType, bestAsk, bestBid } = message;
+          setLivePrices(prev => ({
+            ...prev,
+            [symbol]: {
+              ...prev[symbol],
+              [marketType]: { bestAsk, bestBid }
+            }
+          }));
         }
-      };
-    } catch (err) {
-      setError('Erro ao conectar ao WebSocket');
-      console.error('Erro ao criar WebSocket:', err);
-      reconnect();
-    }
-  }, [getWebSocketUrl, reconnect, checkServerHealth]);
-
-  useEffect(() => {
-    const cleanup = connect();
-    return () => {
-      if (cleanup) cleanup();
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.close(1000, 'Componente desmontado');
+      } catch (error) {
+        console.error('[WS Hook] Erro ao processar mensagem do WebSocket:', error);
       }
     };
-  }, [connect]);
 
-  return {
-    opportunities,
-    livePrices,
-    isConnected,
-    error,
-    ws: wsRef.current,
-    reconnect: () => {
-      reconnectAttempts.current = 0;
-      connect();
-    }
+    ws.current.onerror = (error) => {
+      console.error('[WS Hook] Erro na conexão WebSocket:', error);
+    };
+
+    ws.current.onclose = () => {
+      console.log('[WS Hook] Conexão WebSocket fechada.');
+      if (isMounted.current) {
+        console.log('[WS Hook] Tentando reconectar em 5 segundos...');
+        ws.current = null;
+        reconnectTimeout.current = setTimeout(connect, 5000);
+      }
+    };
   };
+
+  useEffect(() => {
+    isMounted.current = true;
+    connect();
+
+    return () => {
+      isMounted.current = false;
+      if (reconnectTimeout.current) {
+        clearTimeout(reconnectTimeout.current);
+      }
+      if (ws.current) {
+        ws.current.close();
+        console.log('[WS Hook] Limpeza da conexão WebSocket concluída.');
+      }
+    };
+  }, []);
+
+  return { opportunities, livePrices };
 } 
