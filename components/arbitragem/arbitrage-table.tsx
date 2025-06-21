@@ -38,6 +38,9 @@ export default function ArbitrageTable({ exchangeConfig }: ArbitrageTableProps) 
 
     return (
         <div className="overflow-x-auto">
+            {/* Título da seção */}
+            <h2 className="text-2xl font-bold text-white mb-6">Oportunidades encontradas</h2>
+            
             <div className="mb-4 flex space-x-4">
                 <div>
                     <label className="block text-sm font-medium mb-1">
