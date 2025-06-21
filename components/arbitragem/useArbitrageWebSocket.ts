@@ -45,6 +45,19 @@ const RECONNECT_INTERVAL = 5000; // 5 segundos
 const MAX_RECONNECT_ATTEMPTS = 5;
 const HEALTH_CHECK_INTERVAL = 30000; // 30 segundos
 
+interface SpreadData {
+    symbol: string;
+    spotExchange: string;
+    futuresExchange: string;
+    spotAsk: number;
+    spotBid: number;
+    futuresAsk: number;
+    futuresBid: number;
+    spread: number;
+    maxSpread: number;
+    timestamp: number;
+}
+
 export function useArbitrageWebSocket() {
   const [opportunities, setOpportunities] = useState<ArbitrageOpportunity[]>([]);
   const [livePrices, setLivePrices] = useState<LivePrices>({});
@@ -201,6 +214,7 @@ export function useArbitrageWebSocket() {
     livePrices,
     isConnected,
     error,
+    ws: wsRef.current,
     reconnect: () => {
       reconnectAttempts.current = 0;
       connect();

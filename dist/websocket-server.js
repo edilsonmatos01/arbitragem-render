@@ -196,25 +196,18 @@ function initializeStandaloneServer() {
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-        // Responde imediatamente a requisições OPTIONS
-        if (req.method === 'OPTIONS') {
-            res.writeHead(200);
-            res.end();
-            return;
-        }
-        // Health check endpoint
         if (req.url === '/health') {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ status: 'healthy', clients: clients.length }));
             return;
         }
-        // Rota de status do WebSocket
         if (req.url === '/status') {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({
                 status: 'ok',
-                connectedClients: clients.length,
                 exchanges: Object.keys(marketPrices),
+                pairs: Object.keys(marketPrices['GATEIO_SPOT'] || {}),
+                clients: clients.length,
                 timestamp: new Date().toISOString()
             }));
             return;
@@ -222,30 +215,19 @@ function initializeStandaloneServer() {
         res.writeHead(404);
         res.end();
     });
-    // Anexa a lógica do WebSocket ao nosso servidor HTTP.
     startWebSocketServer(httpServer);
     httpServer.listen(PORT, function () {
         console.log("\n[Servidor] WebSocket iniciado na porta ".concat(PORT));
         console.log("Health check dispon\u00EDvel em: http://localhost:".concat(PORT, "/health"));
         console.log("Status dispon\u00EDvel em: http://localhost:".concat(PORT, "/status"));
-    });
-    // Tratamento de erros do servidor
-    httpServer.on('error', function (error) {
-        console.error('Erro no servidor HTTP:', error);
-    });
-    // Graceful shutdown
-    process.on('SIGTERM', function () {
-        console.log('Recebido sinal SIGTERM, iniciando shutdown...');
-        httpServer.close(function () {
-            console.log('Servidor HTTP fechado.');
-            process.exit(0);
+        // Inicia as conexões com as exchanges
+        startFeeds().catch(function (error) {
+            console.error('[ERRO] Falha ao iniciar os feeds:', error);
         });
     });
 }
-// Inicia o servidor standalone.
-if (require.main === module) {
-    initializeStandaloneServer();
-}
+// Inicia o servidor standalone
+initializeStandaloneServer();
 // --- Fim: Adição para Servidor Standalone ---
 function heartbeat(ws) {
     ws.isAlive = true;
@@ -456,48 +438,46 @@ function findAndBroadcastArbitrage() {
 }
 function startFeeds() {
     return __awaiter(this, void 0, void 0, function () {
-        var gateioConnector, mexcConnector, spotPairs, error_3;
+        var gateio_1, mexc_1, error_3;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
-                    _a.trys.push([0, 3, , 4]);
-                    console.log("\n[Iniciando] Conectando aos feeds de dados...");
-                    gateioConnector = new gateio_connector_1.GateIoConnector('GATEIO_SPOT', handlePriceUpdate, function () {
-                        console.log('[GateIO] WebSocket conectado e pronto');
-                    });
-                    mexcConnector = new mexc_connector_1.MexcConnector('MEXC_FUTURES', handlePriceUpdate, function () {
-                        console.log('[MEXC] WebSocket conectado e pronto');
-                    });
-                    // Primeiro, conecta os WebSockets
-                    console.log('\n[Conexão] Iniciando conexão com as exchanges...');
-                    return [4 /*yield*/, Promise.all([
-                            gateioConnector.connect(),
-                            mexcConnector.connect()
-                        ])];
+                    console.log('\n[Servidor] Iniciando feeds das exchanges...');
+                    _a.label = 1;
                 case 1:
-                    _a.sent();
-                    console.log('[Conexão] Conectado com sucesso às exchanges');
-                    // Depois, busca os pares negociáveis
-                    console.log('\n[Pares] Buscando pares negociáveis...');
-                    return [4 /*yield*/, gateioConnector.getTradablePairs()];
+                    _a.trys.push([1, 3, , 4]);
+                    gateio_1 = new gateio_connector_1.GateIoConnector('GATEIO_SPOT', handlePriceUpdate, function () {
+                        console.log('[Servidor] Gate.io conectada, buscando pares...');
+                        gateio_1.getTradablePairs().then(function (pairs) {
+                            console.log("[Gate.io] Inscrevendo em ".concat(pairs.length, " pares"));
+                            gateio_1.subscribe(pairs);
+                        });
+                    });
+                    mexc_1 = new mexc_connector_1.MexcConnector('MEXC_FUTURES', handlePriceUpdate, function () {
+                        console.log('[Servidor] MEXC conectada, buscando pares...');
+                        mexc_1.getTradablePairs().then(function (pairs) {
+                            console.log("[MEXC] Inscrevendo em ".concat(pairs.length, " pares"));
+                            mexc_1.subscribe(pairs);
+                        });
+                    });
+                    // Inicia as conexões
+                    return [4 /*yield*/, Promise.all([
+                            gateio_1.connect().catch(function (error) {
+                                console.error('[ERRO] Falha ao conectar Gate.io:', error);
+                            }),
+                            mexc_1.connect().catch(function (error) {
+                                console.error('[ERRO] Falha ao conectar MEXC:', error);
+                            })
+                        ])];
                 case 2:
-                    spotPairs = _a.sent();
-                    console.log("[GateIO] ".concat(spotPairs.length, " pares dispon\u00EDveis"));
-                    console.log('Primeiros 5 pares:', spotPairs.slice(0, 5));
-                    // Inscreve-se nos pares
-                    console.log('\n[Inscrição] Inscrevendo-se nos pares...');
-                    gateioConnector.subscribe(spotPairs);
-                    mexcConnector.subscribe(spotPairs.map(function (p) { return p.replace('/', '_'); }));
-                    console.log('[Inscrição] Inscrição nos pares concluída');
-                    // Inicia o monitoramento de arbitragem
-                    console.log('\n[Monitor] Iniciando monitoramento de arbitragem...');
-                    setInterval(findAndBroadcastArbitrage, 5000);
-                    console.log('\n[Sistema] Feeds iniciados com sucesso');
+                    // Inicia as conexões
+                    _a.sent();
+                    console.log('[Servidor] Feeds iniciados com sucesso');
                     return [3 /*break*/, 4];
                 case 3:
                     error_3 = _a.sent();
-                    console.error('\n[ERRO] Falha ao iniciar os feeds:', error_3);
-                    return [3 /*break*/, 4];
+                    console.error('[ERRO] Falha ao iniciar feeds:', error_3);
+                    throw error_3;
                 case 4: return [2 /*return*/];
             }
         });

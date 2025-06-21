@@ -2,6 +2,7 @@
 
 import React from 'react';
 import ArbitrageTable from '@/components/arbitragem/arbitrage-table';
+import { ExchangeSelector } from '@/components/arbitragem/exchange-selector';
 import Sidebar from '@/components/dashboard/sidebar';
 import { LayoutDashboard, Repeat, Wallet, History, Settings } from 'lucide-react';
 
@@ -23,6 +24,16 @@ const sidebarNavItems = [
 ];
 
 export default function ArbitragemPage() {
+  const [exchangeConfig, setExchangeConfig] = React.useState({
+    spot: 'GATE_SPOT',
+    futures: 'MEXC_FUTURES'
+  });
+
+  const handleConfigChange = (newConfig: { spot: string; futures: string }) => {
+    setExchangeConfig(newConfig);
+    // O WebSocket vai se reconectar automaticamente com a nova configuração
+  };
+
   return (
     <div className="flex min-h-screen bg-dark-bg text-white">
       <Sidebar
@@ -37,7 +48,13 @@ export default function ArbitragemPage() {
           <h1 className="text-3xl font-semibold text-white">Arbitragem</h1>
           <p className="text-custom-cyan">Oportunidades de arbitragem em tempo real</p>
         </header>
-        <ArbitrageTable />
+        <div className="mb-6">
+          <ExchangeSelector
+            currentConfig={exchangeConfig}
+            onConfigChange={handleConfigChange}
+          />
+        </div>
+        <ArbitrageTable exchangeConfig={exchangeConfig} />
       </main>
     </div>
   );

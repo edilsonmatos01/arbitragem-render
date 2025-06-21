@@ -33,4 +33,31 @@ export interface ArbitrageOpportunity {
   };
   arbitrageType: string;
   timestamp: number;
+}
+
+export interface ExchangeConfig {
+    spot: string;
+    futures: string;
+}
+
+export interface SpreadData {
+    symbol: string;
+    spotExchange: string;
+    futuresExchange: string;
+    spotAsk: number;
+    spotBid: number;
+    futuresAsk: number;
+    futuresBid: number;
+    spread: number;
+    maxSpread: number;
+    timestamp: number;
+}
+
+export interface PriceUpdate {
+    type: string;
+    symbol: string;
+    marketType: 'spot' | 'futures';
+    bestAsk: number;
+    bestBid: number;
+    identifier: string;
 } 

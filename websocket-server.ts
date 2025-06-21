@@ -1,14 +1,16 @@
 require('dotenv').config();
 
 import * as http from 'http';
-import WebSocket from 'ws';
-import { Server as WebSocketServer } from 'ws';
+const WebSocket = require('ws');
+const { Server: WebSocketServer } = require('ws');
 import { PrismaClient } from '@prisma/client';
 import { IncomingMessage } from 'http';
 import { GateIoConnector } from './src/gateio-connector';
 import { MexcConnector } from './src/mexc-connector';
 import { MarketPrices, ArbitrageOpportunity } from './src/types';
 import { calculateSpread } from './app/utils/spreadUtils';
+import { GateIoFuturesConnector } from './src/gateio-futures-connector';
+import { MexcFuturesConnector } from './src/mexc-futures-connector';
 
 interface CustomWebSocket extends WebSocket {
     isAlive: boolean;
@@ -19,6 +21,32 @@ interface VerifyClientInfo {
     origin: string;
     secure: boolean;
     req: IncomingMessage;
+}
+
+interface PriceUpdate {
+    type: string;
+    symbol: string;
+    marketType: 'spot' | 'futures';
+    bestAsk: number;
+    bestBid: number;
+    identifier: string;
+}
+
+interface SpreadData {
+    symbol: string;
+    spotExchange: string;
+    futuresExchange: string;
+    spotAsk: number;
+    spotBid: number;
+    futuresAsk: number;
+    futuresBid: number;
+    spread: number;
+    timestamp: number;
+}
+
+interface ExchangeConfig {
+    spot: string;
+    futures: string;
 }
 
 const prisma = new PrismaClient();
@@ -127,27 +155,19 @@ function initializeStandaloneServer() {
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-        // Responde imediatamente a requisições OPTIONS
-        if (req.method === 'OPTIONS') {
-            res.writeHead(200);
-            res.end();
-            return;
-        }
-
-        // Health check endpoint
         if (req.url === '/health') {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ status: 'healthy', clients: clients.length }));
             return;
         }
 
-        // Rota de status do WebSocket
         if (req.url === '/status') {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({
                 status: 'ok',
-                connectedClients: clients.length,
                 exchanges: Object.keys(marketPrices),
+                pairs: Object.keys(marketPrices['GATEIO_SPOT'] || {}),
+                clients: clients.length,
                 timestamp: new Date().toISOString()
             }));
             return;
@@ -157,34 +177,22 @@ function initializeStandaloneServer() {
         res.end();
     });
 
-    // Anexa a lógica do WebSocket ao nosso servidor HTTP.
     startWebSocketServer(httpServer);
 
     httpServer.listen(PORT, () => {
         console.log(`\n[Servidor] WebSocket iniciado na porta ${PORT}`);
         console.log(`Health check disponível em: http://localhost:${PORT}/health`);
         console.log(`Status disponível em: http://localhost:${PORT}/status`);
-    });
-
-    // Tratamento de erros do servidor
-    httpServer.on('error', (error) => {
-        console.error('Erro no servidor HTTP:', error);
-    });
-
-    // Graceful shutdown
-    process.on('SIGTERM', () => {
-        console.log('Recebido sinal SIGTERM, iniciando shutdown...');
-        httpServer.close(() => {
-            console.log('Servidor HTTP fechado.');
-            process.exit(0);
+        
+        // Inicia as conexões com as exchanges
+        startFeeds().catch(error => {
+            console.error('[ERRO] Falha ao iniciar os feeds:', error);
         });
     });
 }
 
-// Inicia o servidor standalone.
-if (require.main === module) {
-    initializeStandaloneServer();
-}
+// Inicia o servidor standalone
+initializeStandaloneServer();
 
 // --- Fim: Adição para Servidor Standalone ---
 
@@ -311,7 +319,7 @@ async function findAndBroadcastArbitrage() {
     }
 
     const spotId = exchangeIdentifiers.find(id => id === 'GATEIO_SPOT');
-    const futuresId = exchangeIdentifiers.find(id => id === 'MEXC_FUTURES');
+    const futuresId = exchangeIdentifiers.find(id => id === 'MEXC_SPOT');
 
     if (!spotId || !futuresId) {
         console.log('[Arbitragem] Aguardando dados do Gate.io Spot e MEXC Futures...');
@@ -382,43 +390,64 @@ async function findAndBroadcastArbitrage() {
 }
 
 async function startFeeds() {
+    console.log('\n[Servidor] Iniciando feeds das exchanges...');
+
     try {
-        console.log("\n[Iniciando] Conectando aos feeds de dados...");
-
-        const gateioConnector = new GateIoConnector('GATEIO_SPOT', handlePriceUpdate, () => {
-            console.log('[GateIO] WebSocket conectado e pronto');
+        // Inicializa Gate.io
+        const gateio = new GateIoConnector('GATEIO_SPOT', handlePriceUpdate, () => {
+            console.log('[Servidor] Gate.io conectada, buscando pares...');
+            gateio.getTradablePairs().then(pairs => {
+                console.log(`[Gate.io] Inscrevendo em ${pairs.length} pares`);
+                gateio.subscribe(pairs);
+            });
         });
 
-        const mexcConnector = new MexcConnector('MEXC_FUTURES', handlePriceUpdate, () => {
-            console.log('[MEXC] WebSocket conectado e pronto');
+        // Inicializa MEXC
+        const mexc = new MexcConnector('MEXC_SPOT', handlePriceUpdate, () => {
+            console.log('[Servidor] MEXC conectada, buscando pares...');
+            mexc.getTradablePairs().then(pairs => {
+                console.log(`[MEXC] Inscrevendo em ${pairs.length} pares`);
+                mexc.subscribe(pairs);
+            });
         });
 
-        // Primeiro, conecta os WebSockets
-        console.log('\n[Conexão] Iniciando conexão com as exchanges...');
+        // Inicializa Gate.io Futures
+        const gateioFutures = new GateIoFuturesConnector('GATE_FUTURES', handlePriceUpdate, () => {
+            console.log('[Servidor] Gate.io Futures conectada, buscando pares...');
+            gateioFutures.getTradablePairs().then(pairs => {
+                console.log(`[Gate.io Futures] Inscrevendo em ${pairs.length} pares`);
+                gateioFutures.subscribe(pairs);
+            });
+        });
+
+        // Inicializa MEXC Futures
+        const mexcFutures = new MexcFuturesConnector('MEXC_FUTURES', handlePriceUpdate, () => {
+            console.log('[Servidor] MEXC Futures conectada, buscando pares...');
+            mexcFutures.getTradablePairs().then(pairs => {
+                console.log(`[MEXC Futures] Inscrevendo em ${pairs.length} pares`);
+                mexcFutures.subscribe(pairs);
+            });
+        });
+
+        // Inicia as conexões
         await Promise.all([
-            gateioConnector.connect(),
-            mexcConnector.connect()
+            gateio.connect().catch(error => {
+                console.error('[ERRO] Falha ao conectar Gate.io:', error);
+            }),
+            mexc.connect().catch(error => {
+                console.error('[ERRO] Falha ao conectar MEXC:', error);
+            }),
+            gateioFutures.connect().catch(error => {
+                console.error('[ERRO] Falha ao conectar Gate.io Futures:', error);
+            }),
+            mexcFutures.connect().catch(error => {
+                console.error('[ERRO] Falha ao conectar MEXC Futures:', error);
+            })
         ]);
-        console.log('[Conexão] Conectado com sucesso às exchanges');
 
-        // Depois, busca os pares negociáveis
-        console.log('\n[Pares] Buscando pares negociáveis...');
-        const spotPairs = await gateioConnector.getTradablePairs();
-        console.log(`[GateIO] ${spotPairs.length} pares disponíveis`);
-        console.log('Primeiros 5 pares:', spotPairs.slice(0, 5));
-
-        // Inscreve-se nos pares
-        console.log('\n[Inscrição] Inscrevendo-se nos pares...');
-        gateioConnector.subscribe(spotPairs);
-        mexcConnector.subscribe(spotPairs.map(p => p.replace('/', '_')));
-        console.log('[Inscrição] Inscrição nos pares concluída');
-
-        // Inicia o monitoramento de arbitragem
-        console.log('\n[Monitor] Iniciando monitoramento de arbitragem...');
-        setInterval(findAndBroadcastArbitrage, 5000);
-
-        console.log('\n[Sistema] Feeds iniciados com sucesso');
+        console.log('[Servidor] Feeds iniciados com sucesso');
     } catch (error) {
-        console.error('\n[ERRO] Falha ao iniciar os feeds:', error);
+        console.error('[ERRO] Falha ao iniciar feeds:', error);
+        throw error;
     }
 }

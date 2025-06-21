@@ -42,11 +42,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.GateIoConnector = void 0;
 var ws_1 = __importDefault(require("ws"));
 var node_fetch_1 = __importDefault(require("node-fetch"));
-var GATEIO_WS_URL = 'wss://api.gateio.ws/ws/v4/';
-/**
- * Gerencia a conexão WebSocket e as inscrições para os feeds da Gate.io.
- * Pode ser configurado para SPOT ou FUTURES.
- */
 var GateIoConnector = /** @class */ (function () {
     function GateIoConnector(identifier, onPriceUpdate, onConnect) {
         this.ws = null;
@@ -54,6 +49,8 @@ var GateIoConnector = /** @class */ (function () {
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
         this.reconnectDelay = 5000;
+        this.WS_URL = 'wss://api.gateio.ws/ws/v4/';
+        this.REST_URL = 'https://api.gateio.ws/api/v4';
         this.identifier = identifier;
         this.onPriceUpdate = onPriceUpdate;
         this.onConnect = onConnect;
@@ -64,7 +61,7 @@ var GateIoConnector = /** @class */ (function () {
             return __generator(this, function (_a) {
                 try {
                     console.log('\n[GateIO] Iniciando conexão WebSocket...');
-                    this.ws = new ws_1.default('wss://api.gateio.ws/ws/v4/');
+                    this.ws = new ws_1.default(this.WS_URL);
                     this.ws.on('open', function () {
                         console.log('[GateIO] WebSocket conectado');
                         _this.isConnected = true;
@@ -74,13 +71,14 @@ var GateIoConnector = /** @class */ (function () {
                     this.ws.on('message', function (data) {
                         try {
                             var message = JSON.parse(data.toString());
+                            console.log('\n[GateIO] Mensagem recebida:', message);
                             if (message.event === 'update' && message.channel === 'spot.book_ticker') {
-                                var _a = message.result, currency_pair = _a.currency_pair, ask = _a.ask, bid = _a.bid;
-                                console.log("\n[GateIO] Atualiza\u00E7\u00E3o de pre\u00E7o para ".concat(currency_pair));
+                                var _a = message.result, symbol = _a.s, ask = _a.a, bid = _a.b;
+                                console.log("\n[GateIO] Atualiza\u00E7\u00E3o de pre\u00E7o para ".concat(symbol));
                                 console.log("Ask: ".concat(ask, ", Bid: ").concat(bid));
                                 _this.onPriceUpdate({
                                     type: 'price-update',
-                                    symbol: currency_pair,
+                                    symbol: symbol,
                                     marketType: 'spot',
                                     bestAsk: parseFloat(ask),
                                     bestBid: parseFloat(bid),
@@ -124,14 +122,14 @@ var GateIoConnector = /** @class */ (function () {
                     case 0:
                         _a.trys.push([0, 3, , 4]);
                         console.log('[GateIO] Buscando pares negociáveis...');
-                        return [4 /*yield*/, (0, node_fetch_1.default)('https://api.gateio.ws/api/v4/spot/currency_pairs')];
+                        return [4 /*yield*/, (0, node_fetch_1.default)("".concat(this.REST_URL, "/spot/currency_pairs"))];
                     case 1:
                         response = _a.sent();
                         return [4 /*yield*/, response.json()];
                     case 2:
                         data = _a.sent();
                         pairs = data
-                            .filter(function (pair) { return pair.trade_status === 'tradable'; })
+                            .filter(function (pair) { return pair.trade_status === 'tradable' && pair.quote === 'USDT'; })
                             .map(function (pair) { return pair.id; });
                         console.log("[GateIO] ".concat(pairs.length, " pares encontrados"));
                         console.log('Primeiros 5 pares:', pairs.slice(0, 5));

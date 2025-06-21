@@ -49,6 +49,8 @@ var MexcConnector = /** @class */ (function () {
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
         this.reconnectDelay = 5000;
+        this.WS_URL = 'wss://wbs.mexc.com/ws';
+        this.REST_URL = 'https://api.mexc.com/api/v3';
         this.identifier = identifier;
         this.onPriceUpdate = onPriceUpdate;
         this.onConnect = onConnect;
@@ -59,9 +61,9 @@ var MexcConnector = /** @class */ (function () {
             return __generator(this, function (_a) {
                 try {
                     console.log('\n[MEXC] Iniciando conexão WebSocket...');
-                    this.ws = new ws_1.default('wss://contract.mexc.com/ws');
+                    this.ws = new ws_1.default(this.WS_URL);
                     this.ws.on('open', function () {
-                        console.log('[MEXC] WebSocket conectado');
+                        console.log('\n[MEXC] WebSocket conectado');
                         _this.isConnected = true;
                         _this.reconnectAttempts = 0;
                         _this.onConnect();
@@ -69,47 +71,110 @@ var MexcConnector = /** @class */ (function () {
                     this.ws.on('message', function (data) {
                         try {
                             var message = JSON.parse(data.toString());
-                            if (message.channel === 'push.ticker') {
-                                var _a = message.data, symbol = _a.symbol, bestAsk = _a.bestAsk, bestBid = _a.bestBid;
-                                console.log("\n[MEXC] Atualiza\u00E7\u00E3o de pre\u00E7o para ".concat(symbol));
-                                console.log("Ask: ".concat(bestAsk, ", Bid: ").concat(bestBid));
+                            
+                            // Log da mensagem recebida para debug
+                            console.log('\n[MEXC] Mensagem recebida:', JSON.stringify(message));
+
+                            // Processa ping/pong
+                            if (message.op === 'ping') {
+                                console.log('[MEXC] Ping recebido, enviando pong');
+                                _this.ws?.send(JSON.stringify({ op: 'pong' }));
+                                _this.updateLastPongTime();
+                                return;
+                            }
+
+                            if (message.op === 'pong') {
+                                console.log('[MEXC] Pong recebido');
+                                _this.updateLastPongTime();
+                                return;
+                            }
+
+                            // Processa confirmação de subscrição
+                            if (message.channel === 'sub.response') {
+                                if (message.code === 0) {
+                                    console.log('[MEXC] Subscrição confirmada para:', message.symbol);
+                                } else {
+                                    console.error('[MEXC] Erro na subscrição:', message);
+                                }
+                                return;
+                            }
+
+                            // Processa dados do ticker
+                            if (message.c === 'spot.ticker' && message.d) {
+                                var ticker = message.d;
+                                var symbol = ticker.s.replace('_', '/');
+                                var bestAsk = parseFloat(ticker.a);
+                                var bestBid = parseFloat(ticker.b);
+
+                                if (isNaN(bestAsk) || isNaN(bestBid)) {
+                                    console.warn('[MEXC] Valores inválidos recebidos:', ticker);
+                                    return;
+                                }
+
                                 _this.onPriceUpdate({
                                     type: 'price-update',
-                                    symbol: symbol.replace('_', '/'),
-                                    marketType: 'futures',
-                                    bestAsk: parseFloat(bestAsk),
-                                    bestBid: parseFloat(bestBid),
+                                    symbol: symbol,
+                                    marketType: 'spot',
+                                    bestAsk: bestAsk,
+                                    bestBid: bestBid,
                                     identifier: _this.identifier
                                 });
                             }
-                        }
-                        catch (error) {
-                            console.error('[MEXC] Erro ao processar mensagem:', error);
+                        } catch (error) {
+                            console.error('\n[MEXC] Erro ao processar mensagem:', error);
                         }
                     });
                     this.ws.on('close', function (code, reason) {
-                        console.log("[MEXC] WebSocket fechado. C\u00F3digo: ".concat(code, ", Raz\u00E3o: ").concat(reason));
+                        console.log("\n[MEXC] WebSocket desconectado: ".concat(code, " - ").concat(reason));
                         _this.isConnected = false;
-                        if (_this.reconnectAttempts < _this.maxReconnectAttempts) {
-                            console.log("[MEXC] Tentando reconectar em ".concat(_this.reconnectDelay, "ms..."));
-                            setTimeout(function () { return _this.connect(); }, _this.reconnectDelay);
-                            _this.reconnectAttempts++;
-                        }
-                        else {
-                            console.error('[MEXC] Número máximo de tentativas de reconexão atingido');
-                        }
+                        _this.handleReconnect();
                     });
                     this.ws.on('error', function (error) {
-                        console.error('[MEXC] Erro na conexão WebSocket:', error);
+                        console.error('\n[MEXC] Erro no WebSocket:', error);
+                        _this.handleReconnect();
                     });
                 }
                 catch (error) {
-                    console.error('[MEXC] Erro ao conectar:', error);
-                    throw error;
+                    console.error('\n[MEXC] Erro ao conectar:', error);
+                    this.handleReconnect();
                 }
                 return [2 /*return*/];
             });
         });
+    };
+    MexcConnector.prototype.handleReconnect = function () {
+        var _this = this;
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+            this.reconnectAttempts++;
+            console.log("\n[MEXC] Tentativa de reconex\u00E3o ".concat(this.reconnectAttempts, "/").concat(this.maxReconnectAttempts, " em ").concat(this.reconnectDelay, "ms"));
+            setTimeout(function () { return _this.connect(); }, this.reconnectDelay);
+        }
+        else {
+            console.error('\n[MEXC] Máximo de tentativas de reconexão atingido');
+        }
+    };
+    MexcConnector.prototype.subscribe = function (symbols) {
+        if (!this.ws || !this.isConnected) {
+            console.error('\n[MEXC] Tentativa de inscrição sem conexão ativa');
+            return;
+        }
+        try {
+            console.log("\n[MEXC] Inscrevendo em ".concat(symbols.length, " pares..."));
+            
+            symbols.forEach(function(symbol) {
+                var formattedSymbol = symbol.replace('/', '_').toUpperCase();
+                var subscribeMessage = {
+                    "method": "SUBSCRIPTION",
+                    "params": ["spot.ticker." + formattedSymbol]
+                };
+
+                console.log('\n[MEXC] Enviando mensagem de subscrição:', JSON.stringify(subscribeMessage));
+                this.ws.send(JSON.stringify(subscribeMessage));
+            }.bind(this));
+        }
+        catch (error) {
+            console.error('\n[MEXC] Erro ao se inscrever:', error);
+        }
     };
     MexcConnector.prototype.getTradablePairs = function () {
         return __awaiter(this, void 0, void 0, function () {
@@ -118,49 +183,32 @@ var MexcConnector = /** @class */ (function () {
                 switch (_a.label) {
                     case 0:
                         _a.trys.push([0, 3, , 4]);
-                        console.log('[MEXC] Buscando pares negociáveis...');
-                        return [4 /*yield*/, (0, node_fetch_1.default)('https://contract.mexc.com/api/v1/contract/detail')];
+                        console.log('\n[MEXC] Buscando pares negociáveis...');
+                        return [4 /*yield*/, (0, node_fetch_1.default)("".concat(this.REST_URL, "/exchangeInfo"))];
                     case 1:
                         response = _a.sent();
                         return [4 /*yield*/, response.json()];
                     case 2:
                         data = _a.sent();
-                        pairs = data.data
-                            .filter(function (pair) { return !pair.maintainMarginRate; })
-                            .map(function (pair) { return pair.symbol; });
-                        console.log("[MEXC] ".concat(pairs.length, " pares encontrados"));
-                        console.log('Primeiros 5 pares:', pairs.slice(0, 5));
+                        pairs = data.symbols
+                            .filter(function (symbol) { return symbol.status === 'ENABLED'; })
+                            .map(function (symbol) { return symbol.symbol; });
+                        console.log("\n[MEXC] ".concat(pairs.length, " pares encontrados"));
                         return [2 /*return*/, pairs];
                     case 3:
                         error_1 = _a.sent();
-                        console.error('[MEXC] Erro ao buscar pares:', error_1);
-                        throw error_1;
+                        console.error('\n[MEXC] Erro ao buscar pares:', error_1);
+                        return [2 /*return*/, []];
                     case 4: return [2 /*return*/];
                 }
             });
         });
     };
-    MexcConnector.prototype.subscribe = function (pairs) {
-        var _this = this;
-        if (!this.ws || !this.isConnected) {
-            console.error('[MEXC] WebSocket não está conectado');
-            return;
-        }
-        try {
-            console.log("\n[MEXC] Inscrevendo-se em ".concat(pairs.length, " pares"));
-            pairs.forEach(function (pair) {
-                var _a;
-                var subscribeMessage = {
-                    method: 'SUBSCRIPTION',
-                    params: ["spot.ticker.".concat(pair)]
-                };
-                (_a = _this.ws) === null || _a === void 0 ? void 0 : _a.send(JSON.stringify(subscribeMessage));
-            });
-            console.log('[MEXC] Mensagens de inscrição enviadas');
-            console.log('Primeiros 5 pares inscritos:', pairs.slice(0, 5));
-        }
-        catch (error) {
-            console.error('[MEXC] Erro ao se inscrever nos pares:', error);
+    MexcConnector.prototype.updateLastPongTime = function() {
+        this.lastPongTime = Date.now();
+        if (this.heartbeatTimeout) {
+            clearTimeout(this.heartbeatTimeout);
+            this.heartbeatTimeout = null;
         }
     };
     return MexcConnector;
