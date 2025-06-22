@@ -21,7 +21,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@src/*": ["./src/*"],
+      "@scripts/*": ["./scripts/*"]
     },
     "downlevelIteration": true,
     "typeRoots": [
@@ -38,7 +40,8 @@
     "app/**/*.tsx",
     "components/**/*.ts",
     "components/**/*.tsx",
-    "scripts/**/*.ts"
+    "scripts/**/*.ts",
+    "src/**/*.ts"
   ],
   "exclude": ["node_modules"]
 }
