@@ -25,7 +25,11 @@
     "noEmit": false,
     "isolatedModules": false,
     "jsx": "preserve",
-    "baseUrl": "."
+    "baseUrl": ".",
+    "rootDir": ".",
+    "paths": {
+      "@/*": ["./*"]
+    }
   },
   "include": [
     "websocket-server.ts",
