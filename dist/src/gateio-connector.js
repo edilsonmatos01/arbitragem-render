@@ -51,6 +51,10 @@ class GateIoConnector {
         }
     }
     connect(pairs) {
+        if (!pairs || pairs.length === 0) {
+            console.warn(`[${this.marketIdentifier}] Lista de pares vazia ou inválida`);
+            return;
+        }
         this.subscriptionQueue = pairs.map(p => p.replace('/', '_'));
         if (this.ws) {
             this.ws.close();
@@ -121,7 +125,9 @@ class GateIoConnector {
         this.ws = null;
         if (this.reconnectTimeout)
             clearTimeout(this.reconnectTimeout);
-        this.reconnectTimeout = setTimeout(() => this.connect(this.subscriptionQueue.map(p => p.replace('_', '/'))), 5000);
+        if (this.subscriptionQueue && this.subscriptionQueue.length > 0) {
+            this.reconnectTimeout = setTimeout(() => this.connect(this.subscriptionQueue.map(p => p.replace('_', '/'))), 5000);
+        }
     }
     onError(error) {
         console.error(`[${this.marketIdentifier}] Erro no WebSocket:`, error.message);

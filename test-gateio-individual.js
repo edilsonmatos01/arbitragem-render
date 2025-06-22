@@ -27,13 +27,10 @@ const gateioConnector = new GateIoConnector(
     onConnected
 );
 
-// Conectar
-gateioConnector.connect();
-
-// Inscrever em alguns símbolos
+// Conectar com símbolos
 setTimeout(() => {
-    console.log('📡 Inscrevendo em símbolos de teste...');
-    gateioConnector.subscribe(['BTC/USDT', 'ETH/USDT', 'SOL/USDT']);
+    console.log('📡 Conectando com símbolos de teste...');
+    gateioConnector.connect(['BTC/USDT', 'ETH/USDT', 'SOL/USDT']);
 }, 2000);
 
 // Monitorar estatísticas a cada 30 segundos
