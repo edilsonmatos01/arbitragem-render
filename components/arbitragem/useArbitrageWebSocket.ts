@@ -162,12 +162,19 @@ export function useArbitrageWebSocket() {
   const getWebSocketURL = () => {
     if (typeof window === 'undefined') return '';
 
-    // Para dados reais, usar a URL da aplicação atual
+    // Em desenvolvimento, conectar ao servidor WebSocket local
+    if (window.location.hostname === 'localhost') {
+      const wsURL = 'ws://localhost:10000';
+      console.log(`🔗 [WebSocket] Conectando LOCAL: ${wsURL}`);
+      return wsURL;
+    }
+
+    // Em produção no Render, usar a URL da aplicação atual
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
     const wsURL = `${protocol}//${host}`;
     
-    console.log(`🔗 [WebSocket] Conectando para dados REAIS: ${wsURL}`);
+    console.log(`🔗 [WebSocket] Conectando PRODUÇÃO: ${wsURL}`);
     return wsURL;
   };
 
