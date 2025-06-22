@@ -17,8 +17,8 @@ class MexcConnector extends events_1.EventEmitter {
         this.isConnected = false;
         this.isConnecting = false;
         this.reconnectAttempts = 0;
-        this.baseReconnectDelay = 5000; // 5 segundos
-        this.maxReconnectDelay = 300000; // 5 minutos
+        this.baseReconnectDelay = 5000;
+        this.maxReconnectDelay = 300000;
         this.WS_URL = 'wss://contract.mexc.com/ws';
         this.REST_URL = 'https://api.mexc.com/api/v3/exchangeInfo';
         this.heartbeatInterval = null;
@@ -27,9 +27,9 @@ class MexcConnector extends events_1.EventEmitter {
         this.fallbackRestInterval = null;
         this.connectionStartTime = 0;
         this.lastPongTime = 0;
-        this.HEARTBEAT_INTERVAL = 20000; // 20 seconds
-        this.HEARTBEAT_TIMEOUT = 10000; // 10 segundos
-        this.REST_FALLBACK_INTERVAL = 30000; // 30 segundos
+        this.HEARTBEAT_INTERVAL = 20000;
+        this.HEARTBEAT_TIMEOUT = 10000;
+        this.REST_FALLBACK_INTERVAL = 30000;
         this.isBlocked = false;
         this.maxReconnectAttempts = 5;
         this.reconnectDelay = 5000;
@@ -91,7 +91,6 @@ class MexcConnector extends events_1.EventEmitter {
                 };
                 if (!priceData.bestAsk || !priceData.bestBid)
                     return;
-                // Chama o callback centralizado no servidor
                 this.priceUpdateCallback({
                     identifier: this.marketIdentifier,
                     symbol: pair,
@@ -112,13 +111,15 @@ class MexcConnector extends events_1.EventEmitter {
         setTimeout(() => this.connect(), 5000);
     }
     onError(error) {
+        var _a;
         console.error(`[${this.marketIdentifier}] Erro no WebSocket:`, error.message);
-        this.ws?.close();
+        (_a = this.ws) === null || _a === void 0 ? void 0 : _a.close();
     }
     startPing() {
         this.stopPing();
         this.pingInterval = setInterval(() => {
-            if (this.ws?.readyState === ws_1.default.OPEN) {
+            var _a;
+            if (((_a = this.ws) === null || _a === void 0 ? void 0 : _a.readyState) === ws_1.default.OPEN) {
                 this.ws.send(JSON.stringify({ method: "ping" }));
             }
         }, 20000);
@@ -148,14 +149,12 @@ class MexcConnector extends events_1.EventEmitter {
             }
             const pairs = data.symbols
                 .filter((symbol) => {
-                // Filtra apenas pares ativos e que terminam em USDT
                 return symbol.status === 'ENABLED' &&
                     symbol.quoteAsset === 'USDT' &&
-                    // Adiciona validações extras para garantir que são pares válidos
                     symbol.symbol.endsWith('USDT');
             })
                 .map((symbol) => {
-                const base = symbol.symbol.slice(0, -4); // Remove 'USDT'
+                const base = symbol.symbol.slice(0, -4);
                 return `${base}/USDT`;
             });
             console.log(`[${this.identifier}] ${pairs.length} pares encontrados`);
@@ -171,3 +170,4 @@ class MexcConnector extends events_1.EventEmitter {
     }
 }
 exports.MexcConnector = MexcConnector;
+//# sourceMappingURL=mexc-connector.js.map

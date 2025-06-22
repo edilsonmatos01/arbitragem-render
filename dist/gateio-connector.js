@@ -7,10 +7,6 @@ exports.GateIoConnector = void 0;
 const ws_1 = __importDefault(require("ws"));
 const node_fetch_1 = __importDefault(require("node-fetch"));
 const GATEIO_WS_URL = 'wss://api.gateio.ws/ws/v4/';
-/**
- * Gerencia a conexão WebSocket e as inscrições para os feeds da Gate.io.
- * Pode ser configurado para SPOT ou FUTURES.
- */
 class GateIoConnector {
     constructor(identifier, priceUpdateCallback) {
         this.ws = null;
@@ -41,12 +37,12 @@ class GateIoConnector {
             if (this.marketType === 'spot') {
                 return data
                     .filter(p => p.trade_status === 'tradable' && p.quote === 'USDT')
-                    .map(p => p.id.replace('_', '/')); // Converte 'BTC_USDT' para 'BTC/USDT'
+                    .map(p => p.id.replace('_', '/'));
             }
             else {
                 return data
                     .filter(c => c.in_delisting === false)
-                    .map(c => c.name.replace('_', '/')); // Converte 'BTC_USDT' para 'BTC/USDT'
+                    .map(c => c.name.replace('_', '/'));
             }
         }
         catch (error) {
@@ -59,7 +55,7 @@ class GateIoConnector {
             console.warn(`[${this.marketIdentifier}] Lista de pares vazia ou inválida`);
             return;
         }
-        this.subscriptionQueue = pairs.map(p => p.replace('/', '_')); // Gate.io usa '_'
+        this.subscriptionQueue = pairs.map(p => p.replace('/', '_'));
         if (this.ws) {
             this.ws.close();
         }
@@ -80,7 +76,7 @@ class GateIoConnector {
         try {
             const message = JSON.parse(data.toString());
             if (message.channel === 'spot.ping' || message.channel === 'futures.ping') {
-                return; // Ignora pongs
+                return;
             }
             if (message.event === 'update' && message.result) {
                 this.handleTickerUpdate(message.result);
@@ -98,7 +94,6 @@ class GateIoConnector {
         };
         if (!priceData.bestAsk || !priceData.bestBid)
             return;
-        // Chama o callback centralizado no servidor
         this.priceUpdateCallback({
             identifier: this.marketIdentifier,
             symbol: pair,
@@ -112,9 +107,8 @@ class GateIoConnector {
             return;
         }
         const channel = this.marketType === 'spot' ? 'spot.tickers' : 'futures.tickers';
-        // Gate.io aceita múltiplas inscrições em uma única mensagem
         const payload = this.subscriptionQueue;
-        this.subscriptionQueue = []; // Limpa a fila
+        this.subscriptionQueue = [];
         const msg = {
             time: Math.floor(Date.now() / 1000),
             channel: channel,
@@ -131,19 +125,18 @@ class GateIoConnector {
         this.ws = null;
         if (this.reconnectTimeout)
             clearTimeout(this.reconnectTimeout);
-        // Só reconecta se há pares na fila
         if (this.subscriptionQueue && this.subscriptionQueue.length > 0) {
             this.reconnectTimeout = setTimeout(() => this.connect(this.subscriptionQueue.map(p => p.replace('_', '/'))), 5000);
         }
     }
     onError(error) {
         console.error(`[${this.marketIdentifier}] Erro no WebSocket:`, error.message);
-        // O evento 'close' geralmente é disparado após um erro, cuidando da reconexão.
     }
     startPinging() {
         this.stopPinging();
         this.pingInterval = setInterval(() => {
-            if (this.ws?.readyState === ws_1.default.OPEN) {
+            var _a;
+            if (((_a = this.ws) === null || _a === void 0 ? void 0 : _a.readyState) === ws_1.default.OPEN) {
                 const channel = this.marketType === 'spot' ? 'spot.ping' : 'futures.ping';
                 this.ws.send(JSON.stringify({ time: Math.floor(Date.now() / 1000), channel }));
             }
@@ -170,3 +163,4 @@ class GateIoConnector {
     }
 }
 exports.GateIoConnector = GateIoConnector;
+//# sourceMappingURL=gateio-connector.js.map
