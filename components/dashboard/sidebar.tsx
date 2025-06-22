@@ -64,7 +64,7 @@ export default function Sidebar({ user, navItems }: SidebarProps) {
         </ul>
       </nav>
       <UserNav
-        userName="Edilson Matos"
+        userName="Edilson MM"
         userImage="/images/avatar.png.png"
       />
       {/* Pode adicionar um rodapé à sidebar aqui, se necessário */}
