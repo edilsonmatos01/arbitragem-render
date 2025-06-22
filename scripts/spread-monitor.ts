@@ -1,19 +1,34 @@
 import { PrismaClient } from '@prisma/client';
-import ccxt from 'ccxt';
+import { GateIoConnector } from '../src/gateio-connector';
+import { MexcConnector } from '../src/mexc-connector';
+import { GateIoFuturesConnector } from '../src/gateio-futures-connector';
+import { MexcFuturesConnector } from '../src/mexc-futures-connector';
 import { calculateSpread } from './utils';
 import cron from 'node-cron';
 
 // Inicializa o cliente Prisma
 const prisma = new PrismaClient();
 
-// Configurações das exchanges
-const gateio = new ccxt.gateio({
-  enableRateLimit: true,
-});
+// Inicializa os conectores com as credenciais do ambiente
+const gateioSpot = new GateIoConnector(
+  process.env.GATEIO_API_KEY || '',
+  process.env.GATEIO_API_SECRET || ''
+);
 
-const mexc = new ccxt.mexc({
-  enableRateLimit: true,
-});
+const mexcSpot = new MexcConnector(
+  process.env.MEXC_API_KEY || '',
+  process.env.MEXC_API_SECRET || ''
+);
+
+const gateioFutures = new GateIoFuturesConnector(
+  process.env.GATEIO_API_KEY || '',
+  process.env.GATEIO_API_SECRET || ''
+);
+
+const mexcFutures = new MexcFuturesConnector(
+  process.env.MEXC_API_KEY || '',
+  process.env.MEXC_API_SECRET || ''
+);
 
 // Lista de pares a serem monitorados
 const TARGET_PAIRS = [
@@ -25,7 +40,7 @@ const TARGET_PAIRS = [
 
 let isCronRunning = false;
 
-async function monitorSpreads() {
+async function monitorAndStore() {
   if (isCronRunning) {
     console.log('Monitoramento já está em execução, ignorando esta chamada');
     return;
@@ -33,76 +48,70 @@ async function monitorSpreads() {
 
   try {
     isCronRunning = true;
-    console.log(`[${new Date().toISOString()}] Iniciando monitoramento de spreads...`);
-
-    // Carrega os mercados das exchanges
-    await Promise.all([
-      gateio.loadMarkets(),
-      mexc.loadMarkets()
-    ]);
-
-    // Para cada par de trading
-    for (const symbol of TARGET_PAIRS) {
+    console.log(`[${new Date().toISOString()}] Iniciando monitoramento...`);
+    
+    // Obtém lista de símbolos negociáveis da tabela TradableSymbol
+    const symbols = await prisma.tradableSymbol.findMany();
+    
+    for (const symbol of symbols) {
       try {
-        // Busca os preços atuais
-        const [spotTicker, futuresTicker] = await Promise.all([
-          gateio.fetchTicker(symbol),
-          mexc.fetchTicker(`${symbol}:USDT`) // Formato para futuros na MEXC
-        ]);
+        // Coleta preços spot
+        const gateioSpotPrices = await gateioSpot.fetchTicker(symbol.gateioSymbol);
+        const mexcSpotPrices = await mexcSpot.fetchTicker(symbol.mexcSymbol);
+        
+        // Coleta preços futures
+        const gateioFuturesPrices = await gateioFutures.fetchTicker(symbol.gateioFuturesSymbol);
+        const mexcFuturesPrices = await mexcFutures.fetchTicker(symbol.mexcFuturesSymbol);
 
-        // Extrai os preços
-        const spotPrice = spotTicker?.ask;
-        const futuresPrice = futuresTicker?.bid;
+        // Calcula spreads
+        const gateioSpotToMexcFutures = calculateSpread(
+          gateioSpotPrices.bestAsk,
+          mexcFuturesPrices.bestBid
+        );
 
-        // Valida os preços
-        if (!spotPrice || !futuresPrice || spotPrice <= 0 || futuresPrice <= 0) {
-          console.warn(`Preços inválidos para ${symbol}: Spot=${spotPrice}, Futures=${futuresPrice}`);
-          continue;
-        }
+        const mexcSpotToGateioFutures = calculateSpread(
+          mexcSpotPrices.bestAsk,
+          gateioFuturesPrices.bestBid
+        );
 
-        // Calcula o spread
-        const spread = calculateSpread(futuresPrice.toString(), spotPrice.toString());
-        const spreadValue = spread ? parseFloat(spread) : null;
-
-        if (spreadValue === null) {
-          console.warn(`Spread inválido para ${symbol}`);
-          continue;
-        }
-
-        // Salva no banco de dados
-        await prisma.spreadHistory.create({
+        // Salva os dados no banco
+        await prisma.priceHistory.create({
           data: {
-            symbol,
-            exchangeBuy: 'gateio',
-            exchangeSell: 'mexc',
-            direction: 'spot-to-future',
-            spread: spreadValue,
-            spotPrice: spotPrice,
-            futuresPrice: futuresPrice,
-            timestamp: new Date()
+            symbol: symbol.baseSymbol,
+            timestamp: new Date(),
+            gateioSpotAsk: gateioSpotPrices.bestAsk,
+            gateioSpotBid: gateioSpotPrices.bestBid,
+            mexcSpotAsk: mexcSpotPrices.bestAsk,
+            mexcSpotBid: mexcSpotPrices.bestBid,
+            gateioFuturesAsk: gateioFuturesPrices.bestAsk,
+            gateioFuturesBid: gateioFuturesPrices.bestBid,
+            mexcFuturesAsk: mexcFuturesPrices.bestAsk,
+            mexcFuturesBid: mexcFuturesPrices.bestBid,
+            gateioSpotToMexcFuturesSpread: gateioSpotToMexcFutures,
+            mexcSpotToGateioFuturesSpread: mexcSpotToGateioFutures
           }
         });
 
-        console.log(`[${new Date().toISOString()}] ${symbol}: Spread=${spreadValue}%, Spot=${spotPrice}, Futures=${futuresPrice}`);
-
-      } catch (error) {
-        console.error(`Erro ao processar ${symbol}:`, error);
-        continue;
+        console.log(`[MONITOR] Dados salvos para ${symbol.baseSymbol}`);
+      } catch (symbolError) {
+        console.error(`[ERRO] Falha ao processar ${symbol.baseSymbol}:`, symbolError);
+        continue; // Continua para o próximo símbolo em caso de erro
       }
     }
-
   } catch (error) {
-    console.error('Erro no monitoramento:', error);
+    console.error('[ERRO] Falha no monitoramento:', error);
   } finally {
     isCronRunning = false;
+    // Garante que a conexão com o banco seja fechada
+    await prisma.$disconnect();
   }
 }
 
 // Inicia o agendador para executar a cada 5 minutos
-cron.schedule('*/5 * * * *', monitorSpreads);
+cron.schedule('*/5 * * * *', monitorAndStore);
 
 // Executa imediatamente na primeira vez
-monitorSpreads();
+monitorAndStore();
 
 // Mantém o processo rodando
 process.on('SIGTERM', async () => {
