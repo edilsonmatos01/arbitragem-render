@@ -4,31 +4,21 @@ import { MexcConnector } from '../src/mexc-connector';
 import { GateIoFuturesConnector } from '../src/gateio-futures-connector';
 import { MexcFuturesConnector } from '../src/mexc-futures-connector';
 import { calculateSpread } from './utils';
-import cron from 'node-cron';
+import * as cron from 'node-cron';
 
 // Inicializa o cliente Prisma
 const prisma = new PrismaClient();
 
+// Função para processar atualizações de preço
+const handlePriceUpdate = (data: any) => {
+  console.log(`[${data.identifier}] Atualização de preço para ${data.symbol}`);
+};
+
 // Inicializa os conectores com as credenciais do ambiente
-const gateioSpot = new GateIoConnector(
-  process.env.GATEIO_API_KEY || '',
-  process.env.GATEIO_API_SECRET || ''
-);
-
-const mexcSpot = new MexcConnector(
-  process.env.MEXC_API_KEY || '',
-  process.env.MEXC_API_SECRET || ''
-);
-
-const gateioFutures = new GateIoFuturesConnector(
-  process.env.GATEIO_API_KEY || '',
-  process.env.GATEIO_API_SECRET || ''
-);
-
-const mexcFutures = new MexcFuturesConnector(
-  process.env.MEXC_API_KEY || '',
-  process.env.MEXC_API_SECRET || ''
-);
+const gateioSpot = new GateIoConnector('GATEIO_SPOT', handlePriceUpdate);
+const mexcSpot = new MexcConnector('MEXC_SPOT', handlePriceUpdate);
+const gateioFutures = new GateIoFuturesConnector('GATEIO_FUTURES', handlePriceUpdate);
+const mexcFutures = new MexcFuturesConnector('MEXC_FUTURES', handlePriceUpdate);
 
 // Lista de pares a serem monitorados
 const TARGET_PAIRS = [
@@ -39,6 +29,11 @@ const TARGET_PAIRS = [
 ];
 
 let isCronRunning = false;
+
+interface TickerData {
+  bestAsk: number;
+  bestBid: number;
+}
 
 async function monitorAndStore() {
   if (isCronRunning) {
@@ -56,22 +51,33 @@ async function monitorAndStore() {
     for (const symbol of symbols) {
       try {
         // Coleta preços spot
-        const gateioSpotPrices = await gateioSpot.fetchTicker(symbol.gateioSymbol);
-        const mexcSpotPrices = await mexcSpot.fetchTicker(symbol.mexcSymbol);
+        const gateioSpotPrices = await gateioSpot.getTradablePairs();
+        const mexcSpotPrices = await mexcSpot.getTradablePairs();
         
         // Coleta preços futures
-        const gateioFuturesPrices = await gateioFutures.fetchTicker(symbol.gateioFuturesSymbol);
-        const mexcFuturesPrices = await mexcFutures.fetchTicker(symbol.mexcFuturesSymbol);
+        const gateioFuturesPrices = await gateioFutures.getTradablePairs();
+        const mexcFuturesPrices = await mexcFutures.getTradablePairs();
+
+        // Filtra os preços para o símbolo atual
+        const gateioSpotPrice = gateioSpotPrices.find(p => p === symbol.gateioSymbol);
+        const mexcSpotPrice = mexcSpotPrices.find(p => p === symbol.mexcSymbol);
+        const gateioFuturesPrice = gateioFuturesPrices.find(p => p === symbol.gateioFuturesSymbol);
+        const mexcFuturesPrice = mexcFuturesPrices.find(p => p === symbol.mexcFuturesSymbol);
+
+        if (!gateioSpotPrice || !mexcSpotPrice || !gateioFuturesPrice || !mexcFuturesPrice) {
+          console.warn(`[AVISO] Preços incompletos para ${symbol.baseSymbol}`);
+          continue;
+        }
 
         // Calcula spreads
         const gateioSpotToMexcFutures = calculateSpread(
-          gateioSpotPrices.bestAsk,
-          mexcFuturesPrices.bestBid
+          Number(gateioSpotPrice),
+          Number(mexcFuturesPrice)
         );
 
         const mexcSpotToGateioFutures = calculateSpread(
-          mexcSpotPrices.bestAsk,
-          gateioFuturesPrices.bestBid
+          Number(mexcSpotPrice),
+          Number(gateioFuturesPrice)
         );
 
         // Salva os dados no banco
@@ -79,14 +85,14 @@ async function monitorAndStore() {
           data: {
             symbol: symbol.baseSymbol,
             timestamp: new Date(),
-            gateioSpotAsk: gateioSpotPrices.bestAsk,
-            gateioSpotBid: gateioSpotPrices.bestBid,
-            mexcSpotAsk: mexcSpotPrices.bestAsk,
-            mexcSpotBid: mexcSpotPrices.bestBid,
-            gateioFuturesAsk: gateioFuturesPrices.bestAsk,
-            gateioFuturesBid: gateioFuturesPrices.bestBid,
-            mexcFuturesAsk: mexcFuturesPrices.bestAsk,
-            mexcFuturesBid: mexcFuturesPrices.bestBid,
+            gateioSpotAsk: Number(gateioSpotPrice),
+            gateioSpotBid: Number(gateioSpotPrice),
+            mexcSpotAsk: Number(mexcSpotPrice),
+            mexcSpotBid: Number(mexcSpotPrice),
+            gateioFuturesAsk: Number(gateioFuturesPrice),
+            gateioFuturesBid: Number(gateioFuturesPrice),
+            mexcFuturesAsk: Number(mexcFuturesPrice),
+            mexcFuturesBid: Number(mexcFuturesPrice),
             gateioSpotToMexcFuturesSpread: gateioSpotToMexcFutures,
             mexcSpotToGateioFuturesSpread: mexcSpotToGateioFutures
           }
@@ -108,10 +114,16 @@ async function monitorAndStore() {
 }
 
 // Inicia o agendador para executar a cada 30 minutos
-cron.schedule('*/30 * * * *', monitorAndStore);
+cron.schedule('*/30 * * * *', () => {
+  monitorAndStore().catch(error => {
+    console.error('[ERRO] Falha ao executar monitoramento:', error);
+  });
+});
 
 // Executa imediatamente na primeira vez
-monitorAndStore();
+monitorAndStore().catch(error => {
+  console.error('[ERRO] Falha ao executar monitoramento inicial:', error);
+});
 
 // Mantém o processo rodando
 process.on('SIGTERM', async () => {
