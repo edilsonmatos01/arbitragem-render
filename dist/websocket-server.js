@@ -69,19 +69,18 @@ function handlePriceUpdate(update) {
 function startWebSocketServer(httpServer) {
     const wss = new WebSocket.Server({ server: httpServer });
     wss.on('connection', (ws, req) => {
-        const customWs = ws;
-        customWs.isAlive = true;
-        customWs.on('pong', () => {
-            customWs.isAlive = true;
+        ws.isAlive = true;
+        ws.on('pong', () => {
+            ws.isAlive = true;
         });
         const clientIp = req.socket.remoteAddress || req.headers['x-forwarded-for'];
-        clients.push(customWs);
+        clients.push(ws);
         console.log(`[WS Server] Cliente conectado: ${clientIp}. Total: ${clients.length}`);
         if (Object.keys(marketPrices).length > 0) {
-            customWs.send(JSON.stringify({ type: 'full_book', data: marketPrices }));
+            ws.send(JSON.stringify({ type: 'full_book', data: marketPrices }));
         }
-        customWs.on('close', () => {
-            clients = clients.filter(c => c !== customWs);
+        ws.on('close', () => {
+            clients = clients.filter(c => c !== ws);
             console.log(`[WS Server] Cliente desconectado: ${clientIp}. Total: ${clients.length}`);
         });
     });

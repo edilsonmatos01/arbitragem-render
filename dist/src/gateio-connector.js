@@ -4,191 +4,155 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.GateIoConnector = void 0;
-const WebSocket = require('ws');
+const ws_1 = __importDefault(require("ws"));
 const node_fetch_1 = __importDefault(require("node-fetch"));
+const GATEIO_WS_URL = 'wss://api.gateio.ws/ws/v4/';
 class GateIoConnector {
-    constructor(identifier, onPriceUpdate, onConnect) {
+    constructor(identifier, priceUpdateCallback) {
         this.ws = null;
+        this.subscriptionQueue = [];
         this.isConnected = false;
-        this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 5;
-        this.reconnectDelay = 5000;
-        this.WS_URL = 'wss://api.gateio.ws/ws/v4/';
-        this.REST_URL = 'https://api.gateio.ws/api/v4/spot/currency_pairs';
-        this.subscribedSymbols = new Set();
-        this.heartbeatInterval = null;
-        this.HEARTBEAT_INTERVAL = 20000;
-        this.identifier = identifier;
-        this.onPriceUpdate = onPriceUpdate;
-        this.onConnect = onConnect;
-        console.log(`[${this.identifier}] Conector instanciado.`);
-    }
-    startHeartbeat() {
-        if (this.heartbeatInterval) {
-            clearInterval(this.heartbeatInterval);
-        }
-        this.heartbeatInterval = setInterval(() => {
-            if (this.ws && this.isConnected) {
-                try {
-                    const pingMessage = { "time": Date.now(), "channel": "spot.ping" };
-                    this.ws.send(JSON.stringify(pingMessage));
-                    console.log(`[${this.identifier}] Ping enviado`);
-                }
-                catch (error) {
-                    console.error(`[${this.identifier}] Erro ao enviar ping:`, error);
-                    this.handleDisconnect();
-                }
-            }
-        }, this.HEARTBEAT_INTERVAL);
-    }
-    stopHeartbeat() {
-        if (this.heartbeatInterval) {
-            clearInterval(this.heartbeatInterval);
-            this.heartbeatInterval = null;
-        }
-    }
-    async cleanup() {
-        this.stopHeartbeat();
-        if (this.ws) {
-            try {
-                this.ws.removeAllListeners();
-                if (this.ws.readyState === WebSocket.OPEN) {
-                    this.ws.close();
-                }
-                this.ws = null;
-            }
-            catch (error) {
-                console.error(`[${this.identifier}] Erro ao limpar conexão:`, error);
-            }
-        }
-        this.isConnected = false;
-    }
-    handleDisconnect() {
-        this.cleanup().then(() => {
-            if (this.reconnectAttempts < this.maxReconnectAttempts) {
-                console.log(`[${this.identifier}] Tentando reconectar em ${this.reconnectDelay}ms...`);
-                setTimeout(() => this.connect(), this.reconnectDelay);
-                this.reconnectAttempts++;
-            }
-            else {
-                console.error(`[${this.identifier}] Número máximo de tentativas de reconexão atingido`);
-            }
-        });
-    }
-    async connect() {
-        try {
-            await this.cleanup();
-            console.log(`\n[${this.identifier}] Iniciando conexão WebSocket...`);
-            this.ws = new WebSocket(this.WS_URL);
-            this.ws.on('open', () => {
-                console.log(`[${this.identifier}] WebSocket conectado`);
-                this.isConnected = true;
-                this.reconnectAttempts = 0;
-                this.startHeartbeat();
-                this.resubscribeAll();
-                this.onConnect();
-            });
-            this.ws.on('message', (data) => {
-                try {
-                    const message = JSON.parse(data.toString());
-                    console.log(`\n[${this.identifier}] Mensagem recebida:`, message);
-                    if (message.channel === 'spot.pong') {
-                        console.log(`[${this.identifier}] Pong recebido`);
-                        return;
-                    }
-                    if (message.channel === 'spot.book_ticker' && message.event === 'update') {
-                        const { s: symbol, a: ask, b: bid } = message.result;
-                        if (ask && bid) {
-                            this.onPriceUpdate({
-                                type: 'price-update',
-                                symbol: symbol.replace('_', '/'),
-                                marketType: 'spot',
-                                bestAsk: parseFloat(ask),
-                                bestBid: parseFloat(bid),
-                                identifier: this.identifier
-                            });
-                        }
-                    }
-                }
-                catch (error) {
-                    console.error(`[${this.identifier}] Erro ao processar mensagem:`, error);
-                }
-            });
-            this.ws.on('close', (code, reason) => {
-                console.log(`[${this.identifier}] WebSocket fechado. Código: ${code}, Razão: ${reason}`);
-                this.handleDisconnect();
-            });
-            this.ws.on('error', (error) => {
-                console.error(`[${this.identifier}] Erro na conexão WebSocket:`, error);
-                this.handleDisconnect();
-            });
-        }
-        catch (error) {
-            console.error(`[${this.identifier}] Erro ao conectar:`, error);
-            this.handleDisconnect();
-        }
+        this.pingInterval = null;
+        this.reconnectTimeout = null;
+        this.marketIdentifier = identifier;
+        this.marketType = identifier.includes('_SPOT') ? 'spot' : 'futures';
+        this.priceUpdateCallback = priceUpdateCallback;
+        console.log(`[${this.marketIdentifier}] Conector inicializado.`);
     }
     async getTradablePairs() {
+        const endpoint = this.marketType === 'spot'
+            ? 'https://api.gateio.ws/api/v4/spot/currency_pairs'
+            : 'https://api.gateio.ws/api/v4/futures/usdt/contracts';
         try {
-            console.log(`[${this.identifier}] Buscando pares negociáveis...`);
-            const response = await (0, node_fetch_1.default)(this.REST_URL);
+            console.log(`[${this.marketIdentifier}] Buscando pares negociáveis de ${endpoint}`);
+            const response = await (0, node_fetch_1.default)(endpoint);
+            if (!response.ok) {
+                throw new Error(`Falha na API: ${response.statusText}`);
+            }
             const data = await response.json();
-            console.log(`[${this.identifier}] Resposta da API:`, JSON.stringify(data).slice(0, 200) + '...');
             if (!Array.isArray(data)) {
-                console.error(`[${this.identifier}] Resposta inválida:`, data);
+                console.warn(`[${this.marketIdentifier}] A resposta da API não foi uma lista (possível geoblocking).`);
                 return [];
             }
-            const pairs = data
-                .filter((pair) => {
-                return pair.trade_status === 'tradable' &&
-                    pair.quote === 'USDT' &&
-                    pair.id.includes('_') &&
-                    pair.id.split('_').length === 2;
-            })
-                .map((pair) => pair.id.replace('_', '/'));
-            console.log(`[${this.identifier}] ${pairs.length} pares encontrados`);
-            if (pairs.length > 0) {
-                console.log('Primeiros 5 pares:', pairs.slice(0, 5));
+            if (this.marketType === 'spot') {
+                return data
+                    .filter(p => p.trade_status === 'tradable' && p.quote === 'USDT')
+                    .map(p => p.id.replace('_', '/'));
             }
-            return pairs;
+            else {
+                return data
+                    .filter(c => c.in_delisting === false)
+                    .map(c => c.name.replace('_', '/'));
+            }
         }
         catch (error) {
-            console.error(`[${this.identifier}] Erro ao buscar pares:`, error);
+            console.error(`[${this.marketIdentifier}] Erro ao buscar pares negociáveis:`, error);
             return [];
         }
     }
-    subscribe(pairs) {
-        if (!this.ws || !this.isConnected) {
-            console.error(`[${this.identifier}] WebSocket não está conectado`);
-            return;
+    connect(pairs) {
+        this.subscriptionQueue = pairs.map(p => p.replace('/', '_'));
+        if (this.ws) {
+            this.ws.close();
         }
-        if (!pairs || pairs.length === 0) {
-            console.error(`[${this.identifier}] Lista de pares vazia`);
-            return;
-        }
+        console.log(`[${this.marketIdentifier}] Conectando a ${GATEIO_WS_URL}`);
+        this.ws = new ws_1.default(GATEIO_WS_URL);
+        this.ws.on('open', this.onOpen.bind(this));
+        this.ws.on('message', this.onMessage.bind(this));
+        this.ws.on('close', this.onClose.bind(this));
+        this.ws.on('error', this.onError.bind(this));
+    }
+    onOpen() {
+        console.log(`[${this.marketIdentifier}] Conexão WebSocket estabelecida.`);
+        this.isConnected = true;
+        this.startPinging();
+        this.processSubscriptionQueue();
+    }
+    onMessage(data) {
         try {
-            console.log(`\n[${this.identifier}] Inscrevendo-se em ${pairs.length} pares`);
-            const formattedPairs = pairs.map(pair => pair.replace('/', '_'));
-            const subscribeMessage = {
-                "time": Date.now(),
-                "channel": "spot.book_ticker",
-                "event": "subscribe",
-                "payload": formattedPairs
-            };
-            this.ws.send(JSON.stringify(subscribeMessage));
-            pairs.forEach(symbol => this.subscribedSymbols.add(symbol));
-            console.log(`[${this.identifier}] Mensagem de inscrição enviada`);
-            console.log('Primeiros 5 pares inscritos:', formattedPairs.slice(0, 5));
+            const message = JSON.parse(data.toString());
+            if (message.channel === 'spot.ping' || message.channel === 'futures.ping') {
+                return;
+            }
+            if (message.event === 'update' && message.result) {
+                this.handleTickerUpdate(message.result);
+            }
         }
         catch (error) {
-            console.error(`[${this.identifier}] Erro ao se inscrever nos pares:`, error);
+            console.error(`[${this.marketIdentifier}] Erro ao processar mensagem:`, error);
         }
     }
-    resubscribeAll() {
-        const symbols = Array.from(this.subscribedSymbols);
-        if (symbols.length > 0) {
-            console.log(`[${this.identifier}] Reinscrevendo em ${symbols.length} pares...`);
-            this.subscribe(symbols);
+    handleTickerUpdate(ticker) {
+        const pair = (ticker.currency_pair || ticker.contract).replace('_', '/');
+        const priceData = {
+            bestAsk: parseFloat(ticker.lowest_ask || ticker.ask1),
+            bestBid: parseFloat(ticker.highest_bid || ticker.bid1),
+        };
+        if (!priceData.bestAsk || !priceData.bestBid)
+            return;
+        this.priceUpdateCallback({
+            identifier: this.marketIdentifier,
+            symbol: pair,
+            marketType: this.marketType,
+            bestAsk: priceData.bestAsk,
+            bestBid: priceData.bestBid,
+        });
+    }
+    processSubscriptionQueue() {
+        if (!this.ws || this.ws.readyState !== ws_1.default.OPEN || this.subscriptionQueue.length === 0) {
+            return;
+        }
+        const channel = this.marketType === 'spot' ? 'spot.tickers' : 'futures.tickers';
+        const payload = this.subscriptionQueue;
+        this.subscriptionQueue = [];
+        const msg = {
+            time: Math.floor(Date.now() / 1000),
+            channel: channel,
+            event: 'subscribe',
+            payload: payload,
+        };
+        this.ws.send(JSON.stringify(msg));
+        console.log(`[${this.marketIdentifier}] Enviada inscrição para ${payload.length} pares.`);
+    }
+    onClose() {
+        console.warn(`[${this.marketIdentifier}] Conexão fechada. Tentando reconectar em 5s...`);
+        this.isConnected = false;
+        this.stopPinging();
+        this.ws = null;
+        if (this.reconnectTimeout)
+            clearTimeout(this.reconnectTimeout);
+        this.reconnectTimeout = setTimeout(() => this.connect(this.subscriptionQueue.map(p => p.replace('_', '/'))), 5000);
+    }
+    onError(error) {
+        console.error(`[${this.marketIdentifier}] Erro no WebSocket:`, error.message);
+    }
+    startPinging() {
+        this.stopPinging();
+        this.pingInterval = setInterval(() => {
+            var _a;
+            if (((_a = this.ws) === null || _a === void 0 ? void 0 : _a.readyState) === ws_1.default.OPEN) {
+                const channel = this.marketType === 'spot' ? 'spot.ping' : 'futures.ping';
+                this.ws.send(JSON.stringify({ time: Math.floor(Date.now() / 1000), channel }));
+            }
+        }, 20000);
+    }
+    stopPinging() {
+        if (this.pingInterval) {
+            clearInterval(this.pingInterval);
+            this.pingInterval = null;
+        }
+    }
+    disconnect() {
+        console.log(`[${this.marketIdentifier}] Desconectando...`);
+        this.isConnected = false;
+        this.stopPinging();
+        if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
+            this.reconnectTimeout = null;
+        }
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
         }
     }
 }

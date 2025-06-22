@@ -12,24 +12,19 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-
 const client_1 = require("@prisma/client");
 const ccxt_1 = __importDefault(require("ccxt"));
-const spreadUtils_1 = require("../app/utils/spreadUtils");
+const utils_1 = require("./utils");
 const node_cron_1 = __importDefault(require("node-cron"));
-
 // Inicializa o cliente Prisma
 const prisma = new client_1.PrismaClient();
-
 // Configurações das exchanges
 const gateio = new ccxt_1.default.gateio({
     enableRateLimit: true,
 });
-
 const mexc = new ccxt_1.default.mexc({
     enableRateLimit: true,
 });
-
 // Lista de pares a serem monitorados
 const TARGET_PAIRS = [
     'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'DOGE/USDT', 'SOL/USDT', 'PEPE/USDT',
@@ -37,9 +32,7 @@ const TARGET_PAIRS = [
     'INJ/USDT', 'TON/USDT', 'OP/USDT', 'XRP/USDT', 'KAS/USDT', 'VR/USDT',
     'G7/USDT', 'EDGE/USDT', 'ADA/USDT', 'AVAX/USDT', 'DOT/USDT', 'MATIC/USDT'
 ];
-
 let isCronRunning = false;
-
 function monitorSpreads() {
     return __awaiter(this, void 0, void 0, function* () {
         if (isCronRunning) {
@@ -71,7 +64,7 @@ function monitorSpreads() {
                         continue;
                     }
                     // Calcula o spread
-                    const spread = (0, spreadUtils_1.calculateSpread)(futuresPrice.toString(), spotPrice.toString());
+                    const spread = (0, utils_1.calculateSpread)(futuresPrice.toString(), spotPrice.toString());
                     const spreadValue = spread ? parseFloat(spread) : null;
                     if (spreadValue === null) {
                         console.warn(`Spread inválido para ${symbol}`);
@@ -106,22 +99,18 @@ function monitorSpreads() {
         }
     });
 }
-
-// Inicia o agendador para executar a cada 30 minutos
-node_cron_1.default.schedule('*/30 * * * *', monitorSpreads);
-
+// Inicia o agendador para executar a cada 5 minutos
+node_cron_1.default.schedule('*/5 * * * *', monitorSpreads);
 // Executa imediatamente na primeira vez
 monitorSpreads();
-
 // Mantém o processo rodando
 process.on('SIGTERM', () => __awaiter(void 0, void 0, void 0, function* () {
     console.log('Encerrando monitoramento...');
     yield prisma.$disconnect();
     process.exit(0);
 }));
-
 process.on('SIGINT', () => __awaiter(void 0, void 0, void 0, function* () {
     console.log('Encerrando monitoramento...');
     yield prisma.$disconnect();
     process.exit(0);
-})); 
+}));

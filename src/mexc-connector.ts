@@ -1,4 +1,4 @@
-const WebSocket = require('ws');
+import WebSocket from 'ws';
 import fetch from 'node-fetch';
 import { EventEmitter } from 'events';
 
@@ -12,17 +12,24 @@ interface MexcWebSocket {
     ping: () => void;
 }
 
+const MEXC_FUTURES_WS_URL = 'wss://contract.mexc.com/edge';
+
 export class MexcConnector extends EventEmitter {
-    private ws: MexcWebSocket | null = null;
+    private ws: WebSocket | null = null;
+    private subscriptions: Set<string> = new Set();
+    private pingInterval: NodeJS.Timeout | null = null;
+    private priceUpdateCallback: (data: any) => void;
+    private onConnectedCallback: (() => void) | null;
+    private isConnected: boolean = false;
+    private marketIdentifier: string;
     private readonly identifier: string;
     private readonly onPriceUpdate: Function;
     private readonly onConnect: Function;
-    private isConnected: boolean = false;
     private isConnecting: boolean = false;
     private reconnectAttempts: number = 0;
     private readonly baseReconnectDelay: number = 5000; // 5 segundos
     private readonly maxReconnectDelay: number = 300000; // 5 minutos
-    private readonly WS_URL = 'wss://wbs.mexc.com/ws';
+    private readonly WS_URL = 'wss://contract.mexc.com/ws';
     private readonly REST_URL = 'https://api.mexc.com/api/v3/exchangeInfo';
     private heartbeatInterval: NodeJS.Timeout | null = null;
     private heartbeatTimeout: NodeJS.Timeout | null = null;
@@ -37,257 +44,122 @@ export class MexcConnector extends EventEmitter {
     private readonly maxReconnectAttempts: number = 5;
     private readonly reconnectDelay: number = 5000;
 
-    constructor(identifier: string, onPriceUpdate: Function, onConnect: Function) {
+    constructor(
+        identifier: string, 
+        priceUpdateCallback: (data: any) => void,
+        onConnected: () => void
+    ) {
         super();
+        this.marketIdentifier = identifier;
+        this.priceUpdateCallback = priceUpdateCallback;
+        this.onConnectedCallback = onConnected;
         this.identifier = identifier;
-        this.onPriceUpdate = onPriceUpdate;
-        this.onConnect = onConnect;
-        console.log(`[${this.identifier}] Conector instanciado.`);
+        this.onPriceUpdate = priceUpdateCallback;
+        this.onConnect = onConnected;
+        console.log(`[${this.marketIdentifier}] Conector instanciado.`);
     }
 
-    async connect() {
-        if (this.isConnecting) {
-            console.log(`[${this.identifier}] Já existe uma tentativa de conexão em andamento`);
-            return;
-        }
-
-        try {
-            this.isConnecting = true;
-            this.connectionStartTime = Date.now();
-            
-            // Limpa conexão anterior se existir
-            await this.cleanup();
-
-            console.log(`\n[${this.identifier}] Iniciando conexão WebSocket...`);
-            this.ws = new WebSocket(this.WS_URL) as MexcWebSocket;
-
-            if (!this.ws) {
-                throw new Error('Falha ao criar WebSocket');
-            }
-
-            this.ws.on('open', () => {
-                console.log(`[${this.identifier}] WebSocket conectado`);
-                this.isConnected = true;
-                this.isConnecting = false;
-                this.reconnectAttempts = 0;
-                this.lastPongTime = Date.now();
-                this.startHeartbeat();
-                
-                if (this.subscribedSymbols.size > 0) {
-                    this.resubscribeAll();
-                }
-                
-                this.onConnect();
-                this.stopRestFallback();
-            });
-
-            this.ws.on('message', (data: any) => {
-                try {
-                    const message = JSON.parse(data.toString());
-                    
-                    // Log para debug
-                    console.log(`\n[${this.identifier}] Mensagem recebida:`, message);
-
-                    // Handle pong response
-                    if (message.method === 'PONG') {
-                        console.log(`[${this.identifier}] Pong recebido`);
-                        return;
-                    }
-
-                    // Handle subscription data
-                    if (message.stream && message.stream.endsWith('@bookTicker')) {
-                        const { s: symbol, a: ask, b: bid } = message.data;
-                        
-                        if (ask && bid) {
-                            this.onPriceUpdate({
-                                type: 'price-update',
-                                symbol: symbol.replace('_', '/'),
-                                marketType: 'spot',
-                                bestAsk: parseFloat(ask),
-                                bestBid: parseFloat(bid),
-                                identifier: this.identifier
-                            });
-                        }
-                    }
-                } catch (error) {
-                    console.error(`[${this.identifier}] Erro ao processar mensagem:`, error);
-                }
-            });
-
-            this.ws.on('close', (code: number, reason: string) => {
-                console.log(`[${this.identifier}] WebSocket fechado. Código: ${code}, Razão: ${reason}`);
-                this.handleDisconnect();
-            });
-
-            this.ws.on('error', (error: Error) => {
-                console.error(`[${this.identifier}] Erro na conexão WebSocket:`, error);
-                this.handleDisconnect();
-            });
-
-            // Configura timeout para a conexão inicial
-            setTimeout(() => {
-                if (!this.isConnected) {
-                    this.handleDisconnect();
-                }
-            }, 10000);
-
-        } catch (error) {
-            console.error(`[${this.identifier}] Erro ao conectar:`, error);
-            this.handleDisconnect();
-        }
-    }
-
-    private async cleanup() {
-        this.stopHeartbeat();
-        
+    public connect(): void {
         if (this.ws) {
-            try {
-                this.ws.removeAllListeners();
-                if (this.ws.readyState === WebSocket.OPEN) {
-                    this.ws.close();
-                }
-                this.ws = null;
-            } catch (error) {
-                console.error(`[${this.identifier}] Erro ao limpar conexão:`, error);
-            }
+            this.ws.close();
         }
-        
-        this.isConnected = false;
+        console.log(`[${this.marketIdentifier}] Conectando a ${MEXC_FUTURES_WS_URL}`);
+        this.ws = new WebSocket(MEXC_FUTURES_WS_URL);
+        this.ws.on('open', this.onOpen.bind(this));
+        this.ws.on('message', this.onMessage.bind(this));
+        this.ws.on('close', this.onClose.bind(this));
+        this.ws.on('error', this.onError.bind(this));
     }
 
-    private handleDisconnect() {
-        console.log(`[${this.identifier}] Desconectado: Conexão fechada pelo servidor`);
-        this.cleanup().then(() => {
-            if (this.reconnectAttempts < this.maxReconnectAttempts) {
-                console.log(`[${this.identifier}] Tentando reconectar em ${this.reconnectDelay}ms...`);
-                setTimeout(() => this.connect(), this.reconnectDelay);
-                this.reconnectAttempts++;
-            } else {
-                console.error(`[${this.identifier}] Número máximo de tentativas de reconexão atingido`);
-            }
+    public subscribe(symbols: string[]): void {
+        symbols.forEach(symbol => this.subscriptions.add(symbol));
+        if (this.isConnected) {
+            this.sendSubscriptionRequests(Array.from(this.subscriptions));
+        }
+    }
+
+    private onOpen(): void {
+        console.log(`[${this.marketIdentifier}] Conexão WebSocket estabelecida.`);
+        this.isConnected = true;
+        this.startPing();
+        if (this.subscriptions.size > 0) {
+            this.sendSubscriptionRequests(Array.from(this.subscriptions));
+        }
+        if (this.onConnectedCallback) {
+            this.onConnectedCallback();
+            this.onConnectedCallback = null;
+        }
+    }
+
+    private sendSubscriptionRequests(symbols: string[]): void {
+        const ws = this.ws;
+        if (!ws) return;
+        symbols.forEach(symbol => {
+            const msg = { method: 'sub.ticker', param: { symbol: symbol.replace('/', '_') } };
+            ws.send(JSON.stringify(msg));
         });
     }
 
-    private scheduleReconnect() {
-        // Não tenta reconectar se estiver bloqueado
-        if (this.isBlocked) {
-            return;
-        }
+    private onMessage(data: WebSocket.Data): void {
+        try {
+            const message = JSON.parse(data.toString());
+            if (message.channel === 'push.ticker' && message.data) {
+                const ticker = message.data;
+                const pair = ticker.symbol.replace('_', '/');
 
-        const delay = Math.min(
-            this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts),
-            this.maxReconnectDelay
-        );
-
-        this.reconnectAttempts++;
-        console.log(`[${this.identifier}] Tentativa de reconexão ${this.reconnectAttempts} em ${delay/1000}s`);
-
-        if (Date.now() - this.connectionStartTime > 300000) { // 5 minutos
-            console.log(`[${this.identifier}] WebSocket não reconectou após múltiplas tentativas. Verifique a conexão.`);
-        }
-
-        setTimeout(() => this.connect(), delay);
-    }
-
-    private startHeartbeat() {
-        this.stopHeartbeat();
-        
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            try {
-                const pingMessage = { "method": "PING" };
-                this.ws.send(JSON.stringify(pingMessage));
-                console.log(`[${this.identifier}] Ping enviado`);
-            } catch (error) {
-                console.error(`[${this.identifier}] Erro ao enviar ping:`, error);
-                this.handleDisconnect();
-            }
-        }
-    }
-
-    private stopHeartbeat() {
-        if (this.heartbeatInterval) {
-            clearInterval(this.heartbeatInterval);
-            this.heartbeatInterval = null;
-        }
-        if (this.heartbeatTimeout) {
-            clearTimeout(this.heartbeatTimeout);
-            this.heartbeatTimeout = null;
-        }
-    }
-
-    private updateLastPongTime() {
-        this.lastPongTime = Date.now();
-        if (this.heartbeatTimeout) {
-            clearTimeout(this.heartbeatTimeout);
-            this.heartbeatTimeout = null;
-        }
-    }
-
-    private startRestFallback() {
-        if (this.fallbackRestInterval) return;
-
-        console.log(`[${this.identifier}] Iniciando fallback para REST API`);
-        this.fallbackRestInterval = setInterval(async () => {
-            try {
-                for (const symbol of this.subscribedSymbols) {
-                    const formattedSymbol = symbol.replace('/', '');
-                    const response = await fetch(`${this.REST_URL}/ticker/price?symbol=${formattedSymbol}`);
-                    const data = await response.json();
-                    
-                    if (data.price) {
-                        const price = parseFloat(data.price);
-                        this.onPriceUpdate({
-                            type: 'price-update',
-                            symbol: symbol,
-                            marketType: 'spot',
-                            bestAsk: price,
-                            bestBid: price,
-                            identifier: this.identifier
-                        });
-                    }
-                }
-            } catch (error) {
-                console.error(`[${this.identifier}] Erro ao buscar preços via REST:`, error);
-            }
-        }, this.REST_FALLBACK_INTERVAL);
-    }
-
-    private stopRestFallback() {
-        if (this.fallbackRestInterval) {
-            clearInterval(this.fallbackRestInterval);
-            this.fallbackRestInterval = null;
-        }
-    }
-
-    private resubscribeAll() {
-        const symbols = Array.from(this.subscribedSymbols);
-        if (symbols.length > 0) {
-            console.log(`[${this.identifier}] Reinscrevendo em ${symbols.length} pares...`);
-            this.subscribe(symbols);
-        }
-    }
-
-    async subscribe(symbols: string[]) {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            console.log(`[${this.identifier}] WebSocket não está conectado. Tentando reconectar...`);
-            await this.connect();
-            return;
-        }
-
-        for (const symbol of symbols) {
-            try {
-                const subscriptionMessage = {
-                    method: "SUBSCRIPTION",
-                    params: [
-                        `${symbol.replace('/', '').toLowerCase()}@bookTicker`
-                    ]
+                const priceData = {
+                    bestAsk: parseFloat(ticker.ask1),
+                    bestBid: parseFloat(ticker.bid1),
                 };
-                
-                console.log(`[${this.identifier}] Inscrevendo-se em ${symbol}:`, subscriptionMessage);
-                this.ws.send(JSON.stringify(subscriptionMessage));
-            } catch (error) {
-                console.error(`[${this.identifier}] Erro ao se inscrever em ${symbol}:`, error);
+
+                if (!priceData.bestAsk || !priceData.bestBid) return;
+
+                // Chama o callback centralizado no servidor
+                this.priceUpdateCallback({
+                    identifier: this.marketIdentifier,
+                    symbol: pair,
+                    marketType: 'futures',
+                    bestAsk: priceData.bestAsk,
+                    bestBid: priceData.bestBid,
+                });
             }
+        } catch (error) {
+            console.error(`[${this.marketIdentifier}] Erro ao processar mensagem:`, error);
+        }
+    }
+
+    private onClose(): void {
+        console.warn(`[${this.marketIdentifier}] Conexão fechada. Reconectando...`);
+        this.isConnected = false;
+        this.stopPing();
+        setTimeout(() => this.connect(), 5000);
+    }
+
+    private onError(error: Error): void {
+        console.error(`[${this.marketIdentifier}] Erro no WebSocket:`, error.message);
+        this.ws?.close();
+    }
+
+    private startPing(): void {
+        this.stopPing();
+        this.pingInterval = setInterval(() => {
+            if (this.ws?.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify({ method: "ping" }));
+            }
+        }, 20000);
+    }
+
+    private stopPing(): void {
+        if (this.pingInterval) clearInterval(this.pingInterval);
+    }
+
+    public disconnect(): void {
+        console.log(`[${this.marketIdentifier}] Desconectando...`);
+        this.isConnected = false;
+        this.stopPing();
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
         }
     }
 

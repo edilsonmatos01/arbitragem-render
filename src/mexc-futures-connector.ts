@@ -20,7 +20,7 @@ export class MexcFuturesConnector {
     private reconnectAttempts: number = 0;
     private readonly maxReconnectAttempts: number = 10;
     private readonly reconnectDelay: number = 5000;
-    private readonly WS_URL = 'wss://contract.mexc.com/ws';
+    private readonly WS_URL = 'wss://contract.mexc.com/edge';
     private readonly REST_URL = 'https://contract.mexc.com/api/v1/contract/detail';
     private subscribedSymbols: Set<string> = new Set();
     private heartbeatInterval: NodeJS.Timeout | null = null;

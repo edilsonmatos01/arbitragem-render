@@ -1,20 +1,14 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.MexcFuturesConnector = void 0;
 const WebSocket = require('ws');
-const node_fetch_1 = __importDefault(require("node-fetch"));
-class MexcFuturesConnector {
+import fetch from 'node-fetch';
+export class GateIoConnector {
     constructor(identifier, onPriceUpdate, onConnect) {
         this.ws = null;
         this.isConnected = false;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 10;
         this.reconnectDelay = 5000;
-        this.WS_URL = 'wss://contract.mexc.com/edge';
-        this.REST_URL = 'https://contract.mexc.com/api/v1/contract/detail';
+        this.WS_URL = 'wss://api.gateio.ws/ws/v4/';
+        this.REST_URL = 'https://api.gateio.ws/api/v4/spot/currency_pairs';
         this.subscribedSymbols = new Set();
         this.heartbeatInterval = null;
         this.HEARTBEAT_INTERVAL = 20000;
@@ -31,7 +25,7 @@ class MexcFuturesConnector {
         this.heartbeatInterval = setInterval(() => {
             if (this.ws && this.isConnected) {
                 try {
-                    const pingMessage = { "op": "ping" };
+                    const pingMessage = { "time": Date.now(), "channel": "spot.ping" };
                     this.ws.send(JSON.stringify(pingMessage));
                     console.log(`[${this.identifier}] Ping enviado`);
                 }
@@ -109,19 +103,19 @@ class MexcFuturesConnector {
                 try {
                     const message = JSON.parse(data.toString());
                     console.log(`\n[${this.identifier}] Mensagem recebida:`, message);
-                    if (message.op === 'pong') {
+                    if (message.channel === 'spot.pong') {
                         console.log(`[${this.identifier}] Pong recebido`);
                         return;
                     }
-                    if (message.channel === 'push.ticker') {
-                        const { symbol, bestAsk, bestBid } = message.data;
-                        if (bestAsk && bestBid) {
+                    if (message.channel === 'spot.book_ticker' && message.event === 'update') {
+                        const { s: symbol, a: ask, b: bid } = message.result;
+                        if (ask && bid) {
                             this.onPriceUpdate({
                                 type: 'price-update',
                                 symbol: symbol.replace('_', '/'),
-                                marketType: 'futures',
-                                bestAsk: parseFloat(bestAsk),
-                                bestBid: parseFloat(bestBid),
+                                marketType: 'spot',
+                                bestAsk: parseFloat(ask),
+                                bestBid: parseFloat(bid),
                                 identifier: this.identifier
                             });
                         }
@@ -133,22 +127,22 @@ class MexcFuturesConnector {
             });
             this.ws.on('close', (code, reason) => {
                 console.log(`[${this.identifier}] WebSocket fechado. Código: ${code}, Razão: ${reason}`);
-                this.handleDisconnect();
+                this.handleDisconnect(`Fechado (${code}: ${reason})`);
             });
             this.ws.on('error', (error) => {
                 console.error(`[${this.identifier}] Erro na conexão WebSocket:`, error);
-                this.handleDisconnect();
+                this.handleDisconnect(`Erro: ${error.message}`);
             });
         }
         catch (error) {
             console.error(`[${this.identifier}] Erro ao conectar:`, error);
-            this.handleDisconnect();
+            this.handleDisconnect(`Erro de conexão: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
         }
     }
     async getTradablePairs() {
         try {
             console.log(`[${this.identifier}] Buscando pares negociáveis...`);
-            const response = await (0, node_fetch_1.default)(this.REST_URL);
+            const response = await fetch(this.REST_URL);
             const data = await response.json();
             console.log(`[${this.identifier}] Resposta da API:`, JSON.stringify(data).slice(0, 200) + '...');
             if (!Array.isArray(data)) {
@@ -156,13 +150,15 @@ class MexcFuturesConnector {
                 return [];
             }
             const pairs = data
-                .filter((contract) => {
-                return contract.state === 'ENABLED' &&
-                    contract.symbol.endsWith('_USDT') &&
-                    contract.symbol.includes('_') &&
-                    contract.symbol.split('_').length === 2;
+                .filter((pair) => {
+                // Filtra apenas pares ativos e que terminam em USDT
+                return pair.trade_status === 'tradable' &&
+                    pair.quote === 'USDT' &&
+                    // Adiciona validações extras para garantir que são pares válidos
+                    pair.id.includes('_') &&
+                    pair.id.split('_').length === 2;
             })
-                .map((contract) => contract.symbol.replace('_', '/'));
+                .map((pair) => pair.id.replace('_', '/'));
             console.log(`[${this.identifier}] ${pairs.length} pares encontrados`);
             if (pairs.length > 0) {
                 console.log('Primeiros 5 pares:', pairs.slice(0, 5));
@@ -179,12 +175,19 @@ class MexcFuturesConnector {
             console.error(`[${this.identifier}] WebSocket não está conectado`);
             return;
         }
+        if (!pairs || pairs.length === 0) {
+            console.error(`[${this.identifier}] Lista de pares vazia`);
+            return;
+        }
         try {
             console.log(`\n[${this.identifier}] Inscrevendo-se em ${pairs.length} pares`);
+            // Converte os pares para o formato do Gate.io (BTC/USDT -> BTC_USDT)
             const formattedPairs = pairs.map(pair => pair.replace('/', '_'));
             const subscribeMessage = {
-                "op": "sub.ticker",
-                "symbol": formattedPairs
+                "time": Date.now(),
+                "channel": "spot.book_ticker",
+                "event": "subscribe",
+                "payload": formattedPairs
             };
             this.ws.send(JSON.stringify(subscribeMessage));
             pairs.forEach(symbol => this.subscribedSymbols.add(symbol));
@@ -202,10 +205,9 @@ class MexcFuturesConnector {
             this.subscribe(symbols);
         }
     }
+    // Método público para desconectar
     disconnect() {
         console.log(`[${this.identifier}] Desconectando...`);
         this.cleanup();
     }
 }
-exports.MexcFuturesConnector = MexcFuturesConnector;
-//# sourceMappingURL=mexc-futures-connector.js.map

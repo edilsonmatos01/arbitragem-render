@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste WebSocket - Dados Reais</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #0a0a0a;
+            color: #ffffff;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .connected {
+            background: #22c55e;
+            color: white;
+        }
+        .disconnected {
+            background: #ef4444;
+            color: white;
+        }
+        .connecting {
+            background: #f59e0b;
+            color: white;
+        }
+        .logs {
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 5px;
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #333;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .opportunities {
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            border: 1px solid #333;
+        }
+        .opportunity {
+            background: #2a2a2a;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 3px;
+            border-left: 4px solid #22c55e;
+        }
+        .price-updates {
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            border: 1px solid #333;
+        }
+        .price-update {
+            background: #2a2a2a;
+            padding: 8px;
+            margin: 3px 0;
+            border-radius: 3px;
+            border-left: 4px solid #3b82f6;
+            font-size: 12px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #333;
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #22c55e;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        button:disabled {
+            background: #6b7280;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <h1>🚀 Teste WebSocket - Sistema de Arbitragem REAL</h1>
+    <p>Testando conexão com dados reais das exchanges Gate.io e MEXC</p>
+    
+    <div id="status" class="status disconnected">❌ Desconectado</div>
+    
+    <div class="stats">
+        <div class="stat-card">
+            <div class="stat-number" id="opportunitiesCount">0</div>
+            <div>Oportunidades Recebidas</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="priceUpdatesCount">0</div>
+            <div>Atualizações de Preço</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="messagesCount">0</div>
+            <div>Mensagens Totais</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="connectionTime">0s</div>
+            <div>Tempo Conectado</div>
+        </div>
+    </div>
+    
+    <div>
+        <button onclick="connect()" id="connectBtn">🔌 Conectar</button>
+        <button onclick="disconnect()" id="disconnectBtn" disabled>❌ Desconectar</button>
+        <button onclick="clearLogs()">🧹 Limpar Logs</button>
+        <button onclick="clearOpportunities()">🗑️ Limpar Oportunidades</button>
+    </div>
+    
+    <div class="opportunities">
+        <h3>📊 Oportunidades de Arbitragem (Dados REAIS)</h3>
+        <div id="opportunities"></div>
+    </div>
+    
+    <div class="price-updates">
+        <h3>💰 Atualizações de Preços (Últimas 10)</h3>
+        <div id="priceUpdates"></div>
+    </div>
+    
+    <div class="logs">
+        <h3>📝 Logs de Conexão</h3>
+        <div id="logs"></div>
+    </div>
+
+    <script>
+        let ws = null;
+        let opportunitiesCount = 0;
+        let priceUpdatesCount = 0;
+        let messagesCount = 0;
+        let connectionStartTime = null;
+        let connectionTimeInterval = null;
+
+        function log(message) {
+            const logs = document.getElementById('logs');
+            const timestamp = new Date().toLocaleTimeString();
+            logs.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        function updateStats() {
+            document.getElementById('opportunitiesCount').textContent = opportunitiesCount;
+            document.getElementById('priceUpdatesCount').textContent = priceUpdatesCount;
+            document.getElementById('messagesCount').textContent = messagesCount;
+        }
+
+        function updateConnectionTime() {
+            if (connectionStartTime) {
+                const elapsed = Math.floor((Date.now() - connectionStartTime) / 1000);
+                document.getElementById('connectionTime').textContent = `${elapsed}s`;
+            }
+        }
+
+        function connect() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                log('❌ Já conectado!');
+                return;
+            }
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.host;
+            const wsUrl = `${protocol}//${host}`;
+            
+            log(`🔗 Conectando ao WebSocket: ${wsUrl}`);
+            document.getElementById('status').className = 'status connecting';
+            document.getElementById('status').textContent = '🔄 Conectando...';
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = function() {
+                log('✅ Conectado com sucesso!');
+                document.getElementById('status').className = 'status connected';
+                document.getElementById('status').textContent = '✅ Conectado - Aguardando dados reais...';
+                document.getElementById('connectBtn').disabled = true;
+                document.getElementById('disconnectBtn').disabled = false;
+                
+                connectionStartTime = Date.now();
+                connectionTimeInterval = setInterval(updateConnectionTime, 1000);
+            };
+            
+            ws.onmessage = function(event) {
+                messagesCount++;
+                updateStats();
+                
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.type === 'connection') {
+                        log(`🤝 ${data.message}`);
+                        return;
+                    }
+                    
+                    if (data.type === 'arbitrage') {
+                        opportunitiesCount++;
+                        updateStats();
+                        
+                        log(`📊 OPORTUNIDADE REAL: ${data.baseSymbol} - ${data.profitPercentage}% (${data.buyAt.exchange} → ${data.sellAt.exchange})`);
+                        
+                        const opportunities = document.getElementById('opportunities');
+                        const oppDiv = document.createElement('div');
+                        oppDiv.className = 'opportunity';
+                        oppDiv.innerHTML = `
+                            <strong>${data.baseSymbol}</strong> - 
+                            <span style="color: #22c55e;">${data.profitPercentage}%</span><br>
+                            Comprar: ${data.buyAt.exchange} (${data.buyAt.marketType}) - $${data.buyAt.price}<br>
+                            Vender: ${data.sellAt.exchange} (${data.sellAt.marketType}) - $${data.sellAt.price}<br>
+                            <small>Tipo: ${data.arbitrageType} | ${new Date(data.timestamp).toLocaleTimeString()}</small>
+                        `;
+                        opportunities.insertBefore(oppDiv, opportunities.firstChild);
+                        
+                        // Manter apenas 20 oportunidades
+                        while (opportunities.children.length > 20) {
+                            opportunities.removeChild(opportunities.lastChild);
+                        }
+                    }
+                    
+                    if (data.type === 'price-update') {
+                        priceUpdatesCount++;
+                        updateStats();
+                        
+                        log(`💰 PREÇO: ${data.symbol} ${data.marketType} - Ask: $${data.bestAsk}, Bid: $${data.bestBid}`);
+                        
+                        const priceUpdates = document.getElementById('priceUpdates');
+                        const updateDiv = document.createElement('div');
+                        updateDiv.className = 'price-update';
+                        updateDiv.innerHTML = `
+                            <strong>${data.symbol}</strong> (${data.marketType}) - 
+                            Ask: $${data.bestAsk} | Bid: $${data.bestBid} | 
+                            <small>${new Date(data.timestamp).toLocaleTimeString()}</small>
+                        `;
+                        priceUpdates.insertBefore(updateDiv, priceUpdates.firstChild);
+                        
+                        // Manter apenas 10 atualizações
+                        while (priceUpdates.children.length > 10) {
+                            priceUpdates.removeChild(priceUpdates.lastChild);
+                        }
+                    }
+                    
+                } catch (error) {
+                    log(`❌ Erro ao processar mensagem: ${error.message}`);
+                }
+            };
+            
+            ws.onclose = function(event) {
+                log(`🔌 Conexão fechada - Código: ${event.code}`);
+                document.getElementById('status').className = 'status disconnected';
+                document.getElementById('status').textContent = '❌ Desconectado';
+                document.getElementById('connectBtn').disabled = false;
+                document.getElementById('disconnectBtn').disabled = true;
+                
+                if (connectionTimeInterval) {
+                    clearInterval(connectionTimeInterval);
+                    connectionTimeInterval = null;
+                }
+            };
+            
+            ws.onerror = function(error) {
+                log(`❌ Erro na conexão: ${error}`);
+                document.getElementById('status').className = 'status disconnected';
+                document.getElementById('status').textContent = '❌ Erro de conexão';
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+                log('🔌 Desconectado manualmente');
+            }
+        }
+
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+            log('🧹 Logs limpos');
+        }
+
+        function clearOpportunities() {
+            document.getElementById('opportunities').innerHTML = '';
+            opportunitiesCount = 0;
+            updateStats();
+            log('🗑️ Oportunidades limpas');
+        }
+
+        // Auto-conectar ao carregar a página
+        window.onload = function() {
+            log('🚀 Página carregada - Sistema de teste WebSocket iniciado');
+            log('📡 Aguardando conexão manual ou automática...');
+            
+            // Auto-conectar após 2 segundos
+            setTimeout(() => {
+                log('🔄 Conectando automaticamente...');
+                connect();
+            }, 2000);
+        };
+    </script>
+</body>
+</html> 

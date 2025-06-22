@@ -4,7 +4,8 @@
   "private": true,
   "main": "server.js",
   "scripts": {
-    "dev": "next dev",
+    "dev": "node dev-server.js",
+    "dev:next": "next dev",
     "build": "next build && npm run build:ws",
     "build:tracker": "tsc --project scripts/tsconfig.json && mkdir -p scripts/dist && cp scripts/spread-monitor.js scripts/dist/",
     "start": "next start",
