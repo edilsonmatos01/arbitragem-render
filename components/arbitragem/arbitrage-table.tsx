@@ -221,7 +221,7 @@ export default function ArbitrageTable() {
           vendaPreco: opp.sellAt.price,
           spread: spread,
           tipo: opp.arbitrageType.includes('inter') ? 'inter' : 'intra',
-          directionApi: opp.arbitrageType.includes('spot_futures') ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT',
+          directionApi: opp.arbitrageType.includes('spot_to_futures') ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT',
           maxSpread24h: null
         };
 
@@ -267,12 +267,10 @@ export default function ArbitrageTable() {
           const passesTypeFilter = o.tipo === arbitrageType;
           let passesExchangeFilter = true;
 
-          if (arbitrageType === 'inter') {
-            const exchangesInvolved = [o.compraExchange.toLowerCase(), o.vendaExchange.toLowerCase()];
-            const hasSpotEx = exchangesInvolved.some(ex => ex.includes(spotExchange));
-            const hasFuturesEx = exchangesInvolved.some(ex => ex.includes(futuresExchange));
-            passesExchangeFilter = hasSpotEx && hasFuturesEx;
-          }
+          // Verifica se a oportunidade envolve Gate.io spot e MEXC futures
+          const isGateioSpot = o.compraExchange.toLowerCase().includes('gateio') && o.compraExchange.toLowerCase().includes('spot');
+          const isMexcFutures = o.vendaExchange.toLowerCase().includes('mexc') && o.vendaExchange.toLowerCase().includes('futures');
+          passesExchangeFilter = isGateioSpot && isMexcFutures;
 
           const passes = passesSpreadFilter && passesDirectionFilter && passesTypeFilter && passesExchangeFilter;
           
@@ -281,7 +279,9 @@ export default function ArbitrageTable() {
               spread: passesSpreadFilter,
               direction: passesDirectionFilter,
               type: passesTypeFilter,
-              exchange: passesExchangeFilter
+              exchange: passesExchangeFilter,
+              isGateioSpot,
+              isMexcFutures
             });
           }
 

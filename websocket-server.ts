@@ -270,8 +270,18 @@ async function findAndBroadcastArbitrage() {
                         type: 'arbitrage',
                         baseSymbol: spotData.baseSymbol,
                         profitPercentage: profitSpotToFutures,
-                        buyAt: { exchange: spotId, price: spotPrices[spotSymbol].bestAsk, marketType: 'spot', originalSymbol: spotSymbol },
-                        sellAt: { exchange: futuresId, price: futuresPrices[futuresSymbol].bestBid, marketType: 'futures', originalSymbol: futuresSymbol },
+                        buyAt: { 
+                            exchange: 'GATEIO_SPOT', 
+                            price: spotPrices[spotSymbol].bestAsk, 
+                            marketType: 'spot', 
+                            originalSymbol: spotSymbol 
+                        },
+                        sellAt: { 
+                            exchange: 'MEXC_FUTURES', 
+                            price: futuresPrices[futuresSymbol].bestBid, 
+                            marketType: 'futures', 
+                            originalSymbol: futuresSymbol 
+                        },
                         arbitrageType: 'spot_to_futures_inter',
                         timestamp: Date.now()
                     };
@@ -286,8 +296,18 @@ async function findAndBroadcastArbitrage() {
                         type: 'arbitrage',
                         baseSymbol: spotData.baseSymbol,
                         profitPercentage: profitFuturesToSpot,
-                        buyAt: { exchange: futuresId, price: futuresPrices[futuresSymbol].bestAsk, marketType: 'futures', originalSymbol: futuresSymbol },
-                        sellAt: { exchange: spotId, price: spotPrices[spotSymbol].bestBid, marketType: 'spot', originalSymbol: spotSymbol },
+                        buyAt: { 
+                            exchange: 'MEXC_FUTURES', 
+                            price: futuresPrices[futuresSymbol].bestAsk, 
+                            marketType: 'futures', 
+                            originalSymbol: futuresSymbol 
+                        },
+                        sellAt: { 
+                            exchange: 'GATEIO_SPOT', 
+                            price: spotPrices[spotSymbol].bestBid, 
+                            marketType: 'spot', 
+                            originalSymbol: spotSymbol 
+                        },
                         arbitrageType: 'futures_to_spot_inter',
                         timestamp: Date.now()
                     };
