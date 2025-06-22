@@ -1,57 +1,61 @@
-import { PrismaClient } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
 
-const prisma = new PrismaClient();
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+function adjustToUTC(date: Date): Date {
+  return new Date(date.getTime() + date.getTimezoneOffset() * 60000);
+}
+
+function formatDateTime(date: Date): string {
+  // Primeiro converte para UTC
+  const utcDate = new Date(date.getTime() + date.getTimezoneOffset() * 60000);
+  
+  // Depois converte para America/Sao_Paulo
+  return utcDate.toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).replace(', ', ' - ');
+}
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const symbol = searchParams.get('symbol');
-
-  if (!symbol) {
-    return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
-  }
-
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  console.log(`[DEBUG] Buscando histórico de spreads para ${symbol} desde ${twentyFourHoursAgo}`);
-
   try {
+    const { searchParams } = new URL(req.url);
+    const symbol = searchParams.get('symbol');
+
+    if (!symbol) {
+      return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
+    }
+
+    const thirtyMinutesInMs = 30 * 60 * 1000;
+    const now = new Date();
+    const utcNow = adjustToUTC(now);
+    const utcStart = new Date(utcNow.getTime() - 24 * 60 * 60 * 1000);
+
     const rawHistory = await prisma.spreadHistory.findMany({
       where: {
         symbol: symbol,
         timestamp: {
-          gte: twentyFourHoursAgo,
-        },
+          gte: utcStart,
+          lte: utcNow
+        }
       },
       orderBy: {
-        timestamp: 'asc',
-      },
-      select: {
-        timestamp: true,
-        spread: true,
-        exchangeBuy: true,
-        exchangeSell: true,
-        direction: true,
-      },
+        timestamp: 'asc'
+      }
     });
 
-    console.log(`[DEBUG] Encontrados ${rawHistory.length} registros para ${symbol}:`, 
-      rawHistory.length > 0 ? rawHistory[0] : 'Nenhum registro');
-
-    if (rawHistory.length === 0) {
-      console.log(`[DEBUG] Nenhum registro encontrado para ${symbol}`);
-      return NextResponse.json([]);
-    }
-
-    // Lógica de agregação para intervalos de 30 minutos
-    const thirtyMinutesInMs = 30 * 60 * 1000;
-    // A estrutura agora armazena o spread máximo para cada balde de tempo.
-    const aggregatedData: { [key: number]: { maxSpread: number; date: Date } } = {};
+    const aggregatedData: Record<number, { maxSpread: number; date: Date }> = {};
 
     for (const record of rawHistory) {
-      const bucketTimestamp = Math.floor(record.timestamp.getTime() / thirtyMinutesInMs) * thirtyMinutesInMs;
+      const localTime = new Date(record.timestamp);
+      const bucketTimestamp = Math.floor(localTime.getTime() / thirtyMinutesInMs) * thirtyMinutesInMs;
       
-      // Se o balde não existir, ou se o spread do registro atual for maior
-      // que o máximo já armazenado para esse balde, atualize-o.
       if (!aggregatedData[bucketTimestamp] || record.spread > aggregatedData[bucketTimestamp].maxSpread) {
         aggregatedData[bucketTimestamp] = {
           maxSpread: record.spread,
@@ -62,21 +66,10 @@ export async function GET(req: NextRequest) {
 
     const formattedHistory = Object.entries(aggregatedData)
       .sort(([a], [b]) => parseInt(a) - parseInt(b))
-      .map(([timestamp, data]) => {
-        // Formato brasileiro: DD/MM HH:mm
-        const timeLabel = data.date.toLocaleDateString('pt-BR', { 
-          day: '2-digit', 
-          month: '2-digit' 
-        }) + ' ' + data.date.toLocaleTimeString('pt-BR', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        });
-
-        return {
-          timestamp: timeLabel,
-          spread: data.maxSpread,
-        };
-      });
+      .map(([_, data]) => ({
+        timestamp: formatDateTime(data.date),
+        spread: data.maxSpread,
+      }));
 
     return NextResponse.json(formattedHistory);
   } catch (error) {

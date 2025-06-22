@@ -96,21 +96,27 @@ export default function SpreadHistoryChart({ symbol }: SpreadHistoryChartProps) 
             dataKey="timestamp"
             stroke="#9CA3AF"
             tick={{ fill: '#9CA3AF' }}
-            tickFormatter={(value) => value}
+            tickFormatter={(value) => value.split(' - ')[1]}
+            interval="preserveStartEnd"
+            angle={-45}
+            textAnchor="end"
+            height={60}
           />
           <YAxis
             stroke="#9CA3AF"
             tick={{ fill: '#9CA3AF' }}
-            tickFormatter={(value) => `${value}%`}
+            tickFormatter={(value) => `${value.toFixed(2)}%`}
+            domain={['dataMin', 'dataMax']}
           />
           <Tooltip content={<CustomTooltip />} />
           <Line
-            type="monotone"
+            type="linear"
             dataKey="spread"
             stroke="#10B981"
             strokeWidth={2}
-            dot={false}
-            activeDot={{ r: 8 }}
+            dot={{ r: 3, fill: '#10B981' }}
+            activeDot={{ r: 6 }}
+            connectNulls={false}
           />
         </LineChart>
       </ResponsiveContainer>

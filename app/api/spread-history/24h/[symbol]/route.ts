@@ -12,8 +12,16 @@ try {
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+function adjustToUTC(date: Date): Date {
+  return new Date(date.getTime() + date.getTimezoneOffset() * 60000);
+}
+
 function formatDateTime(date: Date): string {
-  return date.toLocaleString('pt-BR', {
+  // Primeiro converte para UTC
+  const utcDate = new Date(date.getTime() + date.getTimezoneOffset() * 60000);
+  
+  // Depois converte para America/Sao_Paulo
+  return utcDate.toLocaleString('pt-BR', {
     timeZone: 'America/Sao_Paulo',
     day: '2-digit',
     month: '2-digit',
@@ -21,11 +29,6 @@ function formatDateTime(date: Date): string {
     minute: '2-digit',
     hour12: false
   }).replace(', ', ' - ');
-}
-
-function adjustToUTC(date: Date): Date {
-  // Ajusta o horário para UTC considerando o offset de Brasília (-3)
-  return new Date(date.getTime() + (3 * 60 * 60 * 1000));
 }
 
 function roundToNearestInterval(date: Date, intervalMinutes: number): Date {

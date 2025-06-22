@@ -139,7 +139,8 @@ export default function SpreadHistoryLineChart({ symbol, isOpen, onClose }: Spre
                   dataKey="timestamp"
                   stroke="#9CA3AF"
                   tick={{ fill: '#9CA3AF', fontSize: 12 }}
-                  interval={2}  // Mostra 1 a cada 3 labels
+                  interval="preserveStartEnd"
+                  tickFormatter={(value) => value.split(' - ')[1]}
                   angle={-45}
                   textAnchor="end"
                   height={60}
@@ -147,16 +148,21 @@ export default function SpreadHistoryLineChart({ symbol, isOpen, onClose }: Spre
                 <YAxis
                   stroke="#9CA3AF"
                   tick={{ fill: '#9CA3AF', fontSize: 12 }}
-                  tickFormatter={(value) => `${value}%`}
+                  tickFormatter={(value) => `${value.toFixed(2)}%`}
+                  domain={['dataMin', 'dataMax']}
                 />
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip
+                  content={<CustomTooltip />}
+                  labelFormatter={(label) => label}
+                />
                 <Line
-                  type="monotone"
+                  type="linear"
                   dataKey="spread_percentage"
                   stroke="#A855F7"
                   strokeWidth={2}
-                  dot={{ r: 4, fill: '#A855F7' }}
+                  dot={{ r: 3, fill: '#A855F7' }}
                   activeDot={{ r: 6 }}
+                  connectNulls={false}
                 />
               </LineChart>
             </ResponsiveContainer>
