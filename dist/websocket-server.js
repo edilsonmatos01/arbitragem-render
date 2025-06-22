@@ -7,8 +7,8 @@ exports.startWebSocketServer = startWebSocketServer;
 require('dotenv').config();
 const ws_1 = __importDefault(require("ws"));
 const http_1 = require("http");
-const gateio_connector_1 = require("./gateio-connector");
-const mexc_connector_1 = require("./mexc-connector");
+const gateio_connector_1 = require("./src/gateio-connector");
+const mexc_connector_1 = require("./src/mexc-connector");
 const client_1 = require("@prisma/client");
 const prisma = new client_1.PrismaClient();
 const PORT = process.env.PORT || 10000;
@@ -193,8 +193,8 @@ async function findAndBroadcastArbitrage() {
                         type: 'arbitrage',
                         baseSymbol: spotData.baseSymbol,
                         profitPercentage: profitSpotToFutures,
-                        buyAt: { exchange: spotId, price: spotPrices[spotSymbol].bestAsk, marketType: 'spot' },
-                        sellAt: { exchange: futuresId, price: futuresPrices[futuresSymbol].bestBid, marketType: 'futures' },
+                        buyAt: { exchange: spotId, price: spotPrices[spotSymbol].bestAsk, marketType: 'spot', originalSymbol: spotSymbol },
+                        sellAt: { exchange: futuresId, price: futuresPrices[futuresSymbol].bestBid, marketType: 'futures', originalSymbol: futuresSymbol },
                         arbitrageType: 'spot_to_futures_inter',
                         timestamp: Date.now()
                     };
@@ -207,8 +207,8 @@ async function findAndBroadcastArbitrage() {
                         type: 'arbitrage',
                         baseSymbol: spotData.baseSymbol,
                         profitPercentage: profitFuturesToSpot,
-                        buyAt: { exchange: futuresId, price: futuresPrices[futuresSymbol].bestAsk, marketType: 'futures' },
-                        sellAt: { exchange: spotId, price: spotPrices[spotSymbol].bestBid, marketType: 'spot' },
+                        buyAt: { exchange: futuresId, price: futuresPrices[futuresSymbol].bestAsk, marketType: 'futures', originalSymbol: futuresSymbol },
+                        sellAt: { exchange: spotId, price: spotPrices[spotSymbol].bestBid, marketType: 'spot', originalSymbol: spotSymbol },
                         arbitrageType: 'futures_to_spot_inter',
                         timestamp: Date.now()
                     };
@@ -220,65 +220,26 @@ async function findAndBroadcastArbitrage() {
     }
 }
 async function startFeeds() {
-    console.log("🚀 Iniciando feeds de dados com BUSCA DINÂMICA...");
+    console.log("Iniciando feeds de dados...");
     const gateIoSpotConnector = new gateio_connector_1.GateIoConnector('GATEIO_SPOT', handlePriceUpdate);
     const gateIoFuturesConnector = new gateio_connector_1.GateIoConnector('GATEIO_FUTURES', handlePriceUpdate);
-    let mexcConnector;
-    let dynamicPairs = [];
+    const mexcConnector = new mexc_connector_1.MexcConnector('MEXC_FUTURES', handlePriceUpdate, () => {
+        const mexcPairs = targetPairs.map(p => p.replace('/', '_'));
+        mexcConnector.subscribe(mexcPairs);
+    });
     try {
-        console.log("📡 Buscando pares negociáveis das exchanges...");
-        const [spotPairs, futuresPairs] = await Promise.all([
-            gateIoSpotConnector.getTradablePairs(),
-            gateIoFuturesConnector.getTradablePairs()
-        ]);
-        console.log(`✅ Gate.io Spot: ${spotPairs.length} pares encontrados`);
-        console.log(`✅ Gate.io Futures: ${futuresPairs.length} pares encontrados`);
-        dynamicPairs = spotPairs.filter((pair) => futuresPairs.includes(pair));
-        console.log(`🎯 PARES EM COMUM: ${dynamicPairs.length} pares para arbitragem`);
-        console.log(`📋 Primeiros 10 pares: ${dynamicPairs.slice(0, 10).join(', ')}`);
-        mexcConnector = new mexc_connector_1.MexcConnector('MEXC_FUTURES', handlePriceUpdate, () => {
-            console.log('✅ MEXC conectado! Inscrevendo em pares dinâmicos...');
-            mexcConnector.subscribe(dynamicPairs);
-        });
-        console.log(`🔄 Conectando exchanges com ${dynamicPairs.length} pares dinâmicos...`);
-        gateIoSpotConnector.connect(dynamicPairs);
-        gateIoFuturesConnector.connect(dynamicPairs);
+        const spotPairs = await gateIoSpotConnector.getTradablePairs();
+        const futuresPairs = await gateIoFuturesConnector.getTradablePairs();
+        targetPairs = spotPairs.filter(p => futuresPairs.includes(p));
+        console.log(`Encontrados ${targetPairs.length} pares em comum.`);
+        gateIoSpotConnector.connect(targetPairs);
+        gateIoFuturesConnector.connect(targetPairs);
         mexcConnector.connect();
-        console.log(`💰 Monitorando ${dynamicPairs.length} pares para arbitragem!`);
+        console.log(`Monitorando ${targetPairs.length} pares.`);
         setInterval(findAndBroadcastArbitrage, 5000);
-        setInterval(async () => {
-            console.log("🔄 Atualizando lista de pares dinâmicos...");
-            try {
-                const [newSpotPairs, newFuturesPairs] = await Promise.all([
-                    gateIoSpotConnector.getTradablePairs(),
-                    gateIoFuturesConnector.getTradablePairs()
-                ]);
-                const newDynamicPairs = newSpotPairs.filter((pair) => newFuturesPairs.includes(pair));
-                if (newDynamicPairs.length !== dynamicPairs.length) {
-                    console.log(`📈 Pares atualizados: ${dynamicPairs.length} → ${newDynamicPairs.length}`);
-                    dynamicPairs = newDynamicPairs;
-                    mexcConnector.subscribe(dynamicPairs);
-                }
-                else {
-                    console.log("✅ Lista de pares permanece igual");
-                }
-            }
-            catch (error) {
-                console.error("❌ Erro ao atualizar pares:", error);
-            }
-        }, 3600000);
     }
     catch (error) {
-        console.error("❌ Erro fatal ao iniciar os feeds:", error);
-        console.log("🔄 Usando pares prioritários como fallback...");
-        const fallbackPairs = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT'];
-        mexcConnector = new mexc_connector_1.MexcConnector('MEXC_FUTURES', handlePriceUpdate, () => {
-            mexcConnector.subscribe(fallbackPairs);
-        });
-        gateIoSpotConnector.connect(fallbackPairs);
-        gateIoFuturesConnector.connect(fallbackPairs);
-        mexcConnector.connect();
-        setInterval(findAndBroadcastArbitrage, 5000);
+        console.error("Erro fatal ao iniciar os feeds:", error);
     }
 }
 //# sourceMappingURL=websocket-server.js.map

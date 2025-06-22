@@ -44,9 +44,9 @@ var gateio_connector_1 = require("./src/gateio-connector");
 var mexc_futures_connector_1 = require("./src/mexc-futures-connector");
 var prisma = new client_1.PrismaClient();
 var PORT = process.env.PORT || 10000;
-var MIN_PROFIT_PERCENTAGE = 0.5; // 0.5%
+var MIN_PROFIT_PERCENTAGE = 0.1; // 0.1%
 var marketPrices = {};
-var clients = new Set();
+var clients = [];
 // Criar servidor HTTP
 var server = http.createServer(function (req, res) {
     if (req.url === '/health') {
@@ -69,8 +69,8 @@ wss.on('connection', function (ws, req) {
     customWs.isAlive = true;
     customWs.lastPing = Date.now();
     ws.on('pong', heartbeat.bind(customWs));
-    clients.add(ws);
-    console.log("[WebSocket] Nova conexão estabelecida. Total de clientes: ".concat(clients.size));
+    clients.push(ws);
+    console.log("[WebSocket] Nova conexão estabelecida. Total de clientes: ".concat(clients.length));
     ws.on('message', function (message) {
         try {
             var data = JSON.parse(message.toString());
@@ -85,13 +85,16 @@ wss.on('connection', function (ws, req) {
         }
     });
     ws.on('close', function () {
-        clients.delete(ws);
-        console.log("[WebSocket] Cliente desconectado. Total de clientes: ".concat(clients.size));
+        clients = clients.filter(function (c) { return c !== ws; });
+        console.log("[WebSocket] Cliente desconectado. Total de clientes: ".concat(clients.length));
     });
     ws.on('error', function (error) {
         console.error('[WebSocket] Erro na conexão:', error);
-        clients.delete(ws);
+        clients = clients.filter(function (c) { return c !== ws; });
     });
+    if (Object.keys(marketPrices).length > 0) {
+        ws.send(JSON.stringify({ type: 'full_book', data: marketPrices }));
+    }
 });
 // Verificar conexões inativas
 var interval = setInterval(function () {
@@ -99,7 +102,7 @@ var interval = setInterval(function () {
         var customWs = ws;
         if (customWs.isAlive === false) {
             console.log('[WebSocket] Cliente inativo removido');
-            clients.delete(ws);
+            clients = clients.filter(function (c) { return c !== ws; });
             return ws.terminate();
         }
         customWs.isAlive = false;
@@ -125,7 +128,13 @@ function broadcast(data) {
 }
 // Função para broadcast de oportunidades
 function broadcastOpportunity(opportunity) {
-    broadcast(opportunity);
+    console.log('[DEBUG] Verificando '.concat(opportunity.baseSymbol, ' | Spread: ').concat(opportunity.profitPercentage.toFixed(2), '%'));
+    if (!isFinite(opportunity.profitPercentage) || opportunity.profitPercentage > 100) {
+        console.warn('[FILTRO] Spread >100% IGNORADO para '.concat(opportunity.baseSymbol, ': ').concat(opportunity.profitPercentage.toFixed(2), '%'));
+        return;
+    }
+    broadcast({ ...opportunity, type: 'arbitrage' });
+    console.log('[Broadcast] Oportunidade VÁLIDA enviada: '.concat(opportunity.baseSymbol, ' ').concat(opportunity.profitPercentage.toFixed(2), '%'));
 }
 // Iniciar servidor na porta configurada
 server.listen(PORT, function () {

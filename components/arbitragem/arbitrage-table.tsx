@@ -2,7 +2,7 @@
 import { useCallback, useState, useEffect, useRef, useMemo } from "react";
 import { Play, RefreshCw, AlertTriangle, CheckCircle2, Clock } from 'lucide-react'; // Ícones
 import { useArbitrageWebSocket } from './useArbitrageWebSocket';
-import { MaxSpreadCell } from './MaxSpreadCell'; // Importar o novo componente
+import MaxSpreadCell from './MaxSpreadCell'; // Importar o novo componente
 import React from 'react';
 
 const EXCHANGES = [
@@ -122,7 +122,7 @@ const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSp
               {opportunity.spread.toFixed(2)}%
             </td>
             <td className="py-4 px-6 whitespace-nowrap text-sm">
-              <MaxSpreadCell maxSpread={opportunity.maxSpread24h || 0} />
+              <MaxSpreadCell symbol={opportunity.symbol} />
             </td>
             <td className="py-4 px-6 whitespace-nowrap text-sm">{calcularLucro(opportunity.spread)}</td>
             <td className="py-4 px-6 whitespace-nowrap text-center text-sm">
@@ -211,11 +211,12 @@ export default function ArbitrageTable() {
         const newOpp: Opportunity = {
           symbol: opp.baseSymbol,
           compraExchange: opp.buyAt.exchange,
-          compraPrice: opp.buyAt.price,
+          compraPreco: opp.buyAt.price,
           vendaExchange: opp.sellAt.exchange,
-          vendaPrice: opp.sellAt.price,
+          vendaPreco: opp.sellAt.price,
           spread: spread,
-          timestamp: opp.timestamp,
+          tipo: 'inter',
+          maxSpread24h: null
         };
 
         return newOpp;
