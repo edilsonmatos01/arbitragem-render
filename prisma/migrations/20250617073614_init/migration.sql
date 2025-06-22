@@ -1,17 +1,42 @@
 -- CreateTable
-CREATE TABLE "spread_history" (
+CREATE TABLE "PriceHistory" (
     "id" TEXT NOT NULL,
     "symbol" TEXT NOT NULL,
-    "exchangeBuy" TEXT NOT NULL,
-    "exchangeSell" TEXT NOT NULL,
-    "direction" TEXT NOT NULL,
-    "spread" DOUBLE PRECISION NOT NULL,
     "timestamp" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "spotPrice" DOUBLE PRECISION,
-    "futuresPrice" DOUBLE PRECISION,
+    "gateioSpotAsk" DOUBLE PRECISION NOT NULL,
+    "gateioSpotBid" DOUBLE PRECISION NOT NULL,
+    "mexcSpotAsk" DOUBLE PRECISION NOT NULL,
+    "mexcSpotBid" DOUBLE PRECISION NOT NULL,
+    "gateioFuturesAsk" DOUBLE PRECISION NOT NULL,
+    "gateioFuturesBid" DOUBLE PRECISION NOT NULL,
+    "mexcFuturesAsk" DOUBLE PRECISION NOT NULL,
+    "mexcFuturesBid" DOUBLE PRECISION NOT NULL,
+    "gateioSpotToMexcFuturesSpread" DOUBLE PRECISION NOT NULL,
+    "mexcSpotToGateioFuturesSpread" DOUBLE PRECISION NOT NULL,
 
-    CONSTRAINT "spread_history_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "PriceHistory_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "TradableSymbol" (
+    "id" TEXT NOT NULL,
+    "baseSymbol" TEXT NOT NULL,
+    "gateioSymbol" TEXT NOT NULL,
+    "mexcSymbol" TEXT NOT NULL,
+    "gateioFuturesSymbol" TEXT NOT NULL,
+    "mexcFuturesSymbol" TEXT NOT NULL,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "TradableSymbol_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
-CREATE INDEX "spread_history_symbol_timestamp_idx" ON "spread_history"("symbol", "timestamp");
+CREATE INDEX "PriceHistory_symbol_timestamp_idx" ON "PriceHistory"("symbol", "timestamp");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "TradableSymbol_baseSymbol_key" ON "TradableSymbol"("baseSymbol");
+
+-- CreateIndex
+CREATE INDEX "TradableSymbol_baseSymbol_idx" ON "TradableSymbol"("baseSymbol");

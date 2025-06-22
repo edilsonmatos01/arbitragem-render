@@ -22,3 +22,35 @@ model SpreadHistory {
 
   @@index([symbol, exchangeBuy, exchangeSell, direction])
 }
+
+model PriceHistory {
+  id                            String   @id @default(cuid())
+  symbol                        String
+  timestamp                     DateTime @default(now())
+  gateioSpotAsk                Float
+  gateioSpotBid                Float
+  mexcSpotAsk                  Float
+  mexcSpotBid                  Float
+  gateioFuturesAsk             Float
+  gateioFuturesBid             Float
+  mexcFuturesAsk               Float
+  mexcFuturesBid               Float
+  gateioSpotToMexcFuturesSpread Float
+  mexcSpotToGateioFuturesSpread Float
+
+  @@index([symbol, timestamp])
+}
+
+model TradableSymbol {
+  id                 String   @id @default(cuid())
+  baseSymbol         String   @unique
+  gateioSymbol       String
+  mexcSymbol         String
+  gateioFuturesSymbol String
+  mexcFuturesSymbol   String
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([baseSymbol])
+}

@@ -107,8 +107,8 @@ async function monitorAndStore() {
   }
 }
 
-// Inicia o agendador para executar a cada 5 minutos
-cron.schedule('*/5 * * * *', monitorAndStore);
+// Inicia o agendador para executar a cada 30 minutos
+cron.schedule('*/30 * * * *', monitorAndStore);
 
 // Executa imediatamente na primeira vez
 monitorAndStore();

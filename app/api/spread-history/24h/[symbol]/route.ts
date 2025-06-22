@@ -56,7 +56,7 @@ export async function GET(
     const utcStart = new Date(utcNow.getTime() - 24 * 60 * 60 * 1000);
 
     // Busca os dados do banco usando UTC
-    const spreadHistory = await prisma.spreadHistory.findMany({
+    const priceHistory = await prisma.priceHistory.findMany({
       where: {
         symbol: symbol,
         timestamp: {
@@ -66,7 +66,8 @@ export async function GET(
       },
       select: {
         timestamp: true,
-        spread: true
+        gateioSpotToMexcFuturesSpread: true,
+        mexcSpotToGateioFuturesSpread: true
       },
       orderBy: {
         timestamp: 'asc'
@@ -89,12 +90,18 @@ export async function GET(
     }
 
     // Preenche com os dados reais
-    for (const record of spreadHistory) {
-      // Converte o timestamp UTC do banco para o horário local
+    for (const record of priceHistory) {
       const localTime = new Date(record.timestamp);
       const timeKey = formatDateTime(roundToNearestInterval(localTime, 30));
+      
+      // Pega o maior spread entre as duas direções
+      const maxSpread = Math.max(
+        record.gateioSpotToMexcFuturesSpread,
+        record.mexcSpotToGateioFuturesSpread
+      );
+      
       const currentMax = groupedData.get(timeKey) || 0;
-      groupedData.set(timeKey, Math.max(currentMax, record.spread));
+      groupedData.set(timeKey, Math.max(currentMax, maxSpread));
     }
 
     // Converte para o formato esperado pelo gráfico e ordena
