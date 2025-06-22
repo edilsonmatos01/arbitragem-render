@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
   "compilerOptions": {
     "target": "es2017",
     "module": "commonjs",
@@ -31,4 +32,19 @@
     "node_modules",
     "**/*.test.ts"
   ]
+=======
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "dist",
+    "noEmit": false,
+    "isolatedModules": false,
+    "target": "es2020",
+    "lib": ["es2020"],
+    "jsx": "preserve"
+  },
+  "include": ["websocket-server.ts", "src/**/*.ts"],
+  "exclude": ["node_modules", "src/app", "app"]
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 } 

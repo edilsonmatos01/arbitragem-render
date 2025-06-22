@@ -5,16 +5,23 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MexcConnector = void 0;
 const ws_1 = __importDefault(require("ws"));
+<<<<<<< HEAD
 const node_fetch_1 = __importDefault(require("node-fetch"));
 const events_1 = require("events");
 const MEXC_FUTURES_WS_URL = 'wss://contract.mexc.com/edge';
 class MexcConnector extends events_1.EventEmitter {
     constructor(identifier, priceUpdateCallback, onConnected) {
         super();
+=======
+const MEXC_FUTURES_WS_URL = 'wss://contract.mexc.com/edge';
+class MexcConnector {
+    constructor(identifier, priceUpdateCallback, onConnected) {
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
         this.ws = null;
         this.subscriptions = new Set();
         this.pingInterval = null;
         this.isConnected = false;
+<<<<<<< HEAD
         this.isConnecting = false;
         this.reconnectAttempts = 0;
         this.baseReconnectDelay = 5000;
@@ -39,6 +46,11 @@ class MexcConnector extends events_1.EventEmitter {
         this.identifier = identifier;
         this.onPriceUpdate = priceUpdateCallback;
         this.onConnect = onConnected;
+=======
+        this.marketIdentifier = identifier;
+        this.priceUpdateCallback = priceUpdateCallback;
+        this.onConnectedCallback = onConnected;
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
         console.log(`[${this.marketIdentifier}] Conector instanciado.`);
     }
     connect() {
@@ -91,6 +103,10 @@ class MexcConnector extends events_1.EventEmitter {
                 };
                 if (!priceData.bestAsk || !priceData.bestBid)
                     return;
+<<<<<<< HEAD
+=======
+                // Chama o callback centralizado no servidor
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
                 this.priceUpdateCallback({
                     identifier: this.marketIdentifier,
                     symbol: pair,
@@ -111,15 +127,24 @@ class MexcConnector extends events_1.EventEmitter {
         setTimeout(() => this.connect(), 5000);
     }
     onError(error) {
+<<<<<<< HEAD
         var _a;
         console.error(`[${this.marketIdentifier}] Erro no WebSocket:`, error.message);
         (_a = this.ws) === null || _a === void 0 ? void 0 : _a.close();
+=======
+        console.error(`[${this.marketIdentifier}] Erro no WebSocket:`, error.message);
+        this.ws?.close();
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
     }
     startPing() {
         this.stopPing();
         this.pingInterval = setInterval(() => {
+<<<<<<< HEAD
             var _a;
             if (((_a = this.ws) === null || _a === void 0 ? void 0 : _a.readyState) === ws_1.default.OPEN) {
+=======
+            if (this.ws?.readyState === ws_1.default.OPEN) {
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
                 this.ws.send(JSON.stringify({ method: "ping" }));
             }
         }, 20000);
@@ -128,6 +153,7 @@ class MexcConnector extends events_1.EventEmitter {
         if (this.pingInterval)
             clearInterval(this.pingInterval);
     }
+<<<<<<< HEAD
     disconnect() {
         console.log(`[${this.marketIdentifier}] Desconectando...`);
         this.isConnected = false;
@@ -171,3 +197,7 @@ class MexcConnector extends events_1.EventEmitter {
 }
 exports.MexcConnector = MexcConnector;
 //# sourceMappingURL=mexc-connector.js.map
+=======
+}
+exports.MexcConnector = MexcConnector;
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc

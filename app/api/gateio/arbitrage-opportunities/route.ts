@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import ccxt from 'ccxt';
 import { recordSpread } from '@/lib/spread-tracker'; // Importar a função
+<<<<<<< HEAD
 import { calculateSpread } from '@/app/utils/spreadUtils';
+=======
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 
 const API_KEY = process.env.GATEIO_API_KEY;
 const API_SECRET = process.env.GATEIO_API_SECRET;
@@ -37,6 +40,7 @@ export async function GET() {
     await exchange.loadMarkets();
     const opportunities = [];
 
+<<<<<<< HEAD
     for (const spotSymbol of TARGET_PAIRS) {
       const futuresSymbol = `${spotSymbol}:USDT`;
 
@@ -47,12 +51,36 @@ export async function GET() {
         if (!spotMarket || !futuresMarket || !futuresMarket.active) {
           continue;
         }
+=======
+    for (const spotSymbol of TARGET_PAIRS) { // Renomeado 'symbol' para 'spotSymbol' para clareza
+      const futuresSymbol = `${spotSymbol}:USDT`; // Assumindo futuros lineares USDT-margined
+
+      try {
+        // Certifique-se de que os mercados existem
+        const spotMarket = exchange.markets[spotSymbol];
+        const futuresMarket = exchange.markets[futuresSymbol];
+
+        if (!spotMarket) {
+          // console.warn(`${EXCHANGE_NAME_FOR_LOG} - Mercado spot ${spotSymbol} não encontrado.`);
+          continue;
+        }
+        if (!futuresMarket) {
+          // console.warn(`${EXCHANGE_NAME_FOR_LOG} - Mercado de futuros ${futuresSymbol} não encontrado.`);
+          continue;
+        }
+        if (!futuresMarket.active) {
+          // console.warn(`${EXCHANGE_NAME_FOR_LOG} - Mercado de futuros ${futuresSymbol} não está ativo.`);
+          continue;
+        }
+
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 
         const [spotTicker, futuresTicker] = await Promise.all([
           exchange.fetchTicker(spotSymbol),
           exchange.fetchTicker(futuresSymbol)
         ]);
 
+<<<<<<< HEAD
         const spotAsk = spotTicker?.ask;
         const futuresBid = futuresTicker?.bid;
         
@@ -90,6 +118,58 @@ export async function GET() {
           });
         }
       } catch (e) {
+=======
+        const spotAskPrice = spotTicker.ask;       // Preço para COMPRAR no SPOT
+        const spotBidPrice = spotTicker.bid;       // Preço para VENDER no SPOT
+        const futuresAskPrice = futuresTicker.ask;   // Preço para COMPRAR em FUTUROS
+        const futuresBidPrice = futuresTicker.bid;   // Preço para VENDER em FUTUROS
+        const fundingRate = futuresTicker.info?.fundingRate || futuresTicker.info?.funding_rate || '0';
+        // Pega do ticker de futuros
+
+        // Verificar se todos os preços estão disponíveis
+        if (!spotAskPrice || !spotBidPrice || !futuresAskPrice || !futuresBidPrice || 
+            spotAskPrice <= 0 || spotBidPrice <= 0 || futuresAskPrice <= 0 || futuresBidPrice <= 0) {
+          continue;
+        }
+
+        // Calcular preços médios para comparação mais justa
+        const spotMidPrice = (spotAskPrice + spotBidPrice) / 2;
+        const futuresMidPrice = (futuresAskPrice + futuresBidPrice) / 2;
+
+        // Fórmula simplificada: Spread (%) = ((Futures - Spot) / Spot) × 100
+        if (spotMidPrice > 0 && futuresMidPrice > 0) {
+          const spread = ((futuresMidPrice - spotMidPrice) / spotMidPrice) * 100;
+          
+          // Só registrar se houver spread significativo (positivo ou negativo)
+          if (Math.abs(spread) >= 0.01) { // Mínimo de 0.01% para evitar ruído
+            const opportunity = {
+              symbol: spotSymbol,
+              spotPrice: spotMidPrice.toString(),
+              futuresPrice: futuresMidPrice.toString(),
+              direction: spread > 0 ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT',
+              fundingRate: fundingRate,
+              percentDiff: Math.abs(spread).toString(), // Sempre positivo para compatibilidade
+            };
+            
+            // Só adicionar às oportunidades se for lucrativo (spread positivo significa futures > spot)
+            if (spread > 0) {
+              opportunities.push(opportunity);
+            }
+            
+            recordSpread({
+              symbol: spotSymbol,
+              exchangeBuy: EXCHANGE_ID, 
+              exchangeSell: EXCHANGE_ID, 
+              direction: spread > 0 ? 'spot-to-future' : 'future-to-spot',
+              spread: Math.abs(spread)
+            }).catch(err => {
+              console.error(`${EXCHANGE_NAME_FOR_LOG} - Failed to record spread for ${spotSymbol}:`, err);
+            });
+          }
+        }
+      } catch (e) {
+        // console.warn(`${EXCHANGE_NAME_FOR_LOG} - Erro ao processar par ${spotSymbol} / ${futuresSymbol}:`, e instanceof Error ? e.message : String(e));
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
         continue;
       }
     }

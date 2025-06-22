@@ -9,21 +9,80 @@ databases:
   - source: 0.0.0.0/0
     description: everywhere
   postgresMajorVersion: "16"
+<<<<<<< HEAD
 
+=======
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 services:
 - type: web
   name: robo-de-arbitragem
   env: node
   region: oregon
   plan: free
+<<<<<<< HEAD
   buildCommand: npm install && npm install typescript @types/node --save && npm run build
   startCommand: node server.js
+=======
+  buildCommand: npm install && npm run build && npm run prisma:deploy
+  startCommand: npm start
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
   envVars:
     - key: NODE_ENV
       value: production
     - key: DATABASE_URL
+<<<<<<< HEAD
       sync: false
   healthCheckPath: /
   autoDeploy: true
+=======
+      fromDatabase:
+        name: arbitragem-banco
+        property: connectionString
+    - key: NEXT_PUBLIC_WEBSOCKET_URL
+      value: wss://robo-de-arbitragem-tracker.onrender.com
+    - key: BINANCE_API_KEY
+      sync: false
+    - key: BINANCE_SECRET
+      sync: false
+    - key: MEXC_API_KEY
+      sync: false
+    - key: MEXC_SECRET
+      sync: false
+    - key: GATE_API_KEY
+      sync: false
+    - key: GATE_SECRET
+      sync: false
+  autoDeploy: true
+  branch: default
+
+- type: web
+  name: robo-de-arbitragem-tracker
+  env: node
+  region: oregon
+  plan: free
+  buildCommand: npm install && npm run build:tracker
+  startCommand: npm run start:tracker
+  envVars:
+    - key: NODE_ENV
+      value: production
+    - key: DATABASE_URL
+      fromDatabase:
+        name: arbitragem-banco
+        property: connectionString
+    - key: BINANCE_API_KEY
+      sync: false
+    - key: BINANCE_SECRET
+      sync: false
+    - key: MEXC_API_KEY
+      sync: false
+    - key: MEXC_SECRET
+      sync: false
+    - key: GATE_API_KEY
+      sync: false
+    - key: GATE_SECRET
+      sync: false
+  autoDeploy: true
+  branch: default
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 
 version: "1"

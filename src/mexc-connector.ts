@@ -1,4 +1,5 @@
 import WebSocket from 'ws';
+<<<<<<< HEAD
 import fetch from 'node-fetch';
 import { EventEmitter } from 'events';
 
@@ -15,6 +16,12 @@ interface MexcWebSocket {
 const MEXC_FUTURES_WS_URL = 'wss://contract.mexc.com/edge';
 
 export class MexcConnector extends EventEmitter {
+=======
+
+const MEXC_FUTURES_WS_URL = 'wss://contract.mexc.com/edge';
+
+export class MexcConnector {
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
     private ws: WebSocket | null = null;
     private subscriptions: Set<string> = new Set();
     private pingInterval: NodeJS.Timeout | null = null;
@@ -22,6 +29,7 @@ export class MexcConnector extends EventEmitter {
     private onConnectedCallback: (() => void) | null;
     private isConnected: boolean = false;
     private marketIdentifier: string;
+<<<<<<< HEAD
     private readonly identifier: string;
     private readonly onPriceUpdate: Function;
     private readonly onConnect: Function;
@@ -43,12 +51,15 @@ export class MexcConnector extends EventEmitter {
     private isBlocked: boolean = false;
     private readonly maxReconnectAttempts: number = 5;
     private readonly reconnectDelay: number = 5000;
+=======
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 
     constructor(
         identifier: string, 
         priceUpdateCallback: (data: any) => void,
         onConnected: () => void
     ) {
+<<<<<<< HEAD
         super();
         this.marketIdentifier = identifier;
         this.priceUpdateCallback = priceUpdateCallback;
@@ -56,6 +67,11 @@ export class MexcConnector extends EventEmitter {
         this.identifier = identifier;
         this.onPriceUpdate = priceUpdateCallback;
         this.onConnect = onConnected;
+=======
+        this.marketIdentifier = identifier;
+        this.priceUpdateCallback = priceUpdateCallback;
+        this.onConnectedCallback = onConnected;
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
         console.log(`[${this.marketIdentifier}] Conector instanciado.`);
     }
 
@@ -152,6 +168,7 @@ export class MexcConnector extends EventEmitter {
     private stopPing(): void {
         if (this.pingInterval) clearInterval(this.pingInterval);
     }
+<<<<<<< HEAD
 
     public disconnect(): void {
         console.log(`[${this.marketIdentifier}] Desconectando...`);
@@ -199,4 +216,6 @@ export class MexcConnector extends EventEmitter {
             return [];
         }
     }
+=======
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 } 

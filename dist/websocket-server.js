@@ -1,4 +1,5 @@
 "use strict";
+<<<<<<< HEAD
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -9,19 +10,40 @@ const ws_1 = __importDefault(require("ws"));
 const http_1 = require("http");
 const gateio_connector_1 = require("./gateio-connector");
 const mexc_connector_1 = require("./mexc-connector");
+=======
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.startWebSocketServer = startWebSocketServer;
+require('dotenv').config();
+const ws_1 = require("ws");
+const http_1 = require("http");
+const gateio_connector_1 = require("./src/gateio-connector");
+const mexc_connector_1 = require("./src/mexc-connector");
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 const client_1 = require("@prisma/client");
 const prisma = new client_1.PrismaClient();
 const PORT = process.env.PORT || 10000;
 const MIN_PROFIT_PERCENTAGE = 0.1;
 let marketPrices = {};
 let targetPairs = [];
+<<<<<<< HEAD
 let clients = [];
 function handlePriceUpdate(update) {
     const { identifier, symbol, priceData, marketType, bestAsk, bestBid } = update;
+=======
+let clients = []; // Usamos o tipo estendido
+// ✅ Nova função centralizadora para lidar com todas as atualizações de preço
+function handlePriceUpdate(update) {
+    const { identifier, symbol, priceData, marketType, bestAsk, bestBid } = update;
+    // 1. Atualiza o estado central de preços
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
     if (!marketPrices[identifier]) {
         marketPrices[identifier] = {};
     }
     marketPrices[identifier][symbol] = { bestAsk, bestBid, timestamp: Date.now() };
+<<<<<<< HEAD
+=======
+    // 2. Transmite a atualização para todos os clientes
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
     broadcast({
         type: 'price-update',
         symbol,
@@ -31,11 +53,19 @@ function handlePriceUpdate(update) {
     });
 }
 function startWebSocketServer(httpServer) {
+<<<<<<< HEAD
     const wss = new ws_1.default.Server({ server: httpServer });
     wss.on('connection', (ws, req) => {
         ws.isAlive = true;
         ws.on('pong', () => {
             ws.isAlive = true;
+=======
+    const wss = new ws_1.WebSocketServer({ server: httpServer });
+    wss.on('connection', (ws, req) => {
+        ws.isAlive = true; // A conexão está viva ao ser estabelecida
+        ws.on('pong', () => {
+            ws.isAlive = true; // O cliente respondeu ao nosso ping, então está vivo
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
         });
         const clientIp = req.socket.remoteAddress || req.headers['x-forwarded-for'];
         clients.push(ws);
@@ -48,25 +78,52 @@ function startWebSocketServer(httpServer) {
             console.log(`[WS Server] Cliente desconectado: ${clientIp}. Total: ${clients.length}`);
         });
     });
+<<<<<<< HEAD
     const interval = setInterval(() => {
         wss.clients.forEach(client => {
             const ws = client;
+=======
+    // Intervalo para verificar conexões e mantê-las vivas
+    const interval = setInterval(() => {
+        wss.clients.forEach(client => {
+            const ws = client;
+            // Se o cliente não respondeu ao PING do ciclo anterior, encerre.
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
             if (ws.isAlive === false) {
                 console.log('[WS Server] Conexão inativa terminada.');
                 return ws.terminate();
             }
+<<<<<<< HEAD
             ws.isAlive = false;
             ws.ping(() => { });
         });
     }, 30000);
     wss.on('close', () => {
         clearInterval(interval);
+=======
+            // Marque como inativo e envie um PING. A resposta 'pong' marcará como vivo novamente.
+            ws.isAlive = false;
+            ws.ping(() => { }); // A função de callback vazia é necessária.
+        });
+    }, 30000); // A cada 30 segundos
+    wss.on('close', () => {
+        clearInterval(interval); // Limpa o intervalo quando o servidor é fechado
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
     });
     console.log(`Servidor WebSocket iniciado e anexado ao servidor HTTP.`);
     startFeeds();
 }
+<<<<<<< HEAD
 function initializeStandaloneServer() {
     const httpServer = (0, http_1.createServer)((req, res) => {
+=======
+// --- Início: Adição para Servidor Standalone ---
+// Esta função cria e inicia um servidor HTTP que usa a nossa lógica WebSocket.
+function initializeStandaloneServer() {
+    const httpServer = (0, http_1.createServer)((req, res) => {
+        // O servidor HTTP básico não fará nada além de fornecer uma base para o WebSocket.
+        // Podemos adicionar um endpoint de health check simples.
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
         if (req.url === '/health') {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ status: 'ok', message: 'WebSocket server is running' }));
@@ -76,11 +133,16 @@ function initializeStandaloneServer() {
             res.end();
         }
     });
+<<<<<<< HEAD
+=======
+    // Anexa a lógica do WebSocket ao nosso servidor HTTP.
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
     startWebSocketServer(httpServer);
     httpServer.listen(PORT, () => {
         console.log(`[Servidor Standalone] Servidor HTTP e WebSocket escutando na porta ${PORT}`);
     });
 }
+<<<<<<< HEAD
 if (require.main === module) {
     initializeStandaloneServer();
 }
@@ -88,17 +150,39 @@ function broadcast(data) {
     const serializedData = JSON.stringify(data);
     clients.forEach(client => {
         if (client.readyState === ws_1.default.OPEN) {
+=======
+// Inicia o servidor standalone.
+// O `require.main === module` garante que este código só rode quando
+// o arquivo é executado diretamente (ex: `node dist/websocket-server.js`),
+// mas não quando é importado por outro arquivo (como o `server.js` em dev).
+if (require.main === module) {
+    initializeStandaloneServer();
+}
+// --- Fim: Adição para Servidor Standalone ---
+function broadcast(data) {
+    const serializedData = JSON.stringify(data);
+    clients.forEach(client => {
+        if (client.readyState === ws_1.WebSocket.OPEN) {
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
             client.send(serializedData);
         }
     });
 }
+<<<<<<< HEAD
+=======
+// Versão corrigida da função com logs de depuração
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 function broadcastOpportunity(opportunity) {
     console.log(`[DEBUG] Verificando ${opportunity.baseSymbol} | Spread: ${opportunity.profitPercentage.toFixed(2)}%`);
     if (!isFinite(opportunity.profitPercentage) || opportunity.profitPercentage > 100) {
         console.warn(`[FILTRO] Spread >100% IGNORADO para ${opportunity.baseSymbol}: ${opportunity.profitPercentage.toFixed(2)}%`);
         return;
     }
+<<<<<<< HEAD
     broadcast(Object.assign(Object.assign({}, opportunity), { type: 'arbitrage' }));
+=======
+    broadcast({ ...opportunity, type: 'arbitrage' });
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
     console.log(`[Broadcast] Oportunidade VÁLIDA enviada: ${opportunity.baseSymbol} ${opportunity.profitPercentage.toFixed(2)}%`);
 }
 async function recordSpread(opportunity) {
@@ -159,6 +243,10 @@ function getNormalizedData(symbol) {
     return { baseSymbol: symbol, factor: 1 };
 }
 async function findAndBroadcastArbitrage() {
+<<<<<<< HEAD
+=======
+    // Não precisamos mais de um array local, processaremos uma a uma
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
     const exchangeIdentifiers = Object.keys(marketPrices);
     if (exchangeIdentifiers.length < 2)
         return;
@@ -183,6 +271,7 @@ async function findAndBroadcastArbitrage() {
                 if (buyPriceSpot <= 0 || sellPriceFutures <= 0 || buyPriceFutures <= 0 || sellPriceSpot <= 0) {
                     continue;
                 }
+<<<<<<< HEAD
                 const normalizedSpotAsk = spotPrices[spotSymbol].bestAsk * (futuresData.factor / spotData.factor);
                 const normalizedSpotBid = spotPrices[spotSymbol].bestBid * (futuresData.factor / spotData.factor);
                 const normalizedFuturesAsk = futuresPrices[futuresSymbol].bestAsk * (futuresData.factor / spotData.factor);
@@ -214,12 +303,52 @@ async function findAndBroadcastArbitrage() {
                     };
                     await recordSpread(opportunity);
                     broadcastOpportunity(opportunity);
+=======
+                // Calcular preços médios para comparação mais justa
+                const spotMidPrice = (spotPrices[spotSymbol].bestAsk + spotPrices[spotSymbol].bestBid) / 2;
+                const futuresMidPrice = (futuresPrices[futuresSymbol].bestAsk + futuresPrices[futuresSymbol].bestBid) / 2;
+                // Normalizar preços se necessário
+                const normalizedSpotMid = spotMidPrice * (futuresData.factor / spotData.factor);
+                // Fórmula simplificada: Spread (%) = ((Futures - Spot) / Spot) × 100
+                const spread = ((futuresMidPrice - normalizedSpotMid) / normalizedSpotMid) * 100;
+                // Só processar se o spread for significativo e dentro dos limites
+                if (Math.abs(spread) >= 0.1 && Math.abs(spread) <= 10) {
+                    if (spread > 0) {
+                        // Futures > Spot: Comprar Spot, Vender Futures
+                        const opportunity = {
+                            type: 'arbitrage',
+                            baseSymbol: spotData.baseSymbol,
+                            buyAt: { exchange: spotId.split('_')[0], marketType: 'spot', price: normalizedSpotMid },
+                            sellAt: { exchange: futuresId.split('_')[0], marketType: 'futures', price: futuresMidPrice },
+                            arbitrageType: 'spot_to_futures',
+                            profitPercentage: spread,
+                            timestamp: Date.now()
+                        };
+                        await recordSpread(opportunity);
+                        broadcastOpportunity(opportunity);
+                    }
+                    else {
+                        // Spot > Futures: Comprar Futures, Vender Spot
+                        const opportunity = {
+                            type: 'arbitrage',
+                            baseSymbol: spotData.baseSymbol,
+                            buyAt: { exchange: futuresId.split('_')[0], marketType: 'futures', price: futuresMidPrice },
+                            sellAt: { exchange: spotId.split('_')[0], marketType: 'spot', price: normalizedSpotMid },
+                            arbitrageType: 'futures_to_spot',
+                            profitPercentage: Math.abs(spread),
+                            timestamp: Date.now()
+                        };
+                        await recordSpread(opportunity);
+                        broadcastOpportunity(opportunity);
+                    }
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
                 }
             }
         }
     }
 }
 async function startFeeds() {
+<<<<<<< HEAD
     console.log("🚀 Iniciando feeds de dados com BUSCA DINÂMICA...");
     const gateIoSpotConnector = new gateio_connector_1.GateIoConnector('GATEIO_SPOT', handlePriceUpdate);
     const gateIoFuturesConnector = new gateio_connector_1.GateIoConnector('GATEIO_FUTURES', handlePriceUpdate);
@@ -282,3 +411,28 @@ async function startFeeds() {
     }
 }
 //# sourceMappingURL=websocket-server.js.map
+=======
+    console.log("Iniciando feeds de dados...");
+    // Passa a função 'handlePriceUpdate' para os conectores
+    const gateIoSpotConnector = new gateio_connector_1.GateIoConnector('GATEIO_SPOT', handlePriceUpdate);
+    const gateIoFuturesConnector = new gateio_connector_1.GateIoConnector('GATEIO_FUTURES', handlePriceUpdate);
+    const mexcConnector = new mexc_connector_1.MexcConnector('MEXC_FUTURES', handlePriceUpdate, () => {
+        const mexcPairs = targetPairs.map(p => p.replace('/', '_'));
+        mexcConnector.subscribe(mexcPairs);
+    });
+    try {
+        const spotPairs = await gateIoSpotConnector.getTradablePairs();
+        const futuresPairs = await gateIoFuturesConnector.getTradablePairs();
+        targetPairs = spotPairs.filter(p => futuresPairs.includes(p));
+        console.log(`Encontrados ${targetPairs.length} pares em comum.`);
+        gateIoSpotConnector.connect(targetPairs);
+        gateIoFuturesConnector.connect(targetPairs);
+        mexcConnector.connect();
+        console.log(`Monitorando ${targetPairs.length} pares.`);
+        setInterval(findAndBroadcastArbitrage, 5000);
+    }
+    catch (error) {
+        console.error("Erro fatal ao iniciar os feeds:", error);
+    }
+}
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc

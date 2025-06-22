@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 
+<<<<<<< HEAD
 let prisma: PrismaClient | null = null;
 
 try {
@@ -14,6 +15,10 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 // Temporariamente retornando valores nulos para limpar os gráficos
+=======
+const prisma = new PrismaClient();
+
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 export async function GET(
   request: Request,
   { params }: { params: { symbol: string } }
@@ -24,6 +29,7 @@ export async function GET(
     return NextResponse.json({ error: 'O símbolo é obrigatório' }, { status: 400 });
   }
 
+<<<<<<< HEAD
   // Se não houver conexão com o banco, retorna valores nulos
   if (!prisma) {
     console.warn('Aviso: Banco de dados não disponível');
@@ -33,6 +39,11 @@ export async function GET(
   try {
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
+=======
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  try {
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
     const records = await prisma.spreadHistory.findMany({
       where: {
         symbol: symbol,
@@ -59,6 +70,10 @@ export async function GET(
 
   } catch (error) {
     console.error(`Erro ao buscar estatísticas para o símbolo ${symbol}:`, error);
+<<<<<<< HEAD
     return NextResponse.json({ spMax: null, crosses: 0 });
+=======
+    return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 });
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
   }
 } 

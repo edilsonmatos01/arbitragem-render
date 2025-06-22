@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
@@ -5,6 +6,11 @@ generator client {
   provider        = "prisma-client-js"
   previewFeatures = []
   engineType      = "binary"
+=======
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 }
 
 datasource db {
@@ -13,16 +19,26 @@ datasource db {
 }
 
 model SpreadHistory {
+<<<<<<< HEAD
   id           String   @id @default(uuid())
+=======
+  id           String   @id @default(cuid())
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
   symbol       String
   exchangeBuy  String
   exchangeSell String
   direction    String
   spread       Float
   timestamp    DateTime @default(now())
+<<<<<<< HEAD
   spotPrice    Float?
   futuresPrice Float?
 
   @@index([symbol, timestamp])
   @@map("spread_history")
 } 
+=======
+
+  @@index([symbol, exchangeBuy, exchangeSell, direction])
+}
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc

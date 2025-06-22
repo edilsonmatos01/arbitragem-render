@@ -2,7 +2,11 @@
 import { useCallback, useState, useEffect, useRef, useMemo } from "react";
 import { Play, RefreshCw, AlertTriangle, CheckCircle2, Clock } from 'lucide-react'; // Ícones
 import { useArbitrageWebSocket } from './useArbitrageWebSocket';
+<<<<<<< HEAD
 import { MaxSpreadCell } from './MaxSpreadCell'; // Importar o novo componente
+=======
+import MaxSpreadCell from './MaxSpreadCell'; // Importar o novo componente
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 import React from 'react';
 
 const EXCHANGES = [
@@ -122,7 +126,11 @@ const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSp
               {opportunity.spread.toFixed(2)}%
             </td>
             <td className="py-4 px-6 whitespace-nowrap text-sm">
+<<<<<<< HEAD
               <MaxSpreadCell maxSpread={opportunity.maxSpread24h || 0} />
+=======
+              <MaxSpreadCell symbol={opportunity.symbol} />
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
             </td>
             <td className="py-4 px-6 whitespace-nowrap text-sm">{calcularLucro(opportunity.spread)}</td>
             <td className="py-4 px-6 whitespace-nowrap text-center text-sm">
@@ -202,6 +210,7 @@ export default function ArbitrageTable() {
     // 1. Mapeia as novas oportunidades recebidas do WebSocket
     const newOpportunities = opportunitiesRaw
       .map((opp): Opportunity | null => {
+<<<<<<< HEAD
         // Confia nos dados do backend, sem recálculo de spread ou normalização de preços.
         if (opp.buyAt.price <= 0) return null;
 
@@ -218,6 +227,24 @@ export default function ArbitrageTable() {
           directionApi: opp.arbitrageType.startsWith('spot_') ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT',
           maxSpread24h: null, // Será preenchido pelo MaxSpreadCell
         };
+=======
+        if (opp.buyAt.price <= 0) return null;
+
+        // Calcula o spread usando a fórmula correta: ((Futures - Spot) / Spot) × 100
+        // Atualizado em: 19/03/2024
+        const spread = ((opp.sellAt.price - opp.buyAt.price) / opp.buyAt.price) * 100;
+
+        const newOpp: Opportunity = {
+          symbol: opp.baseSymbol,
+          compraExchange: opp.buyAt.exchange,
+          compraPrice: opp.buyAt.price,
+          vendaExchange: opp.sellAt.exchange,
+          vendaPrice: opp.sellAt.price,
+          spread: spread,
+          timestamp: opp.timestamp,
+        };
+
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
         return newOpp;
       })
       .filter((o): o is Opportunity => o !== null);

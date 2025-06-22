@@ -10,7 +10,11 @@ const handle = app.getRequestHandler();
 // Importa e inicia o servidor WebSocket como um módulo.
 // Precisamos garantir que o websocket-server.ts exporte uma função de inicialização
 // e não inicie um servidor por conta própria.
+<<<<<<< HEAD
 const { startWebSocketServer } = require('./dist/src/websocket-server');
+=======
+const { startWebSocketServer } = require('./dist/websocket-server');
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 
 app.prepare().then(() => {
   const httpServer = createServer((req, res) => {

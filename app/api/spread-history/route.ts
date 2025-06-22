@@ -1,9 +1,94 @@
 import { PrismaClient } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 
+<<<<<<< HEAD
 export const dynamic = 'force-dynamic';
 
 // Temporariamente retornando array vazio para limpar os gráficos
 export async function GET(req: NextRequest) {
   return NextResponse.json([]);
+=======
+const prisma = new PrismaClient();
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const symbol = searchParams.get('symbol');
+
+  if (!symbol) {
+    return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
+  }
+
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  console.log(`[DEBUG] Buscando histórico de spreads para ${symbol} desde ${twentyFourHoursAgo}`);
+
+  try {
+    const rawHistory = await prisma.spreadHistory.findMany({
+      where: {
+        symbol: symbol,
+        timestamp: {
+          gte: twentyFourHoursAgo,
+        },
+      },
+      orderBy: {
+        timestamp: 'asc',
+      },
+      select: {
+        timestamp: true,
+        spread: true,
+        exchangeBuy: true,
+        exchangeSell: true,
+        direction: true,
+      },
+    });
+
+    console.log(`[DEBUG] Encontrados ${rawHistory.length} registros para ${symbol}:`, 
+      rawHistory.length > 0 ? rawHistory[0] : 'Nenhum registro');
+
+    if (rawHistory.length === 0) {
+      console.log(`[DEBUG] Nenhum registro encontrado para ${symbol}`);
+      return NextResponse.json([]);
+    }
+
+    // Lógica de agregação para intervalos de 30 minutos
+    const thirtyMinutesInMs = 30 * 60 * 1000;
+    // A estrutura agora armazena o spread máximo para cada balde de tempo.
+    const aggregatedData: { [key: number]: { maxSpread: number; date: Date } } = {};
+
+    for (const record of rawHistory) {
+      const bucketTimestamp = Math.floor(record.timestamp.getTime() / thirtyMinutesInMs) * thirtyMinutesInMs;
+      
+      // Se o balde não existir, ou se o spread do registro atual for maior
+      // que o máximo já armazenado para esse balde, atualize-o.
+      if (!aggregatedData[bucketTimestamp] || record.spread > aggregatedData[bucketTimestamp].maxSpread) {
+        aggregatedData[bucketTimestamp] = {
+          maxSpread: record.spread,
+          date: new Date(bucketTimestamp)
+        };
+      }
+    }
+
+    const formattedHistory = Object.entries(aggregatedData)
+      .sort(([a], [b]) => parseInt(a) - parseInt(b))
+      .map(([timestamp, data]) => {
+        // Formato brasileiro: DD/MM HH:mm
+        const timeLabel = data.date.toLocaleDateString('pt-BR', { 
+          day: '2-digit', 
+          month: '2-digit' 
+        }) + ' ' + data.date.toLocaleTimeString('pt-BR', { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        });
+
+        return {
+          timestamp: timeLabel,
+          spread: data.maxSpread,
+        };
+      });
+
+    return NextResponse.json(formattedHistory);
+  } catch (error) {
+    console.error('Error fetching spread history:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+>>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 } 
