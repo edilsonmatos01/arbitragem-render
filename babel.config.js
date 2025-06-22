@@ -4,25 +4,14 @@ module.exports = {
       '@babel/preset-env',
       {
         targets: {
-          node: '18.17.0'
-        },
-        modules: 'commonjs',
-        useBuiltIns: 'usage',
-        corejs: 3
+          node: 'current'
+        }
       }
     ],
-    [
-      '@babel/preset-typescript',
-      {
-        onlyRemoveTypeImports: true
-      }
-    ]
+    '@babel/preset-typescript',
+    '@babel/preset-react'
   ],
   plugins: [
-    ['@babel/plugin-transform-runtime', {
-      corejs: 3,
-      helpers: true,
-      regenerator: true
-    }]
+    ['@babel/plugin-transform-runtime']
   ]
 } 
