@@ -15,7 +15,8 @@
     "prisma:deploy": "prisma generate && prisma migrate deploy",
     "postinstall": "prisma generate",
     "clean:spread": "ts-node scripts/cleanSpreadData.ts",
-    "fix:migrations": "node scripts/fix-production-migrations.js"
+    "fix:migrations": "node scripts/fix-production-migrations.js",
+    "db:setup": "prisma migrate deploy"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",
