@@ -162,9 +162,9 @@ export function useArbitrageWebSocket() {
   const getWebSocketURL = () => {
     if (typeof window === 'undefined') return '';
 
-    // Em desenvolvimento, conectar ao servidor WebSocket local
+    // Em desenvolvimento, conectar ao servidor Next.js na porta 3000
     if (window.location.hostname === 'localhost') {
-      const wsURL = 'ws://localhost:10000';
+      const wsURL = 'ws://localhost:3000';
       console.log(`🔗 [WebSocket] Conectando LOCAL: ${wsURL}`);
       return wsURL;
     }
