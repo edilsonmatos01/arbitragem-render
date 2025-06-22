@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 const path = require('path');
 
 /** @type {import('next').NextConfig} */
@@ -29,13 +28,5 @@ const nextConfig = {
     return config;
   },
 }
-=======
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true
-  }
-};
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 
 module.exports = nextConfig; 
