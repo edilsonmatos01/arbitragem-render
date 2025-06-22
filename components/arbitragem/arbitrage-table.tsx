@@ -267,10 +267,10 @@ export default function ArbitrageTable() {
           const passesTypeFilter = o.tipo === arbitrageType;
           let passesExchangeFilter = true;
 
-          // Verifica se a oportunidade envolve Gate.io spot e MEXC futures
-          const isGateioSpot = o.compraExchange.toLowerCase().includes('gateio') && o.compraExchange.toLowerCase().includes('spot');
-          const isMexcFutures = o.vendaExchange.toLowerCase().includes('mexc') && o.vendaExchange.toLowerCase().includes('futures');
-          passesExchangeFilter = isGateioSpot && isMexcFutures;
+          // Verifica se a operação é compra em spot e venda em futures
+          const isSpotBuyFuturesSell = o.compraExchange.toLowerCase().includes('spot') && 
+                                     o.vendaExchange.toLowerCase().includes('futures');
+          passesExchangeFilter = isSpotBuyFuturesSell;
 
           const passes = passesSpreadFilter && passesDirectionFilter && passesTypeFilter && passesExchangeFilter;
           
@@ -280,8 +280,9 @@ export default function ArbitrageTable() {
               direction: passesDirectionFilter,
               type: passesTypeFilter,
               exchange: passesExchangeFilter,
-              isGateioSpot,
-              isMexcFutures
+              isSpotBuyFuturesSell,
+              compraExchange: o.compraExchange,
+              vendaExchange: o.vendaExchange
             });
           }
 
