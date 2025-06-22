@@ -91,22 +91,33 @@ export function useArbitrageWebSocket() {
       if (!isMounted.current) return;
       try {
         const message = JSON.parse(event.data);
+        console.log('[DEBUG] Mensagem WebSocket recebida:', message);
         
         if (message.type === 'arbitrage') {
-          setOpportunities((prev) => [message, ...prev.slice(0, 99)]);
+          console.log('[DEBUG] Oportunidade de arbitragem recebida:', message);
+          setOpportunities((prev) => {
+            // Remove oportunidades antigas do mesmo par
+            const filtered = prev.filter(p => 
+              p.baseSymbol !== message.baseSymbol || 
+              p.arbitrageType !== message.arbitrageType
+            );
+            return [message, ...filtered].slice(0, 99);
+          });
         }
         if (message.type === 'price-update') {
-            const { symbol, marketType, bestAsk, bestBid } = message;
-            setLivePrices(prev => ({
-                ...prev,
-                [symbol]: {
-                    ...prev[symbol],
-                    [marketType]: { bestAsk, bestBid }
-                }
-            }));
+          const { symbol, marketType, bestAsk, bestBid } = message;
+          console.log(`[DEBUG] Atualização de preço recebida para ${symbol} (${marketType}):`, { bestAsk, bestBid });
+          setLivePrices(prev => ({
+            ...prev,
+            [symbol]: {
+              ...prev[symbol],
+              [marketType]: { bestAsk, bestBid }
+            }
+          }));
         }
       } catch (error) {
         console.error('[WS Hook] Erro ao processar mensagem do WebSocket:', error);
+        console.error('[WS Hook] Mensagem que causou o erro:', event.data);
       }
     };
 

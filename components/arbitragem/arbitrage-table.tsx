@@ -199,14 +199,19 @@ export default function ArbitrageTable() {
   useEffect(() => {
     if (isPaused) return;
 
+    console.log('[DEBUG] Processando oportunidades recebidas:', opportunitiesRaw);
+
     // 1. Mapeia as novas oportunidades recebidas do WebSocket
     const newOpportunities = opportunitiesRaw
       .map((opp): Opportunity | null => {
-        if (opp.buyAt.price <= 0) return null;
+        if (!opp.buyAt || !opp.sellAt || opp.buyAt.price <= 0 || opp.sellAt.price <= 0) {
+          console.log('[DEBUG] Oportunidade ignorada por preços inválidos:', opp);
+          return null;
+        }
 
         // Calcula o spread usando a fórmula correta: ((Futures - Spot) / Spot) × 100
-        // Atualizado em: 19/03/2024
         const spread = ((opp.sellAt.price - opp.buyAt.price) / opp.buyAt.price) * 100;
+        console.log(`[DEBUG] Spread calculado para ${opp.baseSymbol}: ${spread.toFixed(2)}%`);
 
         const newOpp: Opportunity = {
           symbol: opp.baseSymbol,
@@ -215,13 +220,17 @@ export default function ArbitrageTable() {
           vendaExchange: opp.sellAt.exchange,
           vendaPreco: opp.sellAt.price,
           spread: spread,
-          tipo: 'inter',
+          tipo: opp.arbitrageType.includes('inter') ? 'inter' : 'intra',
+          directionApi: opp.arbitrageType.includes('spot_futures') ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT',
           maxSpread24h: null
         };
 
+        console.log('[DEBUG] Nova oportunidade processada:', newOpp);
         return newOpp;
       })
       .filter((o): o is Opportunity => o !== null);
+
+    console.log('[DEBUG] Total de novas oportunidades válidas:', newOpportunities.length);
 
     // 2. Funde as novas oportunidades com o ranking existente
     setRankedOpportunities(prevRanked => {
@@ -237,7 +246,7 @@ export default function ArbitrageTable() {
           opp.maxSpread24h = Math.max(existing.maxSpread24h || 0, opp.maxSpread24h || 0);
           
           // Se a nova oportunidade tiver um spread maior, ela substitui a antiga
-          if (opp.spread > existing.spread) {
+          if (Math.abs(opp.spread) > Math.abs(existing.spread)) {
             opportunitiesMap.set(key, opp);
           } else {
             // Caso contrário, mantém a antiga mas atualiza seu maxSpread24h
@@ -245,7 +254,7 @@ export default function ArbitrageTable() {
             opportunitiesMap.set(key, existing);
           }
         } else {
-            opportunitiesMap.set(key, opp);
+          opportunitiesMap.set(key, opp);
         }
       }
 
@@ -253,23 +262,37 @@ export default function ArbitrageTable() {
       const finalOpportunities = Array.from(opportunitiesMap.values())
         .filter(o => {
           // Re-aplica os filtros do usuário
-          if (Math.abs(o.spread) < minSpread) return false;
-          if (direction !== 'ALL' && direction !== o.directionApi) return false;
-          if (o.tipo !== arbitrageType) return false;
+          const passesSpreadFilter = Math.abs(o.spread) >= minSpread;
+          const passesDirectionFilter = direction === 'ALL' || o.directionApi === direction;
+          const passesTypeFilter = o.tipo === arbitrageType;
+          let passesExchangeFilter = true;
+
           if (arbitrageType === 'inter') {
             const exchangesInvolved = [o.compraExchange.toLowerCase(), o.vendaExchange.toLowerCase()];
             const hasSpotEx = exchangesInvolved.some(ex => ex.includes(spotExchange));
             const hasFuturesEx = exchangesInvolved.some(ex => ex.includes(futuresExchange));
-            if (!hasSpotEx || !hasFuturesEx) return false;
+            passesExchangeFilter = hasSpotEx && hasFuturesEx;
           }
-          return true;
+
+          const passes = passesSpreadFilter && passesDirectionFilter && passesTypeFilter && passesExchangeFilter;
+          
+          if (!passes) {
+            console.log(`[DEBUG] Oportunidade filtrada - ${o.symbol}:`, {
+              spread: passesSpreadFilter,
+              direction: passesDirectionFilter,
+              type: passesTypeFilter,
+              exchange: passesExchangeFilter
+            });
+          }
+
+          return passes;
         })
-        .sort((a, b) => b.spread - a.spread)
+        .sort((a, b) => Math.abs(b.spread) - Math.abs(a.spread))
         .slice(0, 8);
-      
+
+      console.log('[DEBUG] Oportunidades finais após filtros:', finalOpportunities);
       return finalOpportunities;
     });
-
   }, [
     opportunitiesRaw, 
     isPaused,

@@ -207,14 +207,22 @@ function getNormalizedData(symbol: string): { baseSymbol: string, factor: number
 }
 
 async function findAndBroadcastArbitrage() {
-    // Não precisamos mais de um array local, processaremos uma a uma
     const exchangeIdentifiers = Object.keys(marketPrices);
-    if (exchangeIdentifiers.length < 2) return;
+    console.log(`[DEBUG] Exchanges disponíveis: ${exchangeIdentifiers.join(', ')}`);
+    
+    if (exchangeIdentifiers.length < 2) {
+        console.log('[DEBUG] Menos de 2 exchanges disponíveis, aguardando dados...');
+        return;
+    }
 
     for (const spotId of exchangeIdentifiers.filter(id => !id.toUpperCase().includes('FUTURES'))) {
         const futuresId = exchangeIdentifiers.find(id => id.toUpperCase().includes('FUTURES'));
-        if (!futuresId) continue;
+        if (!futuresId) {
+            console.log('[DEBUG] Nenhuma exchange de futuros encontrada');
+            continue;
+        }
 
+        console.log(`[DEBUG] Analisando par de exchanges: ${spotId} x ${futuresId}`);
         const spotPrices = marketPrices[spotId];
         const futuresPrices = marketPrices[futuresId];
 
@@ -227,6 +235,7 @@ async function findAndBroadcastArbitrage() {
             });
 
             if (futuresSymbol) {
+                console.log(`[DEBUG] Par encontrado: ${spotSymbol} (spot) x ${futuresSymbol} (futures)`);
                 const futuresData = getNormalizedData(futuresSymbol);
                 
                 const buyPriceSpot = spotPrices[spotSymbol].bestAsk * (futuresData.factor / spotData.factor);
@@ -235,7 +244,15 @@ async function findAndBroadcastArbitrage() {
                 const buyPriceFutures = futuresPrices[futuresSymbol].bestAsk;
                 const sellPriceSpot = spotPrices[spotSymbol].bestBid * (futuresData.factor / spotData.factor);
 
+                console.log(`[DEBUG] Preços para ${spotSymbol}:`, {
+                    buyPriceSpot,
+                    sellPriceFutures,
+                    buyPriceFutures,
+                    sellPriceSpot
+                });
+
                 if (buyPriceSpot <= 0 || sellPriceFutures <= 0 || buyPriceFutures <= 0 || sellPriceSpot <= 0) {
+                    console.log(`[DEBUG] Preços inválidos detectados para ${spotSymbol}, ignorando...`);
                     continue;
                 }
                 
@@ -247,6 +264,7 @@ async function findAndBroadcastArbitrage() {
                 
                 // Cálculo do spread para arbitragem spot-to-futures
                 const profitSpotToFutures = ((normalizedFuturesBid - normalizedSpotAsk) / normalizedSpotAsk) * 100;
+                console.log(`[DEBUG] Spread spot-to-futures para ${spotSymbol}: ${profitSpotToFutures.toFixed(2)}%`);
                 if (profitSpotToFutures >= MIN_PROFIT_PERCENTAGE) {
                     const opportunity: ArbitrageOpportunity = {
                         type: 'arbitrage',
