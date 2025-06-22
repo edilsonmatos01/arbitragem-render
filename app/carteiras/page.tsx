@@ -1,9 +1,6 @@
 'use client';
 
-<<<<<<< HEAD
 import React from 'react';
-=======
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 import Sidebar from '@/components/dashboard/sidebar';
 import ExchangeBalancesCard from '@/components/dashboard/exchange-balances-card';
 import { LayoutDashboard, Repeat, Wallet, History, Settings } from 'lucide-react';
@@ -20,11 +17,7 @@ const AppIcons = {
 
 export default function CarteirasPage() {
   const sidebarNavItems = [
-<<<<<<< HEAD
     { title: 'Dashboard', href: '/dashboard', icon: AppIcons.LayoutDashboard },
-=======
-    { title: 'Dashboards', href: '/dashboard', icon: AppIcons.LayoutDashboard },
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
     { title: 'Arbitragem', href: '/arbitragem', icon: AppIcons.Repeat },
     { title: 'Carteiras', href: '/carteiras', icon: AppIcons.Wallet },
     { title: 'Históricos', href: '/historicos', icon: AppIcons.History },
@@ -35,11 +28,7 @@ export default function CarteirasPage() {
     <div className="flex min-h-screen bg-dark-bg text-white">
       <Sidebar
         user={{ 
-<<<<<<< HEAD
           name: 'Edilson Matos',
-=======
-          name: 'Edilson Matos', 
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
           imageUrl: '/images/avatar.png.png'
         }}
         navItems={sidebarNavItems}

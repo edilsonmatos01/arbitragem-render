@@ -1,35 +1,5 @@
 'use client';
 
-<<<<<<< HEAD
-import React, { useState, useEffect } from 'react';
-
-interface MaxSpreadCellProps {
-  maxSpread: number;
-}
-
-export function MaxSpreadCell({ maxSpread }: MaxSpreadCellProps) {
-  const [displayValue, setDisplayValue] = useState<number>(maxSpread);
-
-  useEffect(() => {
-    setDisplayValue(maxSpread);
-  }, [maxSpread]);
-
-  const getSpreadColor = (spread: number) => {
-    if (spread > 2) return 'text-green-400';
-    if (spread > 1) return 'text-yellow-400';
-    return 'text-gray-400';
-  };
-
-  return (
-    <span className={`font-medium ${getSpreadColor(displayValue)}`}>
-      {displayValue > 0 ? `${displayValue.toFixed(2)}%` : '--'}
-    </span>
-  );
-}
-
-// Compatibilidade com export default
-export default MaxSpreadCell; 
-=======
 import { useState, useEffect } from 'react';
 import { LineChart as ChartIcon } from 'lucide-react';
 import {
@@ -104,6 +74,12 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
     }
   }, [isModalOpen]);
 
+  const getSpreadColor = (spread: number) => {
+    if (spread > 2) return 'text-green-400';
+    if (spread > 1) return 'text-yellow-400';
+    return 'text-gray-400';
+  };
+
   if (isLoading) {
     return <span className="text-gray-500">Carregando...</span>;
   }
@@ -115,7 +91,9 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
   return (
     <div className="flex items-center justify-between">
       <div className="flex flex-col">
-        <span className="font-bold text-green-400">{stats.spMax.toFixed(2)}%</span>
+        <span className={`font-bold ${getSpreadColor(stats.spMax)}`}>
+          {stats.spMax.toFixed(2)}%
+        </span>
         <span className="text-xs text-gray-500">({stats.crosses} registros)</span>
       </div>
       
@@ -180,5 +158,4 @@ export default function MaxSpreadCell({ symbol }: MaxSpreadCellProps) {
       </Dialog>
     </div>
   );
-} 
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
+}

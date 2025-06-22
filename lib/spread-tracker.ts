@@ -2,7 +2,6 @@
 // Lógica para salvar histórico de spreads e calcular a média nas últimas 24h
 
 import { PrismaClient } from '@prisma/client'
-<<<<<<< HEAD
 import { normalizeSpread } from '../app/utils/spreadUtils';
 
 // PrismaClient é anexado ao objeto global quando não está em produção
@@ -16,9 +15,6 @@ export const prisma =
   })
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
-=======
-const prisma = new PrismaClient()
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 
 interface SpreadSample {
   symbol: string
@@ -28,7 +24,6 @@ interface SpreadSample {
   spread: number // Valor em porcentagem (ex: 1.5 para 1.5%)
 }
 
-<<<<<<< HEAD
 async function waitForDatabase(retries = 5, delay = 2000): Promise<boolean> {
   for (let i = 0; i < retries; i++) {
     try {
@@ -69,33 +64,19 @@ export async function recordSpread(sample: SpreadSample): Promise<void> {
       return;
     }
 
-=======
-export async function recordSpread(sample: SpreadSample): Promise<void> {
-  try {
-    // Garante que o spread está em porcentagem
-    const spreadValue = Math.abs(sample.spread);
-    
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
     await prisma.spreadHistory.create({
       data: {
         symbol: sample.symbol,
         exchangeBuy: sample.exchangeBuy,
         exchangeSell: sample.exchangeSell,
         direction: sample.direction,
-<<<<<<< HEAD
         spread: parseFloat(normalizedSpread),
-=======
-        spread: spreadValue,
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
         timestamp: new Date()
       }
     });
   } catch (error) {
     console.error("Error recording spread:", error);
-<<<<<<< HEAD
     throw error; // Propaga o erro para melhor diagnóstico
-=======
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
   }
 }
 
@@ -106,11 +87,8 @@ export async function getAverageSpread24h(
   direction: 'spot-to-future' | 'future-to-spot'
 ): Promise<number | null> {
   try {
-<<<<<<< HEAD
     await waitForDatabase();
     
-=======
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
 
     const records = await prisma.spreadHistory.findMany({
@@ -128,17 +106,12 @@ export async function getAverageSpread24h(
 
     if (records.length < 2) return null;
 
-<<<<<<< HEAD
     // Usa Decimal.js para calcular a média com precisão
     const { Decimal } = require('decimal.js');
     const total = records.reduce((sum, r) => sum.plus(r.spread), new Decimal(0));
     const average = total.dividedBy(records.length);
     
     return parseFloat(average.toDecimalPlaces(2).toString());
-=======
-    const average = records.reduce((sum, r) => sum + r.spread, 0) / records.length;
-    return parseFloat(average.toFixed(2));
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
   } catch (error) {
     console.error("Error getting average spread:", error);
     return null;

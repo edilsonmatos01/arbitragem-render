@@ -1,21 +1,13 @@
 'use client';
 
-<<<<<<< HEAD
 import React, { useState } from 'react';
-=======
-import { useState } from 'react';
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 import Sidebar from '@/components/dashboard/sidebar';
 import MetricCard from '@/components/dashboard/metric-card';
 import ArbitrageHistoryChart from '@/components/dashboard/arbitrage-history-chart';
 import AccumulatedPercentageGauge from '@/components/dashboard/accumulated-percentage-gauge';
 import TotalBalanceCard from '@/components/dashboard/total-balance-card';
-<<<<<<< HEAD
 import { LayoutDashboard, Repeat, Wallet, History, Settings, AlertCircle } from 'lucide-react';
 import SpreadDisplay from '@/components/dashboard/spread-display';
-=======
-import { LayoutDashboard, Repeat, Wallet, History, Settings, AlertCircle, RefreshCw } from 'lucide-react';
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 
 // Ícones Lucide com estilo
 const iconProps = { className: "h-5 w-5" };
@@ -35,10 +27,6 @@ interface Balance {
 
 interface BinanceAccountInfo {
   balances: Balance[];
-<<<<<<< HEAD
-=======
-  // Adicione outros campos que você espera da resposta da Binance se necessário
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 }
 
 interface BybitWalletCoinInfo {
@@ -94,11 +82,7 @@ export default function DashboardPage() {
     <div className="flex min-h-screen bg-dark-bg text-white">
       <Sidebar
         user={{ 
-<<<<<<< HEAD
           name: 'Edilson Matos',
-=======
-          name: 'Edilson Matos', 
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
           imageUrl: '/images/avatar.png.png'
         }}
         navItems={sidebarNavItems}
@@ -136,11 +120,7 @@ export default function DashboardPage() {
         </div>
 
         <section>
-<<<<<<< HEAD
           <SpreadDisplay />
-=======
-          {/* A seção de oportunidades foi removida para centralizar a lógica na página de Arbitragem */}
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
         </section>
       </main>
     </div>

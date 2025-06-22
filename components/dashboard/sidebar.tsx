@@ -3,10 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import ProfileImageUpload from './profile-image-upload';
-<<<<<<< HEAD
 import UserNav from './user-nav';
-=======
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 
 interface NavItem {
   title: string;
@@ -39,11 +36,7 @@ export default function Sidebar({ user, navItems }: SidebarProps) {
         <ProfileImageUpload
           currentImage={currentImage}
           onImageChange={handleImageChange}
-<<<<<<< HEAD
           userName="EDILSON CRIPTO"
-=======
-          userName="Edilson Matos"
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
         />
       </div>
       <nav className="flex-1">
@@ -70,13 +63,10 @@ export default function Sidebar({ user, navItems }: SidebarProps) {
           })}
         </ul>
       </nav>
-<<<<<<< HEAD
       <UserNav
         userName="Edilson MM"
         userImage="/images/avatar.png.png"
       />
-=======
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
       {/* Pode adicionar um rodapé à sidebar aqui, se necessário */}
     </aside>
   );

@@ -2,11 +2,7 @@
 import { useCallback, useState, useEffect, useRef, useMemo } from "react";
 import { Play, RefreshCw, AlertTriangle, CheckCircle2, Clock } from 'lucide-react'; // Ícones
 import { useArbitrageWebSocket } from './useArbitrageWebSocket';
-<<<<<<< HEAD
 import { MaxSpreadCell } from './MaxSpreadCell'; // Importar o novo componente
-=======
-import MaxSpreadCell from './MaxSpreadCell'; // Importar o novo componente
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 import React from 'react';
 
 const EXCHANGES = [
@@ -126,11 +122,7 @@ const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSp
               {opportunity.spread.toFixed(2)}%
             </td>
             <td className="py-4 px-6 whitespace-nowrap text-sm">
-<<<<<<< HEAD
               <MaxSpreadCell maxSpread={opportunity.maxSpread24h || 0} />
-=======
-              <MaxSpreadCell symbol={opportunity.symbol} />
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
             </td>
             <td className="py-4 px-6 whitespace-nowrap text-sm">{calcularLucro(opportunity.spread)}</td>
             <td className="py-4 px-6 whitespace-nowrap text-center text-sm">
@@ -210,24 +202,6 @@ export default function ArbitrageTable() {
     // 1. Mapeia as novas oportunidades recebidas do WebSocket
     const newOpportunities = opportunitiesRaw
       .map((opp): Opportunity | null => {
-<<<<<<< HEAD
-        // Confia nos dados do backend, sem recálculo de spread ou normalização de preços.
-        if (opp.buyAt.price <= 0) return null;
-
-        const newOpp: Opportunity = {
-          symbol: opp.baseSymbol,
-          compraExchange: `${opp.buyAt.exchange} (${opp.buyAt.marketType})`,
-          vendaExchange: `${opp.sellAt.exchange} (${opp.sellAt.marketType})`,
-          compraPreco: opp.buyAt.price,
-          vendaPreco: opp.sellAt.price,
-          spread: opp.profitPercentage,
-          lucroEstimado: ((opp.profitPercentage / 100) * amount).toFixed(2),
-          status: 'available',
-          tipo: opp.buyAt.exchange !== opp.sellAt.exchange ? 'inter' : 'intra',
-          directionApi: opp.arbitrageType.startsWith('spot_') ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT',
-          maxSpread24h: null, // Será preenchido pelo MaxSpreadCell
-        };
-=======
         if (opp.buyAt.price <= 0) return null;
 
         // Calcula o spread usando a fórmula correta: ((Futures - Spot) / Spot) × 100
@@ -244,7 +218,6 @@ export default function ArbitrageTable() {
           timestamp: opp.timestamp,
         };
 
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
         return newOpp;
       })
       .filter((o): o is Opportunity => o !== null);

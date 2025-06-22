@@ -1,13 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 
-<<<<<<< HEAD
-export const dynamic = 'force-dynamic';
-
-// Temporariamente retornando array vazio para limpar os gráficos
-export async function GET(req: NextRequest) {
-  return NextResponse.json([]);
-=======
 const prisma = new PrismaClient();
 
 export async function GET(req: NextRequest) {
@@ -90,5 +83,4 @@ export async function GET(req: NextRequest) {
     console.error('Error fetching spread history:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 } 

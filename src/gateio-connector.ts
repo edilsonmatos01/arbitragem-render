@@ -59,13 +59,11 @@ export class GateIoConnector {
     }
 
     public connect(pairs: string[]): void {
-<<<<<<< HEAD
         if (!pairs || pairs.length === 0) {
             console.warn(`[${this.marketIdentifier}] Lista de pares vazia ou inválida`);
             return;
         }
-=======
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
+        
         this.subscriptionQueue = pairs.map(p => p.replace('/', '_')); // Gate.io usa '_'
 
         if (this.ws) {
@@ -152,15 +150,11 @@ export class GateIoConnector {
         this.stopPinging();
         this.ws = null;
         if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
-<<<<<<< HEAD
         
         // Só reconecta se há pares na fila
         if (this.subscriptionQueue && this.subscriptionQueue.length > 0) {
             this.reconnectTimeout = setTimeout(() => this.connect(this.subscriptionQueue.map(p => p.replace('_','/'))), 5000);
         }
-=======
-        this.reconnectTimeout = setTimeout(() => this.connect(this.subscriptionQueue.map(p => p.replace('_','/'))), 5000);
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
     }
 
     private onError(error: Error): void {
@@ -184,7 +178,6 @@ export class GateIoConnector {
             this.pingInterval = null;
         }
     }
-<<<<<<< HEAD
 
     public disconnect(): void {
         console.log(`[${this.marketIdentifier}] Desconectando...`);
@@ -199,6 +192,4 @@ export class GateIoConnector {
             this.ws = null;
         }
     }
-=======
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
 } 

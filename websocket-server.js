@@ -1,5 +1,4 @@
 "use strict";
-<<<<<<< HEAD
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -71,7 +70,7 @@ wss.on('connection', function (ws, req) {
     customWs.lastPing = Date.now();
     ws.on('pong', heartbeat.bind(customWs));
     clients.add(ws);
-    console.log("[WebSocket] Nova conex\u00E3o estabelecida. Total de clientes: ".concat(clients.size));
+    console.log("[WebSocket] Nova conexão estabelecida. Total de clientes: ".concat(clients.size));
     ws.on('message', function (message) {
         try {
             var data = JSON.parse(message.toString());
@@ -113,10 +112,10 @@ wss.on('close', function () {
 // Função para broadcast
 function broadcast(data) {
     try {
-        var message_1 = JSON.stringify(data);
+        var message = JSON.stringify(data);
         clients.forEach(function (client) {
             if (client.readyState === WebSocket.OPEN) {
-                client.send(message_1);
+                client.send(message);
             }
         });
     }
@@ -198,194 +197,98 @@ function startFeeds() {
 // Função para encontrar e transmitir oportunidades de arbitragem
 function findAndBroadcastArbitrage() {
     return __awaiter(this, void 0, void 0, function () {
-        var pairs_2, exchange, _i, pairs_1, pair, gateioSpotData, mexcFuturesData, profitPercentage, opportunity;
-        var _a, _b;
-        return __generator(this, function (_c) {
-            try {
-                pairs_2 = new Set();
-                for (exchange in marketPrices) {
-                    Object.keys(marketPrices[exchange]).forEach(function (pair) { return pairs_2.add(pair); });
-                }
-                // Verifica oportunidades para cada par
-                for (_i = 0, pairs_1 = pairs_2; _i < pairs_1.length; _i++) {
-                    pair = pairs_1[_i];
-                    gateioSpotData = (_a = marketPrices['GATEIO_SPOT']) === null || _a === void 0 ? void 0 : _a[pair];
-                    mexcFuturesData = (_b = marketPrices['MEXC_FUTURES']) === null || _b === void 0 ? void 0 : _b[pair];
-                    if (gateioSpotData && mexcFuturesData) {
-                        profitPercentage = ((mexcFuturesData.bestBid - gateioSpotData.bestAsk) / gateioSpotData.bestAsk) * 100;
-                        if (profitPercentage > MIN_PROFIT_PERCENTAGE) {
-                            opportunity = {
+        var now, opportunities, _i, _a, symbol, gateioSpotData, mexcFuturesData, spotAsk, spotBid, futuresAsk, futuresBid, spotToFuturesSpread, futuresToSpotSpread, spotToFuturesOpportunity, futuresToSpotOpportunity, error_1;
+        return __generator(this, function (_b) {
+            switch (_b.label) {
+                case 0:
+                    now = Date.now();
+                    opportunities = [];
+                    _b.label = 1;
+                case 1:
+                    _b.trys.push([1, 3, , 4]);
+                    // Verifica os preços para cada par de moedas
+                    for (_i = 0, _a = Object.keys(marketPrices['GATEIO_SPOT'] || {}); _i < _a.length; _i++) {
+                        symbol = _a[_i];
+                        gateioSpotData = marketPrices['GATEIO_SPOT'][symbol];
+                        mexcFuturesData = marketPrices['MEXC_FUTURES'][symbol];
+                        // Verifica se temos dados válidos e recentes (últimos 10 segundos)
+                        if (!gateioSpotData || !mexcFuturesData ||
+                            now - gateioSpotData.timestamp > 10000 ||
+                            now - mexcFuturesData.timestamp > 10000) {
+                            continue;
+                        }
+                        spotAsk = gateioSpotData.bestAsk;
+                        spotBid = gateioSpotData.bestBid;
+                        futuresAsk = mexcFuturesData.bestAsk;
+                        futuresBid = mexcFuturesData.bestBid;
+                        // Calcula spreads
+                        spotToFuturesSpread = ((futuresBid - spotAsk) / spotAsk) * 100;
+                        futuresToSpotSpread = ((spotBid - futuresAsk) / futuresAsk) * 100;
+                        // Verifica oportunidades de arbitragem
+                        if (spotToFuturesSpread > MIN_PROFIT_PERCENTAGE) {
+                            spotToFuturesOpportunity = {
                                 type: 'arbitrage',
-                                baseSymbol: pair,
-                                profitPercentage: profitPercentage,
+                                baseSymbol: symbol,
+                                profitPercentage: spotToFuturesSpread,
                                 buyAt: {
-                                    exchange: 'GATEIO_SPOT',
-                                    price: gateioSpotData.bestAsk,
+                                    exchange: 'GATEIO',
+                                    price: spotAsk,
                                     marketType: 'spot'
                                 },
                                 sellAt: {
-                                    exchange: 'MEXC_FUTURES',
-                                    price: mexcFuturesData.bestBid,
+                                    exchange: 'MEXC',
+                                    price: futuresBid,
                                     marketType: 'futures'
                                 },
                                 arbitrageType: 'spot_futures_inter_exchange',
-                                timestamp: Date.now()
+                                timestamp: now
                             };
-                            broadcastOpportunity(opportunity);
+                            opportunities.push(spotToFuturesOpportunity);
+                            broadcastOpportunity(spotToFuturesOpportunity);
+                        }
+                        if (futuresToSpotSpread > MIN_PROFIT_PERCENTAGE) {
+                            futuresToSpotOpportunity = {
+                                type: 'arbitrage',
+                                baseSymbol: symbol,
+                                profitPercentage: futuresToSpotSpread,
+                                buyAt: {
+                                    exchange: 'MEXC',
+                                    price: futuresAsk,
+                                    marketType: 'futures'
+                                },
+                                sellAt: {
+                                    exchange: 'GATEIO',
+                                    price: spotBid,
+                                    marketType: 'spot'
+                                },
+                                arbitrageType: 'futures_spot_inter_exchange',
+                                timestamp: now
+                            };
+                            opportunities.push(futuresToSpotOpportunity);
+                            broadcastOpportunity(futuresToSpotOpportunity);
                         }
                     }
-                }
+                    if (!(opportunities.length > 0)) return [3 /*break*/, 3];
+                    return [4 /*yield*/, prisma.arbitrageOpportunity.createMany({
+                            data: opportunities.map(function (opp) { return ({
+                                symbol: opp.baseSymbol,
+                                profitPercentage: opp.profitPercentage,
+                                buyExchange: opp.buyAt.exchange,
+                                buyPrice: opp.buyAt.price,
+                                buyMarketType: opp.buyAt.marketType,
+                                sellExchange: opp.sellAt.exchange,
+                                sellPrice: opp.sellAt.price,
+                                sellMarketType: opp.sellAt.marketType,
+                                arbitrageType: opp.arbitrageType,
+                                timestamp: new Date(opp.timestamp)
+                            }); })
+                        })];
+                case 2:
+                    _b.sent();
+                    _b.label = 3;
+                case 3: return [3 /*break*/, 4];
+                case 4: return [2 /*return*/];
             }
-            catch (error) {
-                console.error('[Arbitragem] Erro ao buscar oportunidades:', error);
-            }
-            return [2 /*return*/];
         });
     });
 }
-=======
-Object.defineProperty(exports, "__esModule", { value: true });
-const ws_1 = require("ws");
-const http_1 = require("http");
-const gateio_connector_js_1 = require("./src/gateio-connector.js");
-const mexc_connector_js_1 = require("./src/mexc-connector.js");
-const PORT = process.env.PORT || 3001;
-// Restaurado para o valor de produção: apenas oportunidades com lucro > 0.1% serão enviadas.
-const MIN_PROFIT_PERCENTAGE = 0.1;
-// Estrutura de dados central para armazenar os preços de todos os mercados.
-let marketPrices = {};
-// Lista de pares a serem monitorados. Será preenchida dinamicamente.
-let targetPairs = [];
-const server = (0, http_1.createServer)();
-const wss = new ws_1.WebSocketServer({ server });
-let clients = [];
-wss.on('connection', (ws, req) => {
-    const clientIp = req.socket.remoteAddress || req.headers['x-forwarded-for'];
-    clients.push(ws);
-    console.log(`[WS Server] Cliente conectado: ${clientIp}. Total: ${clients.length}`);
-    // Envia o estado atual de preços para o novo cliente, se houver
-    if (Object.keys(marketPrices).length > 0) {
-        ws.send(JSON.stringify({ type: 'full_book', data: marketPrices }));
-    }
-    ws.on('close', () => {
-        clients = clients.filter(c => c !== ws);
-        console.log(`[WS Server] Cliente desconectado: ${clientIp}. Total: ${clients.length}`);
-    });
-});
-function broadcast(data) {
-    const serializedData = JSON.stringify(data);
-    clients.forEach(client => {
-        if (client.readyState === ws_1.WebSocket.OPEN) {
-            client.send(serializedData);
-        }
-    });
-}
-/**
- * Envia uma única oportunidade de arbitragem para todos os clientes.
- * @param opportunity - O objeto da oportunidade de arbitragem.
- */
-function broadcastOpportunity(opportunity) {
-    // O frontend espera o tipo 'arbitrage', então garantimos que ele seja enviado assim.
-    const message = { ...opportunity, type: 'arbitrage' };
-    broadcast(message);
-    console.log(`[Broadcast] Oportunidade enviada: ${opportunity.baseSymbol} ${opportunity.profitPercentage.toFixed(2)}%`);
-}
-/**
- * A função principal que varre os preços em busca de oportunidades de arbitragem.
- * Agora é chamada em um intervalo fixo.
- */
-function findAndBroadcastArbitrage() {
-    const opportunities = [];
-    // Identificadores exatos que estamos usando
-    const gateioSpotIdentifier = 'GATEIO_SPOT';
-    const mexcFuturesIdentifier = 'MEXC_FUTURES';
-    const gateioPrices = marketPrices[gateioSpotIdentifier];
-    const mexcPrices = marketPrices[mexcFuturesIdentifier];
-    // Se um dos feeds de preço não estiver pronto, não há o que fazer.
-    if (!gateioPrices || !mexcPrices)
-        return;
-    // Itera sobre todos os pares que temos em comum (ou todos da Gate.io como base)
-    for (const symbol of targetPairs) {
-        const spotPriceData = gateioPrices[symbol];
-        const futuresPriceData = mexcPrices[symbol];
-        // Precisa ter preço para o mesmo símbolo em ambas as exchanges
-        if (spotPriceData && futuresPriceData) {
-            // A estratégia é: Comprar Spot (Gate.io), Vender Futuros (MEXC)
-            const buyPrice = spotPriceData.bestAsk; // O preço que pagamos para comprar na Gate.io
-            const sellPrice = futuresPriceData.bestBid; // O preço que recebemos para vender na MEXC
-            if (buyPrice > 0 && sellPrice > 0) {
-                const profitPercentage = ((sellPrice - buyPrice) / buyPrice) * 100;
-                if (profitPercentage >= MIN_PROFIT_PERCENTAGE) {
-                    const opportunity = {
-                        type: 'arbitrage',
-                        baseSymbol: symbol,
-                        profitPercentage: profitPercentage,
-                        buyAt: {
-                            exchange: gateioSpotIdentifier,
-                            price: buyPrice,
-                            marketType: 'spot'
-                        },
-                        sellAt: {
-                            exchange: mexcFuturesIdentifier,
-                            price: sellPrice,
-                            marketType: 'futures'
-                        },
-                        arbitrageType: `spot_futures_inter_exchange`,
-                        timestamp: Date.now()
-                    };
-                    opportunities.push(opportunity);
-                }
-            }
-        }
-    }
-    if (opportunities.length > 0) {
-        // Ordena por lucratividade e envia
-        opportunities.sort((a, b) => b.profitPercentage - a.profitPercentage);
-        console.log(`Encontradas ${opportunities.length} oportunidades (Spot->Futures). Transmitindo...`);
-        // Envia cada oportunidade individualmente
-        opportunities.forEach(op => {
-            broadcastOpportunity(op);
-        });
-    }
-}
-async function startFeeds() {
-    console.log("Iniciando feeds de dados...");
-    const gateIoSpotConnector = new gateio_connector_js_1.GateIoConnector('GATEIO_SPOT', marketPrices);
-    // O conector da MEXC agora também precisa da referência a marketPrices.
-    // O segundo argumento é um callback que é chamado quando a conexão é estabelecida,
-    // que usaremos para fazer a inscrição nos pares.
-    const mexcConnector = new mexc_connector_js_1.MexcConnector(marketPrices, () => {
-        console.log("Conexão com MEXC estabelecida. Inscrevendo-se nos pares...");
-        mexcConnector.subscribe(targetPairs);
-    });
-    try {
-        const spotPairs = await gateIoSpotConnector.getTradablePairs();
-        console.log(`Gate.io: Encontrados ${spotPairs.length} pares SPOT negociáveis.`);
-        // Usamos os pares da Gate.io como nossa lista principal de alvos.
-        targetPairs = spotPairs;
-        // Inicia as conexões
-        gateIoSpotConnector.connect(targetPairs);
-        mexcConnector.connect(); // A inscrição será feita no callback onConnected
-        console.log(`Monitorando ${targetPairs.length} pares em Gate.io (Spot) e MEXC (Futures).`);
-        // Inicia o loop de busca por arbitragem
-        setInterval(findAndBroadcastArbitrage, 5000); // Executa a cada 5 segundos para não sobrecarregar
-        // A transmissão do livro completo pode ser útil para depuração no frontend
-        // setInterval(() => {
-        //     broadcast({ type: 'full_book', data: marketPrices });
-        // }, 10000); // A cada 10 segundos
-    }
-    catch (error) {
-        console.error("Erro fatal ao iniciar os feeds:", error);
-    }
-}
-server.listen(PORT, () => {
-    console.log(`Servidor WebSocket rodando na porta ${PORT}`);
-    startFeeds();
-});
-process.on('SIGINT', () => {
-    console.log("Desligando o servidor...");
-    wss.close();
-    server.close();
-    process.exit();
-});
->>>>>>> bd60c0d217578f788aaefc3831a9600292f43cfc
