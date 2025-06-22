@@ -41,16 +41,14 @@ interface InterExchangeOpportunityFromAPI { // Interface para dados crus da API 
 
 // Interface para as oportunidades formatadas para a tabela
 interface Opportunity {
-  symbol: string; // Par (ex: BTC/USDT)
+  symbol: string;
   compraExchange: string;
   vendaExchange: string;
   compraPreco: number;
   vendaPreco: number;
-  spread: number; // Em porcentagem, ex: 0.5 para 0.5%
-  lucroEstimado?: string; // Calculado no frontend
-  status?: string; // Calculado no frontend (ex: 'available')
+  spread: number;
+  status?: string;
   tipo: 'intra' | 'inter';
-  // Campos adicionais para manter consistência ou para lógica futura
   directionApi?: 'FUTURES_TO_SPOT' | 'SPOT_TO_FUTURES';
   fundingRateApi?: string;
   maxSpread24h: number | null; 
@@ -124,7 +122,6 @@ const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSp
             <td className="py-4 px-6 whitespace-nowrap text-sm">
               <MaxSpreadCell symbol={opportunity.symbol} />
             </td>
-            <td className="py-4 px-6 whitespace-nowrap text-sm">{calcularLucro(opportunity.spread)}</td>
             <td className="py-4 px-6 whitespace-nowrap text-center text-sm">
               <button 
                 onClick={() => handleExecuteArbitrage(opportunity as Opportunity)}
@@ -162,7 +159,7 @@ export default function ArbitrageTable() {
   
   const handleExecuteArbitrage = (opportunity: Opportunity) => {
     setSuccessMessage(`Sucesso! Arbitragem para ${opportunity.symbol} (Spread: ${Math.abs(opportunity.spread).toFixed(4)}%) executada.`);
-    console.log("Executar arbitragem:", opportunity, "Valor aportado:", amount);
+    console.log("Executar arbitragem:", opportunity);
     setTimeout(() => setSuccessMessage(null), 5000);
   };
 
@@ -395,13 +392,12 @@ export default function ArbitrageTable() {
           <table className="min-w-full divide-y divide-gray-700">
             <thead className="bg-gray-800">
               <tr>
-                <th scope="col" className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Par</th>
-                <th scope="col" className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Compra</th>
-                <th scope="col" className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Venda</th>
-                <th scope="col" className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Spread %</th>
-                <th scope="col" className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Spread Máximo (24h)</th>
-                <th scope="col" className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Lucro Estimado (USD)</th>
-                <th scope="col" className="py-3 px-6 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Ações</th>
+                <th className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Par</th>
+                <th className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Compra</th>
+                <th className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Venda</th>
+                <th className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Spread %</th>
+                <th className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Spread Máximo (24h)</th>
+                <th className="py-3 px-6 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
