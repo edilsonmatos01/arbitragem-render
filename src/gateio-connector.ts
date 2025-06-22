@@ -245,4 +245,10 @@ export class GateIoConnector {
             this.subscribe(symbols);
         }
     }
+
+    // Método público para desconectar
+    public disconnect() {
+        console.log(`[${this.identifier}] Desconectando...`);
+        this.cleanup();
+    }
 } 

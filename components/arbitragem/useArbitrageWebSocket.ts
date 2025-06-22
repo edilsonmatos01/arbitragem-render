@@ -151,74 +151,147 @@ const getInitialOpportunities = (): ArbitrageOpportunity[] => [
 ];
 
 export function useArbitrageWebSocket() {
-  const [opportunities, setOpportunities] = useState<ArbitrageOpportunity[]>(() => getInitialOpportunities());
+  const [opportunities, setOpportunities] = useState<ArbitrageOpportunity[]>([]);
   const [livePrices, setLivePrices] = useState<LivePrices>({});
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const ws = useRef<WebSocket | null>(null);
+  const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttempts = useRef(0);
+  const maxReconnectAttempts = 5;
   const isMounted = useRef(false);
 
-  // Função para gerar dados atualizados
-  const generateUpdatedData = (): ArbitrageOpportunity => {
-    const symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT', 'ADA/USDT', 'DOT/USDT'];
-    const exchanges = ['GATEIO', 'MEXC'];
-    const marketTypes = ['spot', 'futures'] as const;
+  const getWebSocketURL = () => {
+    if (typeof window === 'undefined') return '';
+
+    // Para dados reais, usar a URL da aplicação atual
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    const wsURL = `${protocol}//${host}`;
     
-    const basePrice = Math.random() * 100000;
-    const spread = Math.random() * 2;
+    console.log(`🔗 [WebSocket] Conectando para dados REAIS: ${wsURL}`);
+    return wsURL;
+  };
+
+  const connect = () => {
+    if (reconnectTimeout.current) {
+      clearTimeout(reconnectTimeout.current);
+    }
     
-    return {
-      type: 'arbitrage',
-      baseSymbol: symbols[Math.floor(Math.random() * symbols.length)],
-      profitPercentage: Number(spread.toFixed(2)),
-      buyAt: {
-        exchange: exchanges[Math.floor(Math.random() * exchanges.length)],
-        price: Number(basePrice.toFixed(2)),
-        marketType: marketTypes[Math.floor(Math.random() * marketTypes.length)]
-      },
-      sellAt: {
-        exchange: exchanges[Math.floor(Math.random() * exchanges.length)],
-        price: Number((basePrice * (1 + spread/100)).toFixed(2)),
-        marketType: marketTypes[Math.floor(Math.random() * marketTypes.length)]
-      },
-      arbitrageType: 'spot_futures_inter_exchange',
-      timestamp: Date.now(),
-      maxSpread24h: Number((spread * 1.5).toFixed(2))
-    };
+    if (ws.current?.readyState === WebSocket.OPEN || !isMounted.current) return;
+    
+    if (reconnectAttempts.current >= maxReconnectAttempts) {
+      console.error('❌ [WebSocket] Limite de tentativas atingido - usando dados de fallback');
+      return;
+    }
+
+    const wsURL = getWebSocketURL();
+    if (!wsURL) {
+      console.error('❌ [WebSocket] URL não disponível');
+      return;
+    }
+
+    try {
+      if (ws.current) {
+        ws.current.close();
+        ws.current = null;
+      }
+
+      ws.current = new WebSocket(wsURL);
+      console.log(`🚀 [WebSocket] Tentativa ${reconnectAttempts.current + 1}/${maxReconnectAttempts} - Conectando...`);
+
+      ws.current.onopen = () => {
+        console.log('✅ [WebSocket] Conectado! Aguardando dados REAIS das exchanges...');
+        reconnectAttempts.current = 0;
+      };
+
+      ws.current.onmessage = (event) => {
+        if (!isMounted.current) return;
+        
+        try {
+          const message = JSON.parse(event.data);
+          
+          if (message.type === 'arbitrage') {
+            console.log(`📊 [WebSocket] Oportunidade REAL recebida: ${message.baseSymbol} - ${message.profitPercentage.toFixed(2)}%`);
+            
+            // Adiciona timestamp se não existir
+            const opportunityWithTimestamp = {
+              ...message,
+              timestamp: message.timestamp || Date.now()
+            };
+            
+            setOpportunities(prev => {
+              // Remove oportunidades antigas do mesmo símbolo para evitar duplicatas
+              const filtered = prev.filter(opp => opp.baseSymbol !== message.baseSymbol);
+              return [opportunityWithTimestamp, ...filtered].slice(0, 50); // Mantém 50 oportunidades
+            });
+          }
+          
+          if (message.type === 'price-update') {
+            const { symbol, marketType, bestAsk, bestBid } = message;
+            console.log(`💰 [WebSocket] Preço atualizado: ${symbol} ${marketType} - Ask: ${bestAsk}, Bid: ${bestBid}`);
+            
+            setLivePrices(prev => ({
+              ...prev,
+              [symbol]: {
+                ...prev[symbol],
+                [marketType]: { bestAsk, bestBid }
+              }
+            }));
+          }
+
+          if (message.type === 'connection') {
+            console.log('🤝 [WebSocket] Mensagem de boas-vindas:', message.message);
+          }
+          
+        } catch (error) {
+          console.error('❌ [WebSocket] Erro ao processar mensagem:', error);
+        }
+      };
+
+      ws.current.onerror = (error) => {
+        console.error('❌ [WebSocket] Erro de conexão:', error);
+      };
+
+      ws.current.onclose = (event) => {
+        console.log(`🔌 [WebSocket] Conexão fechada - Código: ${event.code}`);
+        ws.current = null;
+        
+        if (isMounted.current && event.code !== 1000) {
+          reconnectAttempts.current++;
+          const delay = Math.min(2000 * Math.pow(1.5, reconnectAttempts.current), 30000);
+          console.log(`🔄 [WebSocket] Reconectando em ${delay/1000}s... (${reconnectAttempts.current}/${maxReconnectAttempts})`);
+          reconnectTimeout.current = setTimeout(connect, delay);
+        }
+      };
+      
+    } catch (error) {
+      console.error('❌ [WebSocket] Erro ao criar conexão:', error);
+    }
   };
 
   useEffect(() => {
     isMounted.current = true;
-    console.log('📊 [ARBITRAGEM] Sistema iniciado com dados estáticos funcionais');
-    console.log('✅ [ARBITRAGEM] Conexão simulada estabelecida - dados sendo atualizados');
+    console.log('🚀 [WebSocket] Iniciando sistema de dados REAIS...');
+    console.log('📡 [WebSocket] Conectando com Gate.io e MEXC para oportunidades reais...');
     
-    // Atualizar dados periodicamente
-    intervalRef.current = setInterval(() => {
-      if (isMounted.current) {
-        try {
-          const newOpportunity = generateUpdatedData();
-          setOpportunities(prev => {
-            const updated = [newOpportunity, ...prev];
-            return updated.slice(0, 20); // Manter 20 itens
-          });
-          console.log('🔄 [ARBITRAGEM] Dados atualizados:', newOpportunity.baseSymbol, newOpportunity.profitPercentage + '%');
-        } catch (error) {
-          console.error('❌ [ARBITRAGEM] Erro ao atualizar dados:', error);
-        }
-      }
-    }, UPDATE_INTERVAL);
+    connect();
 
     return () => {
+      console.log('🧹 [WebSocket] Limpando conexões...');
       isMounted.current = false;
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+      
+      if (reconnectTimeout.current) {
+        clearTimeout(reconnectTimeout.current);
       }
-      console.log('🧹 [ARBITRAGEM] Limpeza concluída');
+      
+      if (ws.current) {
+        ws.current.close(1000, 'Component unmounted');
+      }
     };
   }, []);
 
   return { 
     opportunities, 
     livePrices, 
-    ws: null
+    ws: ws.current 
   };
 } 
