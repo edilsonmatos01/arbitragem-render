@@ -166,7 +166,7 @@ export class GateIoConnector {
 
         } catch (error) {
             console.error(`[${this.identifier}] Erro ao conectar:`, error);
-            this.handleDisconnect(`Erro de conexão: ${error.message}`);
+            this.handleDisconnect(`Erro de conexão: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
         }
     }
 
