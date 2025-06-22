@@ -1,9 +1,9 @@
 # Exported from Render on 2025-06-10T21:42:54Z
 databases:
-- name: arbitragem-banco
+- name: arbitragem-db
   databaseName: arbitragem_banco
   user: arbitragem_banco_user
-  plan: free
+  plan: starter
   region: oregon
   ipAllowList:
   - source: 0.0.0.0/0
@@ -13,74 +13,32 @@ databases:
 
 services:
 - type: web
-  name: robo-de-arbitragem
+  name: arbitragem-render-03
   env: node
   region: oregon
   plan: free
-  buildCommand: npm install && npm install typescript @types/node --save && npm run build && npm run prisma:deploy
+  buildCommand: npm install && npx prisma generate && npm run build
   startCommand: npm start
   envVars:
-    - key: NODE_ENV
-      value: production
     - key: DATABASE_URL
       fromDatabase:
-        name: arbitragem-banco
+        name: arbitragem-db
         property: connectionString
-    - key: NEXT_PUBLIC_WEBSOCKET_URL
-      value: wss://robo-de-arbitragem-tracker.onrender.com
-    - key: BINANCE_API_KEY
-      sync: false
-    - key: BINANCE_SECRET
-      sync: false
-    - key: MEXC_API_KEY
-      sync: false
-    - key: MEXC_SECRET
-      sync: false
-    - key: GATE_API_KEY
-      sync: false
-    - key: GATE_SECRET
-      sync: false
-  healthCheckPath: /
-  autoDeploy: true
-  branch: default
-
-- type: web
-  name: robo-de-arbitragem-tracker
-  env: node
-  region: oregon
-  plan: free
-  buildCommand: npm install && npm run build:tracker
-  startCommand: npm run start:tracker
-  envVars:
     - key: NODE_ENV
       value: production
-    - key: DATABASE_URL
-      fromDatabase:
-        name: arbitragem-banco
-        property: connectionString
-    - key: BINANCE_API_KEY
-      sync: false
-    - key: BINANCE_SECRET
-      sync: false
-    - key: MEXC_API_KEY
-      sync: false
-    - key: MEXC_SECRET
-      sync: false
-    - key: GATE_API_KEY
-      sync: false
-    - key: GATE_SECRET
-      sync: false
-  autoDeploy: true
-  branch: default
 
 - type: cron
   name: spread-monitor
   env: node
   schedule: "*/30 * * * *"  # Roda a cada 30 minutos
-  buildCommand: npm install && npx prisma generate
-  startCommand: node scripts/spread-monitor.js
+  buildCommand: npm install && npx prisma generate && npm run build:cron
+  startCommand: npm run start:cron
   instanceType: starter  # Instância mais básica (512MB RAM, 0.5 CPU)
   envVars:
+    - key: DATABASE_URL
+      fromDatabase:
+        name: arbitragem-db
+        property: connectionString
     - key: NODE_ENV
       value: production
     - key: GATEIO_API_KEY
@@ -91,9 +49,5 @@ services:
       sync: false
     - key: MEXC_API_SECRET
       sync: false
-    - key: DATABASE_URL
-      fromDatabase:
-        name: arbitragem-banco
-        property: connectionString
 
 version: "1"
