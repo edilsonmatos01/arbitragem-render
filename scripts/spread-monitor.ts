@@ -14,25 +14,30 @@ const handlePriceUpdate = (data: any) => {
   console.log(`[${data.identifier}] Atualização de preço para ${data.symbol}`);
 };
 
+// Função de callback para conexão
+const handleConnected = () => {
+  console.log('Conexão estabelecida com sucesso');
+};
+
 // Inicializa os conectores com as credenciais do ambiente
 const gateioSpot = new GateIoConnector('GATEIO_SPOT', handlePriceUpdate);
-const mexcSpot = new MexcConnector('MEXC_SPOT', handlePriceUpdate);
-const gateioFutures = new GateIoFuturesConnector('GATEIO_FUTURES', handlePriceUpdate);
-const mexcFutures = new MexcFuturesConnector('MEXC_FUTURES', handlePriceUpdate);
-
-// Lista de pares a serem monitorados
-const TARGET_PAIRS = [
-  'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'DOGE/USDT', 'SOL/USDT', 'PEPE/USDT', 
-  'UNI/USDT', 'SUI/USDT', 'ONDO/USDT', 'WLD/USDT', 'FET/USDT', 'ARKM/USDT', 
-  'INJ/USDT', 'TON/USDT', 'OP/USDT', 'XRP/USDT', 'KAS/USDT', 'VR/USDT', 
-  'G7/USDT', 'EDGE/USDT', 'ADA/USDT', 'AVAX/USDT', 'DOT/USDT', 'MATIC/USDT'
-];
+const mexcSpot = new MexcConnector('MEXC_SPOT', handlePriceUpdate, handleConnected);
+const gateioFutures = new GateIoFuturesConnector('GATEIO_FUTURES', handlePriceUpdate, handleConnected);
+const mexcFutures = new MexcFuturesConnector('MEXC_FUTURES', handlePriceUpdate, handleConnected);
 
 let isCronRunning = false;
 
 interface TickerData {
   bestAsk: number;
   bestBid: number;
+}
+
+interface TradableSymbol {
+  baseSymbol: string;
+  gateioSymbol: string;
+  mexcSymbol: string;
+  gateioFuturesSymbol: string;
+  mexcFuturesSymbol: string;
 }
 
 async function monitorAndStore() {
@@ -46,7 +51,11 @@ async function monitorAndStore() {
     console.log(`[${new Date().toISOString()}] Iniciando monitoramento...`);
     
     // Obtém lista de símbolos negociáveis da tabela TradableSymbol
-    const symbols = await prisma.tradableSymbol.findMany();
+    const symbols = await prisma.$queryRaw<TradableSymbol[]>`
+      SELECT "baseSymbol", "gateioSymbol", "mexcSymbol", "gateioFuturesSymbol", "mexcFuturesSymbol"
+      FROM "TradableSymbol"
+      WHERE "isActive" = true
+    `;
     
     for (const symbol of symbols) {
       try {
@@ -69,34 +78,49 @@ async function monitorAndStore() {
           continue;
         }
 
-        // Calcula spreads
+        // Calcula spreads com verificação de tipo
         const gateioSpotToMexcFutures = calculateSpread(
-          Number(gateioSpotPrice),
-          Number(mexcFuturesPrice)
+          gateioSpotPrice ? Number(gateioSpotPrice) : 0,
+          mexcFuturesPrice ? Number(mexcFuturesPrice) : 0
         );
 
         const mexcSpotToGateioFutures = calculateSpread(
-          Number(mexcSpotPrice),
-          Number(gateioFuturesPrice)
+          mexcSpotPrice ? Number(mexcSpotPrice) : 0,
+          gateioFuturesPrice ? Number(gateioFuturesPrice) : 0
         );
 
-        // Salva os dados no banco
-        await prisma.priceHistory.create({
-          data: {
-            symbol: symbol.baseSymbol,
-            timestamp: new Date(),
-            gateioSpotAsk: Number(gateioSpotPrice),
-            gateioSpotBid: Number(gateioSpotPrice),
-            mexcSpotAsk: Number(mexcSpotPrice),
-            mexcSpotBid: Number(mexcSpotPrice),
-            gateioFuturesAsk: Number(gateioFuturesPrice),
-            gateioFuturesBid: Number(gateioFuturesPrice),
-            mexcFuturesAsk: Number(mexcFuturesPrice),
-            mexcFuturesBid: Number(mexcFuturesPrice),
-            gateioSpotToMexcFuturesSpread: gateioSpotToMexcFutures,
-            mexcSpotToGateioFuturesSpread: mexcSpotToGateioFutures
-          }
-        });
+        // Salva os dados no banco com verificação de tipo
+        await prisma.$executeRaw`
+          INSERT INTO "PriceHistory" (
+            "id",
+            "symbol",
+            "timestamp",
+            "gateioSpotAsk",
+            "gateioSpotBid",
+            "mexcSpotAsk",
+            "mexcSpotBid",
+            "gateioFuturesAsk",
+            "gateioFuturesBid",
+            "mexcFuturesAsk",
+            "mexcFuturesBid",
+            "gateioSpotToMexcFuturesSpread",
+            "mexcSpotToGateioFuturesSpread"
+          ) VALUES (
+            gen_random_uuid(),
+            ${symbol.baseSymbol},
+            NOW(),
+            ${gateioSpotPrice ? Number(gateioSpotPrice) : 0},
+            ${gateioSpotPrice ? Number(gateioSpotPrice) : 0},
+            ${mexcSpotPrice ? Number(mexcSpotPrice) : 0},
+            ${mexcSpotPrice ? Number(mexcSpotPrice) : 0},
+            ${gateioFuturesPrice ? Number(gateioFuturesPrice) : 0},
+            ${gateioFuturesPrice ? Number(gateioFuturesPrice) : 0},
+            ${mexcFuturesPrice ? Number(mexcFuturesPrice) : 0},
+            ${mexcFuturesPrice ? Number(mexcFuturesPrice) : 0},
+            ${gateioSpotToMexcFutures},
+            ${mexcSpotToGateioFutures}
+          )
+        `;
 
         console.log(`[MONITOR] Dados salvos para ${symbol.baseSymbol}`);
       } catch (symbolError) {

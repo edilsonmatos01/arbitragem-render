@@ -26,7 +26,7 @@
     "isolatedModules": false,
     "jsx": "preserve",
     "baseUrl": ".",
-    "rootDir": ".",
+    "rootDirs": [".", "src", "scripts"],
     "paths": {
       "@/*": ["./*"]
     }
