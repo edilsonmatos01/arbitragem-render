@@ -18,7 +18,8 @@
     "fix:migrations": "node scripts/fix-production-migrations.js",
     "db:setup": "prisma migrate deploy",
     "build:cron": "tsc -p tsconfig.server.json",
-    "start:cron": "node dist/scripts/spread-monitor.js"
+    "start:cron": "node dist/scripts/spread-monitor.js",
+    "compile:scripts": "cd scripts && tsc --project tsconfig.json"
   },
   "dependencies": {
     "@babel/core": "^7.27.4",

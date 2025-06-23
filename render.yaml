@@ -5,9 +5,7 @@ databases:
   user: arbitragem_banco_user
   plan: starter
   region: oregon
-  ipAllowList:
-  - source: 0.0.0.0/0
-    description: everywhere
+  ipAllowList: []
   postgresMajorVersion: "16"
   postDeploy: npx prisma migrate deploy
 
@@ -49,5 +47,22 @@ services:
       sync: false
     - key: MEXC_API_SECRET
       sync: false
+
+- type: cron
+  name: spread-collector
+  env: node
+  buildCommand: |
+    npm install
+    cd scripts
+    npx tsc --project tsconfig.json
+  startCommand: node scripts/dist/store-spreads.js
+  schedule: "*/5 * * * *"
+  envVars:
+    - key: NODE_ENV
+      value: production
+    - key: DATABASE_URL
+      fromDatabase:
+        name: arbitragem-db
+        property: connectionString
 
 version: "1"
