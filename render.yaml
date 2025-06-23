@@ -53,9 +53,8 @@ services:
   env: node
   buildCommand: |
     npm install
-    cd scripts
-    npx tsc --project tsconfig.json
-  startCommand: node scripts/dist/spread-monitor.js
+    npm run build:cron
+  startCommand: npm run start:cron
   plan: free
   envVars:
     - key: NODE_ENV
@@ -64,6 +63,14 @@ services:
       fromDatabase:
         name: arbitragem-db
         property: connectionString
+    - key: GATEIO_API_KEY
+      sync: false
+    - key: GATEIO_API_SECRET
+      sync: false
+    - key: MEXC_API_KEY
+      sync: false
+    - key: MEXC_API_SECRET
+      sync: false
 
 - type: cron
   name: spread-monitor-health

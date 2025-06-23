@@ -175,7 +175,7 @@ async function monitorAndStore() {
 }
 
 // Função principal que mantém o monitoramento rodando
-async function startContinuousMonitoring() {
+export async function startContinuousMonitoring() {
   console.log('Iniciando monitoramento contínuo...');
   
   while (!isShuttingDown) {
@@ -199,10 +199,4 @@ process.on('SIGINT', async () => {
   isShuttingDown = true;
   await prisma.$disconnect();
   process.exit(0);
-});
-
-// Inicia o monitoramento
-startContinuousMonitoring().catch(error => {
-  console.error('Erro fatal no monitoramento:', error);
-  process.exit(1);
 }); 
