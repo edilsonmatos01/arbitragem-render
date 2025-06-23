@@ -48,15 +48,15 @@ services:
     - key: MEXC_API_SECRET
       sync: false
 
-- type: cron
+- type: web
   name: spread-collector
   env: node
   buildCommand: |
     npm install
     cd scripts
     npx tsc --project tsconfig.json
-  startCommand: node scripts/dist/store-spreads.js
-  schedule: "*/5 * * * *"
+  startCommand: node scripts/dist/spread-monitor.js
+  plan: free
   envVars:
     - key: NODE_ENV
       value: production
