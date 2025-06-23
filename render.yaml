@@ -65,4 +65,18 @@ services:
         name: arbitragem-db
         property: connectionString
 
+- type: cron
+  name: spread-monitor-health
+  env: node
+  buildCommand: npm install && npm run build:monitor
+  startCommand: node dist/scripts/monitor-cron.js
+  schedule: "*/5 * * * *"
+  envVars:
+    - key: NODE_ENV
+      value: production
+    - key: DATABASE_URL
+      fromDatabase:
+        name: arbitragem-db
+        property: connectionString
+
 version: "1"

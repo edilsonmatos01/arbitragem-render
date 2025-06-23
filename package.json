@@ -19,7 +19,9 @@
     "db:setup": "prisma migrate deploy",
     "build:cron": "tsc -p tsconfig.server.json",
     "start:cron": "node dist/scripts/spread-monitor.js",
-    "compile:scripts": "cd scripts && tsc --project tsconfig.json"
+    "compile:scripts": "cd scripts && tsc --project tsconfig.json",
+    "monitor:cron": "ts-node scripts/monitor-cron.ts",
+    "build:monitor": "tsc scripts/monitor-cron.ts --outDir dist/scripts"
   },
   "dependencies": {
     "@babel/core": "^7.27.4",
