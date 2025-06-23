@@ -17,7 +17,7 @@
     "clean:spread": "ts-node scripts/cleanSpreadData.ts",
     "fix:migrations": "node scripts/fix-production-migrations.js",
     "db:setup": "prisma migrate deploy",
-    "build:cron": "tsc -p tsconfig.server.json",
+    "build:cron": "npm install --save-dev @types/express && tsc -p tsconfig.server.json",
     "start:cron": "node dist/scripts/server.js",
     "compile:scripts": "cd scripts && tsc --project tsconfig.json",
     "monitor:cron": "ts-node scripts/monitor-cron.ts",

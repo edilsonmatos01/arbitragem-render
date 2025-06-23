@@ -51,10 +51,7 @@ services:
 - type: web
   name: spread-collector
   env: node
-  buildCommand: |
-    npm install
-    npm install --save-dev @types/express
-    npm run build:cron
+  buildCommand: npm install && npm run build:cron
   startCommand: npm run start:cron
   plan: free
   envVars:
