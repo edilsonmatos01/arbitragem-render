@@ -176,8 +176,8 @@ async function monitorAndStore() {
   }
 }
 
-// Inicia o agendador para executar a cada 30 minutos
-cron.schedule('*/30 * * * *', () => {
+// Inicia o agendador para executar a cada 5 minutos
+cron.schedule('*/5 * * * *', () => {
   monitorAndStore().catch(error => {
     console.error('[ERRO] Falha ao executar monitoramento:', error);
   });
