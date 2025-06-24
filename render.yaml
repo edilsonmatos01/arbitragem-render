@@ -5,7 +5,9 @@ databases:
   user: arbitragem_banco_user
   plan: starter
   region: oregon
-  ipAllowList: []
+  ipAllowList:
+  - source: 0.0.0.0/0
+    description: everywhere
   postgresMajorVersion: "16"
   postDeploy: npx prisma migrate deploy
 
@@ -47,41 +49,5 @@ services:
       sync: false
     - key: MEXC_API_SECRET
       sync: false
-
-- type: web
-  name: spread-collector
-  env: node
-  buildCommand: npm install && npm run build:cron
-  startCommand: npm run start:cron
-  plan: free
-  envVars:
-    - key: NODE_ENV
-      value: production
-    - key: DATABASE_URL
-      fromDatabase:
-        name: arbitragem-db
-        property: connectionString
-    - key: GATEIO_API_KEY
-      sync: false
-    - key: GATEIO_API_SECRET
-      sync: false
-    - key: MEXC_API_KEY
-      sync: false
-    - key: MEXC_API_SECRET
-      sync: false
-
-- type: cron
-  name: spread-monitor-health
-  env: node
-  buildCommand: npm install && npm run build:monitor
-  startCommand: node dist/scripts/monitor-cron.js
-  schedule: "*/5 * * * *"
-  envVars:
-    - key: NODE_ENV
-      value: production
-    - key: DATABASE_URL
-      fromDatabase:
-        name: arbitragem-db
-        property: connectionString
 
 version: "1"
