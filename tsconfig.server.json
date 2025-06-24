@@ -29,12 +29,14 @@
     "rootDirs": [".", "src", "scripts"],
     "paths": {
       "@/*": ["./*"]
-    }
+    },
+    "types": ["node", "express"]
   },
   "include": [
     "websocket-server.ts",
     "src/**/*.ts",
-    "scripts/**/*.ts"
+    "scripts/**/*.ts",
+    "scripts/server.ts"
   ],
   "exclude": [
     "node_modules",
