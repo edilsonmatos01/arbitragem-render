@@ -4,7 +4,6 @@ import { MexcConnector } from './connectors/mexc-connector';
 import { GateIoFuturesConnector } from './connectors/gateio-futures-connector';
 import { MexcFuturesConnector } from './connectors/mexc-futures-connector';
 import { calculateSpread } from './utils';
-import * as cron from 'node-cron';
 
 // Interfaces
 interface MarketPrice {
@@ -41,6 +40,7 @@ const gateioFutures = new GateIoFuturesConnector('GATEIO_FUTURES', handlePriceUp
 const mexcFutures = new MexcFuturesConnector('MEXC_FUTURES', handlePriceUpdate, handleConnected);
 
 let isCronRunning = false;
+let isShuttingDown = false;
 
 async function monitorAndStore() {
   if (isCronRunning) {
@@ -60,6 +60,8 @@ async function monitorAndStore() {
     `;
     
     for (const symbol of symbols) {
+      if (isShuttingDown) break;
+
       try {
         // Coleta preços spot e futures
         const [gateioSpotPrices, mexcSpotPrices, gateioFuturesPrices, mexcFuturesPrices] = await Promise.all([
@@ -88,7 +90,6 @@ async function monitorAndStore() {
 
         // Salva os dados em uma transação
         await prisma.$transaction([
-          // Salva na tabela PriceHistory
           prisma.$executeRaw`
             INSERT INTO "PriceHistory" (
               "id",
@@ -120,7 +121,6 @@ async function monitorAndStore() {
               ${mexcSpotToGateioFutures}
             )
           `,
-          // GateIO Spot -> MEXC Futures
           prisma.$executeRaw`
             INSERT INTO "SpreadHistory" (
               "id",
@@ -140,7 +140,6 @@ async function monitorAndStore() {
               ${timestamp}
             )
           `,
-          // MEXC Spot -> GateIO Futures
           prisma.$executeRaw`
             INSERT INTO "SpreadHistory" (
               "id",
@@ -172,31 +171,32 @@ async function monitorAndStore() {
     console.error('[ERRO] Falha no monitoramento:', error);
   } finally {
     isCronRunning = false;
-    await prisma.$disconnect();
   }
 }
 
-// Inicia o agendador para executar a cada 30 minutos
-cron.schedule('*/30 * * * *', () => {
-  monitorAndStore().catch(error => {
-    console.error('[ERRO] Falha ao executar monitoramento:', error);
-  });
-});
+// Função principal que mantém o monitoramento rodando
+export async function startContinuousMonitoring() {
+  console.log('Iniciando monitoramento contínuo...');
+  
+  while (!isShuttingDown) {
+    await monitorAndStore();
+    
+    // Aguarda 5 minutos antes da próxima execução
+    await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
+  }
+}
 
-// Executa imediatamente na primeira vez
-monitorAndStore().catch(error => {
-  console.error('[ERRO] Falha ao executar monitoramento inicial:', error);
-});
-
-// Mantém o processo rodando
+// Tratamento de encerramento gracioso
 process.on('SIGTERM', async () => {
-  console.log('Encerrando monitoramento...');
+  console.log('Recebido sinal SIGTERM, encerrando graciosamente...');
+  isShuttingDown = true;
   await prisma.$disconnect();
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
-  console.log('Encerrando monitoramento...');
+  console.log('Recebido sinal SIGINT, encerrando graciosamente...');
+  isShuttingDown = true;
   await prisma.$disconnect();
   process.exit(0);
 }); 

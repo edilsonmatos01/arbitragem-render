@@ -29,9 +29,23 @@ execSync('npx prisma generate', {
   },
 });
 
-// Compila TypeScript para JavaScript ES5
-console.log('Compilando TypeScript para JavaScript ES5...');
-execSync('npx tsc --project tsconfig.compile.json', { stdio: 'inherit' });
+// Lista de arquivos TypeScript para compilar
+const files = [
+  'spread-monitor.ts',
+  'store-spreads.ts',
+  'cleanSpreadData.ts',
+  'check-spread-data.ts',
+  'fetchMarketSymbols.ts',
+  'scheduleCleanup.ts'
+];
+
+// Compila cada arquivo
+files.forEach(file => {
+  const filePath = path.join(__dirname, file);
+  console.log(`Compilando ${file}...`);
+  
+  execSync(`tsc ${filePath} --project ${path.join(__dirname, 'tsconfig.json')}`, { stdio: 'inherit' });
+});
 
 // Move os arquivos necessários para dist
 console.log('Movendo arquivos para dist...');

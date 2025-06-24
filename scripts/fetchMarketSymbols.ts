@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import axios from 'axios';
-import https from 'https';
+import { GateIoConnector } from './connectors/gateio-connector';
+import { MexcConnector } from './connectors/mexc-connector';
 
 // Tipos para melhor organização
 type ExchangeName = 'gateio' | 'mexc';
@@ -170,3 +171,25 @@ fetchAllMarketSymbols().catch(error => {
 // 2. Instale as dependências: npm install axios typescript ts-node (ou yarn add ...)
 // 3. Execute com: npx ts-node ./scripts/fetchMarketSymbols.ts
 // Ou compile para JS primeiro: npx tsc ./scripts/fetchMarketSymbols.ts && node ./scripts/fetchMarketSymbols.js 
+
+async function fetchMarketSymbols() {
+    try {
+        const gateio = new GateIoConnector('GATEIO_SPOT', () => {});
+        const mexc = new MexcConnector('MEXC_FUTURES', () => {}, () => {});
+
+        const [gateioSymbols, mexcSymbols] = await Promise.all([
+            gateio.getTradablePairs(),
+            mexc.getTradablePairs()
+        ]);
+
+        const commonSymbols = gateioSymbols.filter(symbol => mexcSymbols.includes(symbol));
+        console.log('Símbolos comuns:', commonSymbols);
+
+        return commonSymbols;
+    } catch (error) {
+        console.error('Erro ao buscar símbolos:', error);
+        return [];
+    }
+}
+
+fetchMarketSymbols(); 
