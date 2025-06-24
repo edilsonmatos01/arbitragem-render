@@ -1,4 +1,4 @@
 export const config = {
-  userName: 'Edilson Matos',
+  userName: 'Edilson Mattos',
   // ... existing code ...
 } 
