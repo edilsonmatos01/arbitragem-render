@@ -19,9 +19,9 @@ export function calculateSpread(sellPrice: number | string, buyPrice: number | s
       return null;
     }
 
-    // Se os valores forem exatamente iguais, retorna null (spread zero)
+    // Se os valores forem exatamente iguais, retorna zero
     if (sell.equals(buy)) {
-      return null;
+      return "0.0000";
     }
 
     // Cálculo do spread mantendo precisão máxima em cada etapa
@@ -29,8 +29,8 @@ export function calculateSpread(sellPrice: number | string, buyPrice: number | s
     const ratio = difference.dividedBy(buy);
     const percentageSpread = ratio.times(100);
 
-    // Validação do resultado
-    if (percentageSpread.isNegative() || percentageSpread.isZero() || !percentageSpread.isFinite()) {
+    // Validação do resultado - apenas verifica se é finito
+    if (!percentageSpread.isFinite()) {
       return null;
     }
 

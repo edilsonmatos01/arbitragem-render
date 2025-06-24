@@ -181,15 +181,15 @@ export default function ArbitrageTable() {
 
   const getSpreadDisplayClass = (spreadValue: number): string => {
     const absSpread = Math.abs(spreadValue);
-    if (absSpread > 1000) {
-      return 'text-yellow-400 border border-yellow-500 p-1 rounded';
+    if (spreadValue < 0) {
+      return 'text-red-400'; // Spread negativo - operação não lucrativa
+    } else if (absSpread > 1) {
+      return 'text-green-400 font-bold'; // Spread alto - muito lucrativo
+    } else if (absSpread > 0.5) {
+      return 'text-green-400'; // Spread médio - lucrativo
+    } else {
+      return 'text-yellow-400'; // Spread baixo - pouco lucrativo
     }
-    if (absSpread > 0.5) {
-      return 'text-green-400';
-    } else if (absSpread < 0.5) {
-      return 'text-red-400';
-    }
-    return '';
   };
 
   // Lógica de Ranking Dinâmico
