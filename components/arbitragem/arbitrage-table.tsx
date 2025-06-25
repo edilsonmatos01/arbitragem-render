@@ -231,6 +231,13 @@ export default function ArbitrageTable() {
 
         // Calcula o spread usando a fórmula correta: ((Futures - Spot) / Spot) × 100
         const spread = ((opp.sellAt.price - opp.buyAt.price) / opp.buyAt.price) * 100;
+        
+        // Ignora spreads negativos já no mapeamento inicial
+        if (spread <= 0) {
+          console.log(`[DEBUG] Oportunidade ignorada por spread negativo ou zero: ${opp.baseSymbol} (${spread.toFixed(2)}%)`);
+          return null;
+        }
+        
         console.log(`[DEBUG] Spread calculado para ${opp.baseSymbol}: ${spread.toFixed(2)}%`);
 
         const newOpp: Opportunity = {
@@ -266,7 +273,7 @@ export default function ArbitrageTable() {
           opp.maxSpread24h = Math.max(existing.maxSpread24h || 0, opp.maxSpread24h || 0);
           
           // Se a nova oportunidade tiver um spread maior, ela substitui a antiga
-          if (Math.abs(opp.spread) > Math.abs(existing.spread)) {
+          if (opp.spread > (existing.spread || 0)) {
             opportunitiesMap.set(key, opp);
           } else {
             // Caso contrário, mantém a antiga mas atualiza seu maxSpread24h
@@ -282,7 +289,7 @@ export default function ArbitrageTable() {
       const finalOpportunities = Array.from(opportunitiesMap.values())
         .filter(o => {
           // Re-aplica os filtros do usuário
-          const passesSpreadFilter = Math.abs(o.spread) >= minSpread && o.spread > 0;
+          const passesSpreadFilter = o.spread >= minSpread; // Removido Math.abs pois já filtramos negativos
           const passesDirectionFilter = direction === 'ALL' || o.directionApi === direction;
           const passesTypeFilter = o.tipo === arbitrageType;
           let passesExchangeFilter = true;
@@ -309,7 +316,7 @@ export default function ArbitrageTable() {
 
           return passes;
         })
-        .sort((a, b) => Math.abs(b.spread) - Math.abs(a.spread))
+        .sort((a, b) => b.spread - a.spread) // Ordenação direta pois todos são positivos
         .slice(0, 8);
 
       console.log('[DEBUG] Oportunidades finais após filtros:', finalOpportunities);
