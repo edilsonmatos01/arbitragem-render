@@ -16,6 +16,11 @@ interface PriceUpdate {
   bestBid: number;
 }
 
+interface ExchangePair {
+  symbol: string;
+  active: boolean;
+}
+
 const prisma = new PrismaClient();
 
 class ArbitrageWorker {
@@ -23,6 +28,9 @@ class ArbitrageWorker {
   private mexcConnector: MexcConnector;
   private isRunning: boolean = false;
   private priceData: Map<string, PriceData> = new Map();
+  private availablePairs: Set<string> = new Set();
+  private lastPairUpdate: number = 0;
+  private readonly PAIR_UPDATE_INTERVAL = 1000 * 60 * 5; // 5 minutos
 
   constructor() {
     this.gateioConnector = new GateIoConnector(
@@ -39,8 +47,57 @@ class ArbitrageWorker {
     );
   }
 
+  private async updateAvailablePairs(): Promise<void> {
+    try {
+      // Obtém os pares disponíveis de cada exchange
+      const [gateioSpotPairs, mexcFuturesPairs] = await Promise.all([
+        this.gateioConnector.getAvailablePairs(),
+        this.mexcConnector.getAvailablePairs()
+      ]);
+
+      // Encontra os pares que existem em ambas as exchanges
+      const gateioSet = new Set(gateioSpotPairs.map(p => p.symbol));
+      const mexcSet = new Set(mexcFuturesPairs.map(p => p.symbol));
+      
+      this.availablePairs.clear();
+      for (const pair of gateioSet) {
+        if (mexcSet.has(pair)) {
+          this.availablePairs.add(pair);
+        }
+      }
+
+      console.log(`Pares disponíveis atualizados. Total: ${this.availablePairs.size}`);
+      this.lastPairUpdate = Date.now();
+
+      // Reconecta aos websockets com os novos pares
+      await this.reconnectWebSockets();
+    } catch (error) {
+      console.error('Erro ao atualizar pares disponíveis:', error);
+    }
+  }
+
+  private async reconnectWebSockets(): Promise<void> {
+    try {
+      // Desconecta as conexões existentes
+      await Promise.all([
+        this.gateioConnector.disconnect(),
+        this.mexcConnector.disconnect()
+      ]);
+
+      // Reconecta com os novos pares
+      const pairs = Array.from(this.availablePairs);
+      await Promise.all([
+        this.gateioConnector.connect(pairs),
+        this.mexcConnector.connect()
+      ]);
+
+      console.log(`Reconectado aos WebSockets com ${pairs.length} pares`);
+    } catch (error) {
+      console.error('Erro ao reconectar WebSockets:', error);
+    }
+  }
+
   private handlePriceUpdate(data: PriceUpdate): void {
-    // Lógica de atualização de preços
     this.priceData.set(`${data.identifier}-${data.symbol}`, {
       bestAsk: data.bestAsk,
       bestBid: data.bestBid
@@ -75,15 +132,17 @@ class ArbitrageWorker {
       this.isRunning = true;
       console.log('Iniciando worker de arbitragem...');
 
-      // Conecta às exchanges
-      await Promise.all([
-        this.gateioConnector.connect(['BTC/USDT', 'ETH/USDT', 'SOL/USDT']),
-        this.mexcConnector.connect()
-      ]);
+      // Primeira atualização dos pares disponíveis
+      await this.updateAvailablePairs();
 
       // Loop principal de monitoramento
       while (this.isRunning) {
         try {
+          // Atualiza a lista de pares a cada intervalo definido
+          if (Date.now() - this.lastPairUpdate >= this.PAIR_UPDATE_INTERVAL) {
+            await this.updateAvailablePairs();
+          }
+
           await this.checkArbitrageOpportunities();
           await new Promise(resolve => setTimeout(resolve, 1000)); // Intervalo de 1 segundo
         } catch (error) {
@@ -97,9 +156,7 @@ class ArbitrageWorker {
   }
 
   private async checkArbitrageOpportunities() {
-    const pairs = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT'];
-    
-    for (const pair of pairs) {
+    for (const pair of this.availablePairs) {
       try {
         const spotKey = `GATEIO_SPOT-${pair}`;
         const futuresKey = `MEXC_FUTURES-${pair}`;
@@ -108,8 +165,7 @@ class ArbitrageWorker {
         const futuresData = this.priceData.get(futuresKey);
 
         if (!spotData || !futuresData) {
-          console.log(`Dados incompletos para ${pair}`);
-          continue;
+          continue; // Pula silenciosamente se não tiver dados
         }
 
         const spread = calculateSpread(spotData.bestAsk.toString(), futuresData.bestBid.toString());
@@ -134,6 +190,7 @@ class ArbitrageWorker {
           };
 
           await this.recordArbitrageOpportunity(opportunity);
+          console.log(`Oportunidade encontrada para ${pair} com spread de ${spread}%`);
         }
       } catch (error) {
         console.error(`Erro ao processar ${pair}:`, error);
@@ -141,9 +198,15 @@ class ArbitrageWorker {
     }
   }
 
-  public stop() {
+  public async stop() {
     this.isRunning = false;
     console.log('Parando worker de arbitragem...');
+    
+    // Desconecta os WebSockets
+    await Promise.all([
+      this.gateioConnector.disconnect(),
+      this.mexcConnector.disconnect()
+    ]);
   }
 }
 

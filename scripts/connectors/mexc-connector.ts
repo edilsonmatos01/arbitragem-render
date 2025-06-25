@@ -10,6 +10,11 @@ interface PriceUpdate {
     bestBid: number;
 }
 
+interface ExchangePair {
+    symbol: string;
+    active: boolean;
+}
+
 const MEXC_FUTURES_WS_URL = 'wss://contract.mexc.com/edge';
 
 export class MexcConnector extends EventEmitter {
@@ -22,6 +27,7 @@ export class MexcConnector extends EventEmitter {
     private marketIdentifier: string;
     private readonly identifier: string;
     private readonly REST_URL = 'https://api.mexc.com/api/v3/exchangeInfo';
+    private readonly baseUrl = 'https://contract.mexc.com';
 
     constructor(
         identifier: string, 
@@ -36,35 +42,121 @@ export class MexcConnector extends EventEmitter {
         console.log(`[${this.marketIdentifier}] Conector instanciado.`);
     }
 
-    public connect(): void {
-        if (this.ws) {
-            this.ws.close();
+    public async getAvailablePairs(): Promise<ExchangePair[]> {
+        try {
+            const response = await fetch(`${this.baseUrl}/api/v1/contract/detail`);
+            const data = await response.json() as any;
+            
+            return Object.values(data.data)
+                .filter((pair: any) => pair.state === 'ONLINE')
+                .map((pair: any) => ({
+                    symbol: pair.symbol.replace('_', '/'),
+                    active: true
+                }));
+        } catch (error) {
+            console.error('Erro ao obter pares do MEXC:', error);
+            return [];
         }
-        console.log(`[${this.marketIdentifier}] Conectando a ${MEXC_FUTURES_WS_URL}`);
-        this.ws = new WebSocket(MEXC_FUTURES_WS_URL);
-        this.ws.on('open', this.onOpen.bind(this));
-        this.ws.on('message', this.onMessage.bind(this));
-        this.ws.on('close', this.onClose.bind(this));
-        this.ws.on('error', this.onError.bind(this));
+    }
+
+    public async connect(): Promise<void> {
+        if (this.ws) {
+            await this.disconnect();
+        }
+
+        return new Promise((resolve, reject) => {
+            try {
+                this.ws = new WebSocket(MEXC_FUTURES_WS_URL);
+
+                this.ws.on('open', () => {
+                    console.log(`[${this.marketIdentifier}] Conexão WebSocket estabelecida.`);
+                    
+                    // Inscreve no canal de book de ordens para todos os pares
+                    const subscribePayload = {
+                        method: 'sub.depth',
+                        param: {}
+                    };
+
+                    if (this.ws) {
+                        this.ws.send(JSON.stringify(subscribePayload));
+                    }
+
+                    this.isConnected = true;
+                    this.startPing();
+                    if (this.subscriptions.size > 0) {
+                        this.sendSubscriptionRequests(Array.from(this.subscriptions));
+                    }
+                    if (this.onConnectedCallback) {
+                        this.onConnectedCallback();
+                        this.onConnectedCallback = null;
+                    }
+                    resolve();
+                });
+
+                this.ws.on('message', (data: Buffer) => {
+                    try {
+                        const message = JSON.parse(data.toString());
+                        
+                        if (message.channel === 'push.depth' && message.data) {
+                            const symbol = message.symbol.replace('_', '/');
+                            const update: PriceUpdate = {
+                                identifier: this.marketIdentifier,
+                                symbol,
+                                marketType: 'futures',
+                                bestBid: parseFloat(message.data.bids[0][0]),
+                                bestAsk: parseFloat(message.data.asks[0][0])
+                            };
+                            this.priceUpdateCallback(update);
+                        }
+                    } catch (error) {
+                        console.error(`[${this.marketIdentifier}] Erro ao processar mensagem:`, error);
+                    }
+                });
+
+                this.ws.on('error', (error) => {
+                    console.error(`[${this.marketIdentifier}] Erro na conexão WebSocket:`, error);
+                    this.ws?.close();
+                    reject(error);
+                });
+
+                this.ws.on('close', () => {
+                    console.log(`[${this.marketIdentifier}] Conexão WebSocket fechada.`);
+                    this.reconnect();
+                });
+
+            } catch (error) {
+                console.error(`[${this.marketIdentifier}] Erro ao conectar:`, error);
+                reject(error);
+            }
+        });
+    }
+
+    private async reconnect(): Promise<void> {
+        console.log(`[${this.marketIdentifier}] Tentando reconectar...`);
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        await this.connect();
+    }
+
+    public async disconnect(): Promise<void> {
+        return new Promise((resolve) => {
+            if (this.ws) {
+                this.ws.on('close', () => {
+                    this.ws = null;
+                    this.isConnected = false;
+                    this.stopPing();
+                    resolve();
+                });
+                this.ws.close();
+            } else {
+                resolve();
+            }
+        });
     }
 
     public subscribe(symbols: string[]): void {
         symbols.forEach(symbol => this.subscriptions.add(symbol));
         if (this.isConnected) {
             this.sendSubscriptionRequests(Array.from(this.subscriptions));
-        }
-    }
-
-    private onOpen(): void {
-        console.log(`[${this.marketIdentifier}] Conexão WebSocket estabelecida.`);
-        this.isConnected = true;
-        this.startPing();
-        if (this.subscriptions.size > 0) {
-            this.sendSubscriptionRequests(Array.from(this.subscriptions));
-        }
-        if (this.onConnectedCallback) {
-            this.onConnectedCallback();
-            this.onConnectedCallback = null;
         }
     }
 
@@ -75,45 +167,6 @@ export class MexcConnector extends EventEmitter {
             const msg = { method: 'sub.ticker', param: { symbol: symbol.replace('/', '_') } };
             ws.send(JSON.stringify(msg));
         });
-    }
-
-    private onMessage(data: WebSocket.Data): void {
-        try {
-            const message = JSON.parse(data.toString());
-            if (message.channel === 'push.ticker' && message.data) {
-                const ticker = message.data;
-                const pair = ticker.symbol.replace('_', '/');
-
-                const priceData = {
-                    bestAsk: parseFloat(ticker.ask1),
-                    bestBid: parseFloat(ticker.bid1),
-                };
-
-                if (!priceData.bestAsk || !priceData.bestBid) return;
-
-                this.priceUpdateCallback({
-                    identifier: this.marketIdentifier,
-                    symbol: pair,
-                    marketType: 'futures',
-                    bestAsk: priceData.bestAsk,
-                    bestBid: priceData.bestBid,
-                });
-            }
-        } catch (error) {
-            console.error(`[${this.marketIdentifier}] Erro ao processar mensagem:`, error);
-        }
-    }
-
-    private onClose(): void {
-        console.warn(`[${this.marketIdentifier}] Conexão fechada. Reconectando...`);
-        this.isConnected = false;
-        this.stopPing();
-        setTimeout(() => this.connect(), 5000);
-    }
-
-    private onError(error: Error): void {
-        console.error(`[${this.marketIdentifier}] Erro no WebSocket:`, error.message);
-        this.ws?.close();
     }
 
     private startPing(): void {
@@ -127,16 +180,6 @@ export class MexcConnector extends EventEmitter {
 
     private stopPing(): void {
         if (this.pingInterval) clearInterval(this.pingInterval);
-    }
-
-    public disconnect(): void {
-        console.log(`[${this.marketIdentifier}] Desconectando...`);
-        this.isConnected = false;
-        this.stopPing();
-        if (this.ws) {
-            this.ws.close();
-            this.ws = null;
-        }
     }
 
     async getTradablePairs(): Promise<string[]> {
