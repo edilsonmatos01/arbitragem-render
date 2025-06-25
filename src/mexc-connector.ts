@@ -30,7 +30,7 @@ export class MexcConnector extends EventEmitter {
     private readonly baseReconnectDelay: number = 5000; // 5 segundos
     private readonly maxReconnectDelay: number = 300000; // 5 minutos
     private readonly WS_URL = 'wss://contract.mexc.com/ws';
-    private readonly REST_URL = 'https://api.mexc.com/api/v3/exchangeInfo';
+    private readonly REST_URL = 'https://contract.mexc.com/api/v1/contract/detail';
     private heartbeatInterval: NodeJS.Timeout | null = null;
     private heartbeatTimeout: NodeJS.Timeout | null = null;
     private subscribedSymbols: Set<string> = new Set();
@@ -165,30 +165,30 @@ export class MexcConnector extends EventEmitter {
 
     async getTradablePairs(): Promise<string[]> {
         try {
-            console.log(`[${this.identifier}] Buscando pares negociáveis...`);
+            console.log(`[${this.identifier}] Buscando pares negociáveis do MEXC Futures...`);
             const response = await fetch(this.REST_URL);
             const data = await response.json();
             
-            console.log(`[${this.identifier}] Resposta da API:`, JSON.stringify(data).slice(0, 200) + '...');
+            console.log(`[${this.identifier}] Resposta da API MEXC Futures:`, JSON.stringify(data).slice(0, 200) + '...');
             
-            if (!data.symbols || !Array.isArray(data.symbols)) {
-                console.error(`[${this.identifier}] Resposta inválida:`, data);
+            if (!data.data || !Array.isArray(data.data)) {
+                console.error(`[${this.identifier}] Resposta inválida da API MEXC Futures:`, data);
                 return [];
             }
 
-            const pairs = data.symbols
-                .filter((symbol: any) => {
-                    // Filtra apenas pares ativos e que terminam em USDT
-                    return symbol.status === 'ENABLED' && 
-                           symbol.quoteAsset === 'USDT' &&
-                           symbol.baseAsset !== 'USDT';
+            const pairs = data.data
+                .filter((contract: any) => {
+                    // Filtra apenas contratos ativos que terminam em USDT
+                    return contract.state === 1 && 
+                           contract.quoteCoin === 'USDT';
                 })
-                .map((symbol: any) => `${symbol.baseAsset}/USDT`);
+                .map((contract: any) => `${contract.baseCoin}/USDT`);
 
-            console.log(`[${this.identifier}] Pares negociáveis encontrados:`, pairs.length);
+            console.log(`[${this.identifier}] Pares negociáveis encontrados no MEXC Futures:`, pairs.length);
+            console.log(`[${this.identifier}] Primeiros 10 pares:`, pairs.slice(0, 10));
             return pairs;
         } catch (error) {
-            console.error(`[${this.identifier}] Erro ao buscar pares negociáveis:`, error);
+            console.error(`[${this.identifier}] Erro ao buscar pares negociáveis do MEXC Futures:`, error);
             return [];
         }
     }
