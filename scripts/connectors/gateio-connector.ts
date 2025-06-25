@@ -55,20 +55,46 @@ export class GateIoConnector {
                 return [];
             }
 
+            // Log para debug
+            console.log(`[${this.marketIdentifier}] Total de pares recebidos:`, data.length);
+            if (data.length > 0) {
+                console.log(`[${this.marketIdentifier}] Exemplo do primeiro par:`, JSON.stringify(data[0]));
+            }
+
             if (this.marketType === 'spot') {
-                return data
-                    .filter(p => p.trade_status === 'tradable' && p.quote === 'USDT')
+                const filteredPairs = data
+                    .filter(p => {
+                        const isValid = p.trade_status === 'tradable' && p.quote === 'USDT';
+                        if (!isValid) {
+                            console.log(`[${this.marketIdentifier}] Par rejeitado:`, p.id, 'Status:', p.trade_status, 'Quote:', p.quote);
+                        }
+                        return isValid;
+                    })
                     .map(p => ({
-                        symbol: p.id.replace('_', '/'),
+                        symbol: p.id.replace('_', '/').toUpperCase(),
                         active: true
                     }));
+
+                console.log(`[${this.marketIdentifier}] Pares filtrados:`, filteredPairs.length);
+                if (filteredPairs.length > 0) {
+                    console.log(`[${this.marketIdentifier}] Primeiros 5 pares:`, filteredPairs.slice(0, 5));
+                }
+
+                return filteredPairs;
             } else {
-                return data
-                    .filter(c => c.in_delisting === false)
+                const filteredPairs = data
+                    .filter(c => !c.in_delisting)
                     .map(c => ({
                         symbol: c.name.replace('_', '/'),
                         active: true
                     }));
+
+                console.log(`[${this.marketIdentifier}] Pares filtrados:`, filteredPairs.length);
+                if (filteredPairs.length > 0) {
+                    console.log(`[${this.marketIdentifier}] Primeiros 5 pares:`, filteredPairs.slice(0, 5));
+                }
+
+                return filteredPairs;
             }
         } catch (error) {
             console.error(`[${this.marketIdentifier}] Erro ao buscar pares negociáveis:`, error);

@@ -55,9 +55,15 @@ class ArbitrageWorker {
         this.mexcConnector.getAvailablePairs()
       ]);
 
+      console.log('Gate.io pares:', gateioSpotPairs.length);
+      console.log('MEXC pares:', mexcFuturesPairs.length);
+
       // Encontra os pares que existem em ambas as exchanges
       const gateioSet = new Set(gateioSpotPairs.map(p => p.symbol));
       const mexcSet = new Set(mexcFuturesPairs.map(p => p.symbol));
+
+      console.log('Gate.io set:', gateioSet.size);
+      console.log('MEXC set:', mexcSet.size);
       
       this.availablePairs.clear();
       for (const pair of gateioSet) {
@@ -67,6 +73,9 @@ class ArbitrageWorker {
       }
 
       console.log(`Pares disponíveis atualizados. Total: ${this.availablePairs.size}`);
+      if (this.availablePairs.size > 0) {
+        console.log('Primeiros 5 pares:', Array.from(this.availablePairs).slice(0, 5));
+      }
       this.lastPairUpdate = Date.now();
 
       // Reconecta aos websockets com os novos pares
@@ -90,6 +99,9 @@ class ArbitrageWorker {
         this.gateioConnector.connect(pairs),
         this.mexcConnector.connect()
       ]);
+
+      // Inscreve o MEXC nos pares após a conexão
+      this.mexcConnector.subscribe(pairs);
 
       console.log(`Reconectado aos WebSockets com ${pairs.length} pares`);
     } catch (error) {
