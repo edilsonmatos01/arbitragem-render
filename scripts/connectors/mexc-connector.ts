@@ -15,7 +15,7 @@ interface ExchangePair {
     active: boolean;
 }
 
-const MEXC_FUTURES_WS_URL = 'wss://futures.mexc.com/ws';
+const MEXC_FUTURES_WS_URL = 'wss://contract.mexc.com/ws';
 
 export class MexcConnector extends EventEmitter {
     private ws: WebSocket | null = null;
@@ -26,8 +26,8 @@ export class MexcConnector extends EventEmitter {
     private isConnected: boolean = false;
     private marketIdentifier: string;
     private readonly identifier: string;
-    private readonly REST_URL = 'https://futures.mexc.com/api/v1/contract/detail';
-    private readonly baseUrl = 'https://futures.mexc.com';
+    private readonly REST_URL = 'https://contract.mexc.com/api/v1/contract/detail';
+    private readonly baseUrl = 'https://contract.mexc.com';
 
     constructor(
         identifier: string, 
@@ -44,17 +44,42 @@ export class MexcConnector extends EventEmitter {
 
     public async getAvailablePairs(): Promise<ExchangePair[]> {
         try {
-            const response = await fetch(`${this.baseUrl}/api/v1/contract/detail`);
-            const data = await response.json() as any;
+            console.log(`[${this.identifier}] Buscando pares negociáveis...`);
+            const response = await fetch(this.REST_URL, {
+                redirect: 'follow',
+                headers: {
+                    'Accept': 'application/json',
+                    'User-Agent': 'Mozilla/5.0'
+                }
+            });
             
-            return Object.values(data.data)
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log(`[${this.identifier}] Resposta da API:`, JSON.stringify(data).slice(0, 200) + '...');
+
+            if (!data.data) {
+                console.error(`[${this.identifier}] Resposta inválida:`, data);
+                return [];
+            }
+
+            const pairs = Object.values(data.data)
                 .filter((pair: any) => pair.state === 'ONLINE')
                 .map((pair: any) => ({
                     symbol: pair.symbol.replace('_', '/'),
                     active: true
                 }));
+
+            console.log(`[${this.identifier}] Total de pares encontrados: ${pairs.length}`);
+            if (pairs.length > 0) {
+                console.log(`[${this.identifier}] Primeiros 5 pares:`, pairs.slice(0, 5));
+            }
+
+            return pairs;
         } catch (error) {
-            console.error('Erro ao obter pares do MEXC:', error);
+            console.error(`[${this.identifier}] Erro ao obter pares:`, error);
             return [];
         }
     }
@@ -66,17 +91,23 @@ export class MexcConnector extends EventEmitter {
 
         return new Promise((resolve, reject) => {
             try {
-                this.ws = new WebSocket(MEXC_FUTURES_WS_URL);
+                const wsOptions = {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0',
+                        'Origin': 'https://contract.mexc.com'
+                    },
+                    followRedirects: true
+                };
+
+                this.ws = new WebSocket(MEXC_FUTURES_WS_URL, wsOptions);
 
                 this.ws.on('open', () => {
                     console.log(`[${this.marketIdentifier}] Conexão WebSocket estabelecida.`);
                     
                     // Inscreve no canal de book de ordens para todos os pares
                     const subscribePayload = {
-                        method: 'SUBSCRIPTION',
-                        params: {
-                            type: 'DEPTH'
-                        }
+                        method: "sub.depth",
+                        param: {}
                     };
 
                     if (this.ws) {
