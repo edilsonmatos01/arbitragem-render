@@ -282,7 +282,7 @@ export default function ArbitrageTable() {
       const finalOpportunities = Array.from(opportunitiesMap.values())
         .filter(o => {
           // Re-aplica os filtros do usuário
-          const passesSpreadFilter = Math.abs(o.spread) >= minSpread;
+          const passesSpreadFilter = Math.abs(o.spread) >= minSpread && o.spread > 0;
           const passesDirectionFilter = direction === 'ALL' || o.directionApi === direction;
           const passesTypeFilter = o.tipo === arbitrageType;
           let passesExchangeFilter = true;
@@ -302,7 +302,8 @@ export default function ArbitrageTable() {
               exchange: passesExchangeFilter,
               isSpotBuyFuturesSell,
               compraExchange: o.compraExchange,
-              vendaExchange: o.vendaExchange
+              vendaExchange: o.vendaExchange,
+              spreadValue: o.spread
             });
           }
 
