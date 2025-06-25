@@ -50,4 +50,17 @@ services:
     - key: MEXC_API_SECRET
       sync: false
 
+- type: worker
+  name: arbitrage-worker
+  env: node
+  buildCommand: npm install && npm run build
+  startCommand: node dist/scripts/worker.js
+  envVars:
+    - key: NODE_ENV
+      value: production
+    - key: DATABASE_URL
+      fromDatabase:
+        name: arbitrage-db
+        property: connectionString
+
 version: "1"

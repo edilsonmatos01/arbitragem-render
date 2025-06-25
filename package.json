@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "node server.js",
-    "build": "next build && npm run build:tracker",
+    "build": "npm run build:worker",
     "start": "NODE_ENV=production node server.js",
     "start:next": "next start",
     "lint": "next lint",
@@ -19,7 +19,9 @@
     "db:setup": "prisma migrate deploy",
     "build:cron": "tsc -p tsconfig.server.json && npm run copy-env",
     "start:cron": "node dist/scripts/server.js",
-    "copy-env": "cp .env dist/.env || true"
+    "copy-env": "cp .env dist/.env || true",
+    "build:worker": "tsc -p tsconfig.scripts.json",
+    "start:worker": "node dist/scripts/worker.js"
   },
   "dependencies": {
     "@babel/core": "^7.27.4",
