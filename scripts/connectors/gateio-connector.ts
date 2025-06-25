@@ -64,7 +64,7 @@ export class GateIoConnector {
             if (this.marketType === 'spot') {
                 const filteredPairs = data
                     .filter(p => {
-                        const isValid = p.trade_status === 'tradable' && p.quote === 'USDT';
+                        const isValid = (p.trade_status === 'tradable' || p.trade_status === 'sellable') && p.quote === 'USDT';
                         if (!isValid) {
                             console.log(`[${this.marketIdentifier}] Par rejeitado:`, p.id, 'Status:', p.trade_status, 'Quote:', p.quote);
                         }

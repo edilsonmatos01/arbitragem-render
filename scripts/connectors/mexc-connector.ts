@@ -15,7 +15,7 @@ interface ExchangePair {
     active: boolean;
 }
 
-const MEXC_FUTURES_WS_URL = 'wss://contract.mexc.com/edge';
+const MEXC_FUTURES_WS_URL = 'wss://contract.mexc.com/ws';
 
 export class MexcConnector extends EventEmitter {
     private ws: WebSocket | null = null;
@@ -26,7 +26,7 @@ export class MexcConnector extends EventEmitter {
     private isConnected: boolean = false;
     private marketIdentifier: string;
     private readonly identifier: string;
-    private readonly REST_URL = 'https://api.mexc.com/api/v3/exchangeInfo';
+    private readonly REST_URL = 'https://contract.mexc.com/api/v1/contract/detail';
     private readonly baseUrl = 'https://contract.mexc.com';
 
     constructor(
@@ -97,7 +97,7 @@ export class MexcConnector extends EventEmitter {
                     try {
                         const message = JSON.parse(data.toString());
                         
-                        if (message.channel === 'push.depth' && message.data) {
+                        if (message.channel === 'push.depth' && message.data && message.data.asks && message.data.bids) {
                             const symbol = message.symbol.replace('_', '/');
                             const update: PriceUpdate = {
                                 identifier: this.marketIdentifier,
@@ -164,7 +164,12 @@ export class MexcConnector extends EventEmitter {
         const ws = this.ws;
         if (!ws) return;
         symbols.forEach(symbol => {
-            const msg = { method: 'sub.ticker', param: { symbol: symbol.replace('/', '_') } };
+            const msg = {
+                method: 'sub.depth',
+                param: {
+                    symbol: symbol.replace('/', '_')
+                }
+            };
             ws.send(JSON.stringify(msg));
         });
     }
