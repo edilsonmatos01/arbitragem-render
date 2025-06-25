@@ -2,51 +2,30 @@ import WebSocket from 'ws';
 import fetch from 'node-fetch';
 import { EventEmitter } from 'events';
 
-interface MexcWebSocket {
-    removeAllListeners: () => void;
-    terminate: () => void;
-    on: (event: string, listener: (...args: any[]) => void) => this;
-    send: (data: string) => void;
-    readyState: number;
-    close: () => void;
-    ping: () => void;
+interface PriceUpdate {
+    identifier: string;
+    symbol: string;
+    marketType: 'spot' | 'futures';
+    bestAsk: number;
+    bestBid: number;
 }
 
-const MEXC_FUTURES_WS_URL = 'wss://contract.mexc.com/edge';
+const MEXC_FUTURES_WS_URL = 'wss://contract.mexc.com/ws';
 
 export class MexcConnector extends EventEmitter {
     private ws: WebSocket | null = null;
     private subscriptions: Set<string> = new Set();
     private pingInterval: NodeJS.Timeout | null = null;
-    private priceUpdateCallback: (data: any) => void;
+    private priceUpdateCallback: (data: PriceUpdate) => void;
     private onConnectedCallback: (() => void) | null;
     private isConnected: boolean = false;
     private marketIdentifier: string;
     private readonly identifier: string;
-    private readonly onPriceUpdate: Function;
-    private readonly onConnect: Function;
-    private isConnecting: boolean = false;
-    private reconnectAttempts: number = 0;
-    private readonly baseReconnectDelay: number = 5000; // 5 segundos
-    private readonly maxReconnectDelay: number = 300000; // 5 minutos
-    private readonly WS_URL = 'wss://contract.mexc.com/ws';
     private readonly REST_URL = 'https://contract.mexc.com/api/v1/contract/detail';
-    private heartbeatInterval: NodeJS.Timeout | null = null;
-    private heartbeatTimeout: NodeJS.Timeout | null = null;
-    private subscribedSymbols: Set<string> = new Set();
-    private fallbackRestInterval: NodeJS.Timeout | null = null;
-    private connectionStartTime: number = 0;
-    private lastPongTime: number = 0;
-    private readonly HEARTBEAT_INTERVAL = 20000; // 20 seconds
-    private readonly HEARTBEAT_TIMEOUT = 10000; // 10 segundos
-    private readonly REST_FALLBACK_INTERVAL = 30000; // 30 segundos
-    private isBlocked: boolean = false;
-    private readonly maxReconnectAttempts: number = 5;
-    private readonly reconnectDelay: number = 5000;
 
     constructor(
         identifier: string, 
-        priceUpdateCallback: (data: any) => void,
+        priceUpdateCallback: (data: PriceUpdate) => void,
         onConnected: () => void
     ) {
         super();
@@ -54,40 +33,31 @@ export class MexcConnector extends EventEmitter {
         this.priceUpdateCallback = priceUpdateCallback;
         this.onConnectedCallback = onConnected;
         this.identifier = identifier;
-        this.onPriceUpdate = priceUpdateCallback;
-        this.onConnect = onConnected;
         console.log(`[${this.marketIdentifier}] Conector instanciado.`);
     }
 
     public connect(): void {
-        if (this.isConnecting) {
-            console.log(`[${this.marketIdentifier}] Conexão já está em andamento.`);
-            return;
-        }
-
         if (this.ws?.readyState === WebSocket.OPEN) {
             console.log(`[${this.marketIdentifier}] WebSocket já está conectado.`);
             return;
         }
 
-        this.isConnecting = true;
-        console.log(`[${this.marketIdentifier}] Conectando a ${MEXC_FUTURES_WS_URL}`);
-        
-        try {
-            this.ws = new WebSocket(MEXC_FUTURES_WS_URL);
-            this.ws.on('open', this.onOpen.bind(this));
-            this.ws.on('message', this.onMessage.bind(this));
-            this.ws.on('close', this.onClose.bind(this));
-            this.ws.on('error', this.onError.bind(this));
-        } catch (error) {
-            console.error(`[${this.marketIdentifier}] Erro ao criar WebSocket:`, error);
-            this.isConnecting = false;
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
         }
+
+        console.log(`[${this.marketIdentifier}] Conectando a ${MEXC_FUTURES_WS_URL}`);
+        this.ws = new WebSocket(MEXC_FUTURES_WS_URL);
+        this.ws.on('open', this.onOpen.bind(this));
+        this.ws.on('message', this.onMessage.bind(this));
+        this.ws.on('close', this.onClose.bind(this));
+        this.ws.on('error', this.onError.bind(this));
     }
 
     public subscribe(symbols: string[]): void {
         symbols.forEach(symbol => this.subscriptions.add(symbol));
-        if (this.isConnected) {
+        if (this.isConnected && this.ws?.readyState === WebSocket.OPEN) {
             this.sendSubscriptionRequests(Array.from(this.subscriptions));
         }
     }
@@ -95,20 +65,29 @@ export class MexcConnector extends EventEmitter {
     private onOpen(): void {
         console.log(`[${this.marketIdentifier}] Conexão WebSocket estabelecida.`);
         this.isConnected = true;
-        this.isConnecting = false;
-        this.reconnectAttempts = 0;
         this.startPing();
-        
+        if (this.subscriptions.size > 0) {
+            this.sendSubscriptionRequests(Array.from(this.subscriptions));
+        }
         if (this.onConnectedCallback) {
             this.onConnectedCallback();
+            this.onConnectedCallback = null;
         }
     }
 
     private sendSubscriptionRequests(symbols: string[]): void {
         const ws = this.ws;
-        if (!ws) return;
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        
         symbols.forEach(symbol => {
-            const msg = { method: 'sub.ticker', param: { symbol: symbol.replace('/', '_') } };
+            const futuresSymbol = symbol.replace('/', '').toUpperCase();
+            const msg = {
+                "method": "sub.ticker",
+                "param": {
+                    "symbol": futuresSymbol
+                }
+            };
+            console.log(`[${this.marketIdentifier}] Enviando subscrição para ${futuresSymbol}`);
             ws.send(JSON.stringify(msg));
         });
     }
@@ -116,18 +95,26 @@ export class MexcConnector extends EventEmitter {
     private onMessage(data: WebSocket.Data): void {
         try {
             const message = JSON.parse(data.toString());
+            
+            // Resposta do ping
+            if (message.channel === 'pong') {
+                return;
+            }
+
             if (message.channel === 'push.ticker' && message.data) {
                 const ticker = message.data;
-                const pair = ticker.symbol.replace('_', '/');
+                const pair = `${ticker.symbol.slice(0, -4)}/${ticker.symbol.slice(-4)}`;
 
                 const priceData = {
-                    bestAsk: parseFloat(ticker.ask1),
-                    bestBid: parseFloat(ticker.bid1),
+                    bestAsk: parseFloat(ticker.ask),
+                    bestBid: parseFloat(ticker.bid),
                 };
 
-                if (!priceData.bestAsk || !priceData.bestBid) return;
+                if (!priceData.bestAsk || !priceData.bestBid) {
+                    console.log(`[${this.marketIdentifier}] Preços inválidos para ${pair}:`, ticker);
+                    return;
+                }
 
-                // Chama o callback centralizado no servidor
                 this.priceUpdateCallback({
                     identifier: this.marketIdentifier,
                     symbol: pair,
@@ -142,57 +129,48 @@ export class MexcConnector extends EventEmitter {
     }
 
     private onClose(): void {
-        console.warn(`[${this.marketIdentifier}] Conexão fechada.`);
+        console.log(`[${this.marketIdentifier}] Conexão WebSocket fechada.`);
         this.isConnected = false;
-        this.isConnecting = false;
         this.stopPing();
         
-        // Tenta reconectar apenas se não estiver em processo de desconexão intencional
-        if (!this.isBlocked) {
+        // Só reconecta se não foi um fechamento intencional
+        if (this.ws !== null) {
             console.log(`[${this.marketIdentifier}] Tentando reconectar...`);
             setTimeout(() => this.connect(), 5000);
         }
     }
 
     private onError(error: Error): void {
-        console.error(`[${this.marketIdentifier}] Erro no WebSocket:`, error.message);
-        this.isConnecting = false;
-        if (this.ws?.readyState === WebSocket.OPEN) {
-            this.ws.close();
-        }
+        console.error(`[${this.marketIdentifier}] Erro na conexão WebSocket:`, error.message);
     }
 
     private startPing(): void {
         this.stopPing();
         this.pingInterval = setInterval(() => {
             if (this.ws?.readyState === WebSocket.OPEN) {
-                this.ws.send(JSON.stringify({ method: "ping" }));
+                this.ws.send(JSON.stringify({ "method": "ping" }));
             }
         }, 20000);
     }
 
     private stopPing(): void {
-        if (this.pingInterval) clearInterval(this.pingInterval);
+        if (this.pingInterval) {
+            clearInterval(this.pingInterval);
+            this.pingInterval = null;
+        }
     }
 
     public disconnect(): void {
         console.log(`[${this.marketIdentifier}] Desconectando...`);
         this.isConnected = false;
         this.stopPing();
-        
         if (this.ws) {
-            try {
-                if (this.ws.readyState === WebSocket.OPEN) {
-                    this.ws.close();
-                }
-                this.ws = null;
-            } catch (error) {
-                console.error(`[${this.marketIdentifier}] Erro ao desconectar:`, error);
-            }
+            this.ws.close();
+            this.ws = null;
         }
     }
 
-    async getTradablePairs(): Promise<{ symbol: string; active: boolean; }[]> {
+    async getTradablePairs(): Promise<string[]> {
         try {
             console.log(`[${this.identifier}] Buscando pares negociáveis do MEXC Futures...`);
             const response = await fetch(this.REST_URL);
@@ -207,20 +185,19 @@ export class MexcConnector extends EventEmitter {
 
             const pairs = data.data
                 .filter((contract: any) => {
-                    // Filtra apenas contratos ativos que terminam em USDT
-                    return contract.state === 1 && 
+                    return contract.state === 1 && // 1 = ativo
                            contract.quoteCoin === 'USDT';
                 })
-                .map((contract: any) => ({
-                    symbol: `${contract.baseCoin}/USDT`,
-                    active: true
-                }));
+                .map((contract: any) => `${contract.baseCoin}/${contract.quoteCoin}`);
 
-            console.log(`[${this.identifier}] Pares negociáveis encontrados no MEXC Futures:`, pairs.length);
-            console.log(`[${this.identifier}] Primeiros 10 pares:`, pairs.slice(0, 10));
+            console.log(`[${this.identifier}] Total de pares encontrados: ${pairs.length}`);
+            if (pairs.length > 0) {
+                console.log(`[${this.identifier}] Primeiros 5 pares:`, pairs.slice(0, 5));
+            }
+            
             return pairs;
         } catch (error) {
-            console.error(`[${this.identifier}] Erro ao buscar pares negociáveis do MEXC Futures:`, error);
+            console.error(`[${this.identifier}] Erro ao buscar pares negociáveis:`, error);
             return [];
         }
     }
