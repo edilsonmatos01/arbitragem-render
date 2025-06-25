@@ -199,4 +199,15 @@ process.on('SIGINT', async () => {
   isShuttingDown = true;
   await prisma.$disconnect();
   process.exit(0);
-}); 
+});
+
+async function fetchGateIOPairs(): Promise<string[]> {
+    const gateioConnector = new GateIoConnector('GATEIO_SPOT', () => {});
+    try {
+        const pairs = await gateioConnector.getAvailablePairs();
+        return pairs.map(p => p.symbol);
+    } catch (error) {
+        console.error('Erro ao buscar pares do Gate.io:', error);
+        return [];
+    }
+} 
