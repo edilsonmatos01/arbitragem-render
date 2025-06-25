@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "node server.js",
-    "build": "npm run build:worker",
+    "build": "next build && npm run build:worker",
     "start": "NODE_ENV=production node server.js",
     "start:next": "next start",
     "lint": "next lint",
