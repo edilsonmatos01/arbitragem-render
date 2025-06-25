@@ -102,7 +102,8 @@ export class MexcFuturesConnector {
         console.log(`[${this.identifier}] Tentando reconectar em ${delay}ms... (Tentativa ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})`);
         
         this.reconnectTimeout = setTimeout(() => {
-          this.connect().catch((error: unknown) => {
+          const symbols = Array.from(this.subscribedSymbols);
+          this.connect(symbols).catch((error: unknown) => {
             console.error(`[${this.identifier}] Erro na tentativa de reconexão:`, error);
           });
         }, delay);
