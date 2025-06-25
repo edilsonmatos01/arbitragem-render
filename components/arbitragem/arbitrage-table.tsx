@@ -4,6 +4,7 @@ import { Play, RefreshCw, AlertTriangle, CheckCircle2, Clock } from 'lucide-reac
 import { useArbitrageWebSocket } from './useArbitrageWebSocket';
 import MaxSpreadCell from './MaxSpreadCell'; // Importar o novo componente
 import React from 'react';
+import Decimal from 'decimal.js';
 
 const EXCHANGES = [
   { value: "gateio", label: "Gate.io" },
@@ -103,21 +104,34 @@ const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSp
         const marketType = marketTypeStr.toLowerCase().includes('spot') ? 'spot' : 'futures';
         
         if (liveData[marketType]) {
-            return side === 'buy' ? liveData[marketType].bestAsk : liveData[marketType].bestBid;
+            const price = side === 'buy' ? liveData[marketType].bestAsk : liveData[marketType].bestBid;
+            return price;
         }
         return originalPrice;
     };
 
-    const compraPreco = getLivePrice(opportunity.compraPreco, opportunity.compraExchange, 'buy');
-    const vendaPreco = getLivePrice(opportunity.vendaPreco, opportunity.vendaExchange, 'sell');
+    // Obtém os preços sem formatação para o cálculo
+    const rawCompraPreco = getLivePrice(opportunity.compraPreco, opportunity.compraExchange, 'buy');
+    const rawVendaPreco = getLivePrice(opportunity.vendaPreco, opportunity.vendaExchange, 'sell');
+
+    // Calcula o spread usando Decimal.js para máxima precisão
+    const spreadValue = new Decimal(rawVendaPreco)
+        .minus(new Decimal(rawCompraPreco))
+        .dividedBy(new Decimal(rawCompraPreco))
+        .times(100)
+        .toNumber();
+
+    // Formata os preços apenas para exibição
+    const displayCompraPreco = formatPrice(rawCompraPreco);
+    const displayVendaPreco = formatPrice(rawVendaPreco);
 
     return (
         <tr className="border-b border-gray-700 hover:bg-gray-800">
             <td className="py-4 px-6 whitespace-nowrap text-sm font-semibold">{opportunity.symbol}</td>
-            <td className="py-4 px-6 whitespace-nowrap text-sm">{opportunity.compraExchange} <br /> <span className="font-bold">{formatPrice(compraPreco)}</span></td>
-            <td className="py-4 px-6 whitespace-nowrap text-sm">{opportunity.vendaExchange} <br /> <span className="font-bold">{formatPrice(vendaPreco)}</span></td>
-            <td className={`py-4 px-6 whitespace-nowrap text-sm font-bold ${getSpreadDisplayClass(opportunity.spread)}`}>
-              {opportunity.spread.toFixed(2)}%
+            <td className="py-4 px-6 whitespace-nowrap text-sm">{opportunity.compraExchange} <br /> <span className="font-bold">{displayCompraPreco}</span></td>
+            <td className="py-4 px-6 whitespace-nowrap text-sm">{opportunity.vendaExchange} <br /> <span className="font-bold">{displayVendaPreco}</span></td>
+            <td className={`py-4 px-6 whitespace-nowrap text-sm font-bold ${getSpreadDisplayClass(spreadValue)}`}>
+              {new Decimal(spreadValue).toFixed(2)}%
             </td>
             <td className="py-4 px-6 whitespace-nowrap text-sm">
               <MaxSpreadCell symbol={opportunity.symbol} />
@@ -170,13 +184,22 @@ export default function ArbitrageTable() {
   ];
   
   const formatPrice = (price: number) => {
-    if (price === 0) return '0.00';
-    if (Math.abs(price) < 1) {
-        // Para preços pequenos, mais casas decimais, evitar notação científica
-        const s = price.toFixed(8);
-        return s.replace(/0+$/, '').replace(/\.$/, ''); // Remove trailing zeros and trailing dot
-    } 
-    return price.toFixed(2); // Para preços maiores, 2 casas decimais
+    try {
+      const decimalPrice = new Decimal(price);
+      
+      if (decimalPrice.isZero()) return '0.00';
+      
+      // Para preços menores que 1, mantém mais casas decimais
+      if (decimalPrice.abs().lessThan(1)) {
+        return decimalPrice.toFixed(8).replace(/\.?0+$/, '');
+      }
+      
+      // Para preços maiores que 1, usa 2 casas decimais
+      return decimalPrice.toFixed(2);
+    } catch (error) {
+      console.error('Erro ao formatar preço:', error);
+      return '0.00';
+    }
   };
 
   const getSpreadDisplayClass = (spreadValue: number): string => {
