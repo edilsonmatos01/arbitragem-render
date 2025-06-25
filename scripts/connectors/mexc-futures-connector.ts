@@ -196,10 +196,19 @@ export class MexcFuturesConnector {
                 return [];
             }
 
-            const data = await response.json();
+            const text = await response.text();
+            console.log(`[${this.identifier}] Resposta bruta da API:`, text.substring(0, 1000));
+
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch (error) {
+                console.error(`[${this.identifier}] Erro ao fazer parse da resposta:`, error);
+                return [];
+            }
             
             if (!data || !data.data || !Array.isArray(data.data)) {
-                console.error(`[${this.identifier}] Resposta inválida:`, JSON.stringify(data, null, 2));
+                console.error(`[${this.identifier}] Resposta inválida:`, data);
                 return [];
             }
 
