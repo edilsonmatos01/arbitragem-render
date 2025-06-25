@@ -178,8 +178,8 @@ async function fetchMarketSymbols() {
         const mexc = new MexcConnector('MEXC_FUTURES', () => {}, () => {});
 
         const [gateioSymbols, mexcSymbols] = await Promise.all([
-            gateio.getTradablePairs(),
-            mexc.getTradablePairs()
+            gateio.getAvailablePairs().then(pairs => pairs.map(p => p.symbol)),
+            mexc.getAvailablePairs().then(pairs => pairs.map(p => p.symbol))
         ]);
 
         const commonSymbols = gateioSymbols.filter(symbol => mexcSymbols.includes(symbol));

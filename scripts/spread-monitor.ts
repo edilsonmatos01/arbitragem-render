@@ -64,18 +64,18 @@ async function monitorAndStore() {
 
       try {
         // Coleta preços spot e futures
-        const [gateioSpotPrices, mexcSpotPrices, gateioFuturesPrices, mexcFuturesPrices] = await Promise.all([
-          gateioSpot.getTradablePairs(),
-          mexcSpot.getTradablePairs(),
-          gateioFutures.getTradablePairs(),
-          mexcFutures.getTradablePairs()
+        const [gateioSpotPairs, mexcSpotPairs, gateioFuturesPairs, mexcFuturesPairs] = await Promise.all([
+          gateioSpot.getAvailablePairs().then(pairs => pairs.map(p => p.symbol)),
+          mexcSpot.getAvailablePairs().then(pairs => pairs.map(p => p.symbol)),
+          gateioFutures.getAvailablePairs().then(pairs => pairs.map(p => p.symbol)),
+          mexcFutures.getAvailablePairs().then(pairs => pairs.map(p => p.symbol))
         ]);
 
         // Filtra os preços para o símbolo atual
-        const gateioSpotPrice = gateioSpotPrices.find((p: string) => p === symbol.gateioSymbol);
-        const mexcSpotPrice = mexcSpotPrices.find((p: string) => p === symbol.mexcSymbol);
-        const gateioFuturesPrice = gateioFuturesPrices.find((p: string) => p === symbol.gateioFuturesSymbol);
-        const mexcFuturesPrice = mexcFuturesPrices.find((p: string) => p === symbol.mexcFuturesSymbol);
+        const gateioSpotPrice = gateioSpotPairs.find((p: string) => p === symbol.gateioSymbol);
+        const mexcSpotPrice = mexcSpotPairs.find((p: string) => p === symbol.mexcSymbol);
+        const gateioFuturesPrice = gateioFuturesPairs.find((p: string) => p === symbol.gateioFuturesSymbol);
+        const mexcFuturesPrice = mexcFuturesPairs.find((p: string) => p === symbol.mexcFuturesSymbol);
 
         if (!gateioSpotPrice || !mexcSpotPrice || !gateioFuturesPrice || !mexcFuturesPrice) {
           console.warn(`[AVISO] Preços incompletos para ${symbol.baseSymbol}`);
