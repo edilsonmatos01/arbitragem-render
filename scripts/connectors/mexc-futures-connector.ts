@@ -190,51 +190,7 @@ export class MexcFuturesConnector {
         try {
             console.log(`[${this.identifier}] Buscando pares negociáveis...`);
             
-            // Primeira tentativa: usando fetch
-            try {
-                const response = await fetch(this.REST_URL);
-                const text = await response.text();
-                console.log(`[${this.identifier}] Resposta bruta da API:`, text.substring(0, 1000));
-
-                // Tenta fazer o parse do JSON
-                const data = JSON.parse(text);
-                
-                if (data?.success && Array.isArray(data.data)) {
-                    console.log(`[${this.identifier}] Total de contratos recebidos:`, data.data.length);
-                    
-                    const filteredPairs = data.data
-                        .filter((contract: any) => {
-                            const isValid = contract.state === 0 && 
-                                          contract.quoteCoin === 'USDT' &&
-                                          contract.symbol;
-                            
-                            if (!isValid) {
-                                console.log(`[${this.identifier}] Par ignorado:`, {
-                                    symbol: contract.symbol,
-                                    state: contract.state,
-                                    quoteCoin: contract.quoteCoin
-                                });
-                            }
-                            
-                            return isValid;
-                        })
-                        .map((contract: any) => ({
-                            symbol: contract.symbol.replace('_', '/'),
-                            active: true
-                        }));
-
-                    console.log(`[${this.identifier}] Total de pares filtrados:`, filteredPairs.length);
-                    if (filteredPairs.length > 0) {
-                        console.log(`[${this.identifier}] Primeiros 5 pares:`, filteredPairs.slice(0, 5));
-                        return filteredPairs;
-                    }
-                }
-            } catch (error) {
-                console.error(`[${this.identifier}] Erro na primeira tentativa:`, error);
-            }
-
-            // Segunda tentativa: usando uma lista fixa de pares comuns
-            console.log(`[${this.identifier}] Tentando lista fixa de pares comuns...`);
+            // Lista fixa de pares comuns
             const commonPairs = [
                 'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'XRP/USDT', 'ADA/USDT',
                 'DOGE/USDT', 'MATIC/USDT', 'SOL/USDT', 'DOT/USDT', 'SHIB/USDT',
@@ -248,6 +204,7 @@ export class MexcFuturesConnector {
             }));
 
             console.log(`[${this.identifier}] Usando ${pairs.length} pares comuns`);
+            console.log(`[${this.identifier}] Pares disponíveis:`, pairs.map(p => p.symbol).join(', '));
             return pairs;
 
         } catch (error) {
