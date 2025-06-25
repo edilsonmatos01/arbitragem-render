@@ -8,6 +8,14 @@ interface PriceData {
   bestBid: number;
 }
 
+interface PriceUpdate {
+  identifier: string;
+  symbol: string;
+  marketType: 'spot' | 'futures';
+  bestAsk: number;
+  bestBid: number;
+}
+
 const prisma = new PrismaClient();
 
 class ArbitrageWorker {
@@ -19,29 +27,25 @@ class ArbitrageWorker {
   constructor() {
     this.gateioConnector = new GateIoConnector(
       'GATEIO_SPOT',
-      (exchange: string, symbol: string, bestBid: number, bestAsk: number) => {
-        this.handlePriceUpdate(exchange, symbol, bestBid, bestAsk);
-      }
+      this.handlePriceUpdate.bind(this)
     );
     
     this.mexcConnector = new MexcConnector(
       'MEXC_FUTURES',
-      (exchange: string, symbol: string, bestBid: number, bestAsk: number) => {
-        this.handlePriceUpdate(exchange, symbol, bestBid, bestAsk);
-      },
+      this.handlePriceUpdate.bind(this),
       () => {
         console.log('MEXC conectado');
       }
     );
   }
 
-  private handlePriceUpdate(exchange: string, symbol: string, bestBid: number, bestAsk: number) {
+  private handlePriceUpdate(data: PriceUpdate): void {
     // Lógica de atualização de preços
-    this.priceData.set(`${exchange}-${symbol}`, {
-      bestAsk,
-      bestBid
+    this.priceData.set(`${data.identifier}-${data.symbol}`, {
+      bestAsk: data.bestAsk,
+      bestBid: data.bestBid
     });
-    console.log(`${exchange} ${symbol}: Bid=${bestBid}, Ask=${bestAsk}`);
+    console.log(`${data.identifier} ${data.symbol}: Bid=${data.bestBid}, Ask=${data.bestAsk}`);
   }
 
   private async recordArbitrageOpportunity(opportunity: any) {
