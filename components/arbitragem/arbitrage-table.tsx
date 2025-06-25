@@ -121,6 +121,11 @@ const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSp
         .times(100)
         .toNumber();
 
+    // Não renderiza a linha se o spread for negativo ou zero
+    if (spreadValue <= 0) {
+        return null;
+    }
+
     // Formata os preços apenas para exibição
     const displayCompraPreco = formatPrice(rawCompraPreco);
     const displayVendaPreco = formatPrice(rawVendaPreco);
@@ -203,12 +208,10 @@ export default function ArbitrageTable() {
   };
 
   const getSpreadDisplayClass = (spreadValue: number): string => {
-    const absSpread = Math.abs(spreadValue);
-    if (spreadValue < 0) {
-      return 'text-red-400'; // Spread negativo - operação não lucrativa
-    } else if (absSpread > 1) {
+    // Todos os spreads aqui já são positivos
+    if (spreadValue > 1) {
       return 'text-green-400 font-bold'; // Spread alto - muito lucrativo
-    } else if (absSpread > 0.5) {
+    } else if (spreadValue > 0.5) {
       return 'text-green-400'; // Spread médio - lucrativo
     } else {
       return 'text-yellow-400'; // Spread baixo - pouco lucrativo
