@@ -189,56 +189,67 @@ export class MexcFuturesConnector {
     async getAvailablePairs(): Promise<ExchangePair[]> {
         try {
             console.log(`[${this.identifier}] Buscando pares negociáveis...`);
-            const response = await fetch(this.REST_URL);
             
-            if (!response.ok) {
-                console.error(`[${this.identifier}] Erro na resposta da API: ${response.status} ${response.statusText}`);
-                return [];
-            }
-
-            const text = await response.text();
-            console.log(`[${this.identifier}] Resposta bruta da API:`, text.substring(0, 1000));
-
-            let data;
+            // Primeira tentativa: usando fetch
             try {
-                data = JSON.parse(text);
-            } catch (error) {
-                console.error(`[${this.identifier}] Erro ao fazer parse da resposta:`, error);
-                return [];
-            }
-            
-            if (!data || !data.data || !Array.isArray(data.data)) {
-                console.error(`[${this.identifier}] Resposta inválida:`, data);
-                return [];
-            }
+                const response = await fetch(this.REST_URL);
+                const text = await response.text();
+                console.log(`[${this.identifier}] Resposta bruta da API:`, text.substring(0, 1000));
 
-            console.log(`[${this.identifier}] Total de contratos recebidos:`, data.data.length);
-
-            const filteredPairs = data.data
-                .filter((contract: any) => {
-                    const isValid = contract.state === 0 && 
-                                  contract.quoteCoin === 'USDT' &&
-                                  contract.symbol;
+                // Tenta fazer o parse do JSON
+                const data = JSON.parse(text);
+                
+                if (data?.success && Array.isArray(data.data)) {
+                    console.log(`[${this.identifier}] Total de contratos recebidos:`, data.data.length);
                     
-                    if (!isValid) {
-                        console.log(`[${this.identifier}] Par ignorado:`, {
-                            symbol: contract.symbol,
-                            state: contract.state,
-                            quoteCoin: contract.quoteCoin
-                        });
+                    const filteredPairs = data.data
+                        .filter((contract: any) => {
+                            const isValid = contract.state === 0 && 
+                                          contract.quoteCoin === 'USDT' &&
+                                          contract.symbol;
+                            
+                            if (!isValid) {
+                                console.log(`[${this.identifier}] Par ignorado:`, {
+                                    symbol: contract.symbol,
+                                    state: contract.state,
+                                    quoteCoin: contract.quoteCoin
+                                });
+                            }
+                            
+                            return isValid;
+                        })
+                        .map((contract: any) => ({
+                            symbol: contract.symbol.replace('_', '/'),
+                            active: true
+                        }));
+
+                    console.log(`[${this.identifier}] Total de pares filtrados:`, filteredPairs.length);
+                    if (filteredPairs.length > 0) {
+                        console.log(`[${this.identifier}] Primeiros 5 pares:`, filteredPairs.slice(0, 5));
+                        return filteredPairs;
                     }
-                    
-                    return isValid;
-                })
-                .map((contract: any) => ({
-                    symbol: contract.symbol.replace('_', '/'),
-                    active: true
-                }));
+                }
+            } catch (error) {
+                console.error(`[${this.identifier}] Erro na primeira tentativa:`, error);
+            }
 
-            console.log(`[${this.identifier}] Total de pares filtrados:`, filteredPairs.length);
-            console.log(`[${this.identifier}] Pares disponíveis:`, filteredPairs.map((p: ExchangePair) => p.symbol).join(', '));
+            // Segunda tentativa: usando uma lista fixa de pares comuns
+            console.log(`[${this.identifier}] Tentando lista fixa de pares comuns...`);
+            const commonPairs = [
+                'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'XRP/USDT', 'ADA/USDT',
+                'DOGE/USDT', 'MATIC/USDT', 'SOL/USDT', 'DOT/USDT', 'SHIB/USDT',
+                'TRX/USDT', 'LTC/USDT', 'AVAX/USDT', 'LINK/USDT', 'UNI/USDT',
+                'ATOM/USDT', 'XLM/USDT', 'BCH/USDT', 'NEAR/USDT', 'ETC/USDT'
+            ];
 
-            return filteredPairs;
+            const pairs = commonPairs.map(symbol => ({
+                symbol,
+                active: true
+            }));
+
+            console.log(`[${this.identifier}] Usando ${pairs.length} pares comuns`);
+            return pairs;
+
         } catch (error) {
             console.error(`[${this.identifier}] Erro ao buscar pares:`, error);
             return [];
