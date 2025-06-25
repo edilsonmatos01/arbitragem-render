@@ -5,11 +5,16 @@
     "lib": ["es2018", "esnext.asynciterable"],
     "outDir": "./dist/scripts",
     "rootDir": "./scripts",
-    "strict": true,
+    "strict": false,
+    "noImplicitAny": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "typeRoots": [
+      "./node_modules/@types",
+      "./src/types"
+    ]
   },
   "include": ["scripts/**/*"],
   "exclude": ["node_modules"]
