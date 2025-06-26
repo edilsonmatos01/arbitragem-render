@@ -17,6 +17,18 @@ interface TradableSymbol {
   mexcFuturesSymbol: string;
 }
 
+interface WebSocketMessage {
+  time?: number;
+  channel?: string;
+  event?: string;
+  method?: string;
+  params?: string[];
+  param?: {
+    symbol: string;
+  };
+  payload?: string[];
+}
+
 // Inicializa o cliente Prisma
 const prisma = new PrismaClient();
 
@@ -39,7 +51,7 @@ function createWebSocket(url: string, name: string): WebSocket {
     console.log(`[${name}] Conexão WebSocket estabelecida`);
   });
 
-  ws.on('error', (error) => {
+  ws.on('error', (error: Error) => {
     console.error(`[${name}] Erro WebSocket:`, error);
   });
 
@@ -61,7 +73,7 @@ const gateioFuturesWs = createWebSocket(GATEIO_FUTURES_WS_URL, 'Gate.io Futures'
 const mexcFuturesWs = createWebSocket(MEXC_FUTURES_WS_URL, 'MEXC Futures');
 
 // Função para obter pares negociáveis
-async function getTradablePairs() {
+async function getTradablePairs(): Promise<TradableSymbol[]> {
   try {
     return await prisma.$queryRaw<TradableSymbol[]>`
       SELECT "baseSymbol", "gateioSymbol", "mexcSymbol", "gateioFuturesSymbol", "mexcFuturesSymbol"
@@ -75,7 +87,7 @@ async function getTradablePairs() {
 }
 
 // Função principal de monitoramento
-async function monitorAndStore() {
+async function monitorAndStore(): Promise<void> {
   if (isWorkerRunning) {
     console.log('[Worker] Monitoramento já está em execução');
     return;
@@ -93,37 +105,41 @@ async function monitorAndStore() {
       try {
         // Subscreve aos canais de preço para cada símbolo
         if (gateioWs.readyState === WebSocket.OPEN) {
-          gateioWs.send(JSON.stringify({
-            "time": Date.now(),
-            "channel": "spot.tickers",
-            "event": "subscribe",
-            "payload": [symbol.gateioSymbol]
-          }));
+          const message: WebSocketMessage = {
+            time: Date.now(),
+            channel: "spot.tickers",
+            event: "subscribe",
+            payload: [symbol.gateioSymbol]
+          };
+          gateioWs.send(JSON.stringify(message));
         }
 
         if (mexcWs.readyState === WebSocket.OPEN) {
-          mexcWs.send(JSON.stringify({
-            "method": "SUBSCRIPTION",
-            "params": [`spot/ticker.${symbol.mexcSymbol}`]
-          }));
+          const message: WebSocketMessage = {
+            method: "SUBSCRIPTION",
+            params: [`spot/ticker.${symbol.mexcSymbol}`]
+          };
+          mexcWs.send(JSON.stringify(message));
         }
 
         if (gateioFuturesWs.readyState === WebSocket.OPEN) {
-          gateioFuturesWs.send(JSON.stringify({
-            "time": Date.now(),
-            "channel": "futures.tickers",
-            "event": "subscribe",
-            "payload": [symbol.gateioFuturesSymbol]
-          }));
+          const message: WebSocketMessage = {
+            time: Date.now(),
+            channel: "futures.tickers",
+            event: "subscribe",
+            payload: [symbol.gateioFuturesSymbol]
+          };
+          gateioFuturesWs.send(JSON.stringify(message));
         }
 
         if (mexcFuturesWs.readyState === WebSocket.OPEN) {
-          mexcFuturesWs.send(JSON.stringify({
-            "method": "sub.contract.ticker",
-            "param": {
-              "symbol": symbol.mexcFuturesSymbol
+          const message: WebSocketMessage = {
+            method: "sub.contract.ticker",
+            param: {
+              symbol: symbol.mexcFuturesSymbol
             }
-          }));
+          };
+          mexcFuturesWs.send(JSON.stringify(message));
         }
 
         console.log(`[Worker] Subscrito aos canais para ${symbol.baseSymbol}`);
@@ -139,7 +155,7 @@ async function monitorAndStore() {
 }
 
 // Função para processar mensagens WebSocket
-function processWebSocketMessage(exchange: string, data: any) {
+function processWebSocketMessage(exchange: string, data: WebSocket.Data): void {
   try {
     console.log(`[${exchange}] Dados recebidos:`, data);
     // Aqui você implementa a lógica específica para processar os dados de cada exchange
@@ -149,13 +165,13 @@ function processWebSocketMessage(exchange: string, data: any) {
 }
 
 // Configura handlers de mensagem
-gateioWs.on('message', (data) => processWebSocketMessage('Gate.io Spot', data));
-mexcWs.on('message', (data) => processWebSocketMessage('MEXC Spot', data));
-gateioFuturesWs.on('message', (data) => processWebSocketMessage('Gate.io Futures', data));
-mexcFuturesWs.on('message', (data) => processWebSocketMessage('MEXC Futures', data));
+gateioWs.on('message', (data: WebSocket.Data) => processWebSocketMessage('Gate.io Spot', data));
+mexcWs.on('message', (data: WebSocket.Data) => processWebSocketMessage('MEXC Spot', data));
+gateioFuturesWs.on('message', (data: WebSocket.Data) => processWebSocketMessage('Gate.io Futures', data));
+mexcFuturesWs.on('message', (data: WebSocket.Data) => processWebSocketMessage('MEXC Futures', data));
 
 // Função principal que mantém o worker rodando
-async function startWorker() {
+async function startWorker(): Promise<void> {
   console.log('[Worker] Iniciando worker em segundo plano...');
   
   while (!isShuttingDown) {

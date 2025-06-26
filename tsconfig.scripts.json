@@ -11,12 +11,13 @@
     "rootDir": ".",
     "baseUrl": ".",
     "paths": {
-      "*": ["node_modules/*"]
+      "*": ["node_modules/*"],
+      "@/*": ["./*"]
     }
   },
   "include": [
     "worker/**/*.ts",
-    "src/utils.ts"
+    "src/**/*.ts"
   ],
   "exclude": [
     "node_modules"
