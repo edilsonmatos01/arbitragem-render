@@ -1,68 +1,122 @@
-const { MexcConnector } = require('./dist/src/mexc-connector');
+const WebSocket = require('ws');
+const https = require('https');
+const http = require('http');
 
-console.log('🧪 TESTE INDIVIDUAL - MEXC Futures');
-console.log('==================================');
+// URLs da MEXC
+const MEXC_SPOT_URL = 'wss://contract.mexc.com/edge';
+const MEXC_FUTURES_URL = 'wss://contract.mexc.com/edge';
 
-let messageCount = 0;
-let connectionTime = Date.now();
-let lastMessageTime = Date.now();
-let reconnectionCount = 0;
+// Cria servidor proxy local
+const proxyServer = http.createServer();
+const wss = new WebSocket.Server({ server: proxyServer });
 
-function handlePriceUpdate(data) {
-    messageCount++;
-    lastMessageTime = Date.now();
-    const uptime = Math.round((Date.now() - connectionTime) / 1000);
+wss.on('connection', (ws, req) => {
+    const targetUrl = req.url === '/spot' ? MEXC_SPOT_URL : MEXC_FUTURES_URL;
+    const name = req.url === '/spot' ? 'MEXC Spot' : 'MEXC Futures';
     
-    console.log(`📊 [${messageCount}] ${data.symbol} - Ask: ${data.bestAsk}, Bid: ${data.bestBid} (${uptime}s)`);
-}
-
-function onConnected() {
-    console.log('✅ MEXC conectado! Iniciando monitoramento...');
-    if (connectionTime === 0) {
-        connectionTime = Date.now();
-    } else {
-        reconnectionCount++;
-        console.log(`🔄 Reconexão #${reconnectionCount}`);
-    }
-}
-
-// Criar conector
-const mexcConnector = new MexcConnector(
-    'MEXC_TEST',
-    handlePriceUpdate,
-    onConnected
-);
-
-// Conectar
-mexcConnector.connect();
-
-// Inscrever em alguns símbolos
-setTimeout(() => {
-    console.log('📡 Inscrevendo em símbolos de teste...');
-    mexcConnector.subscribe(['BTC/USDT', 'ETH/USDT', 'SOL/USDT']);
-}, 2000);
-
-// Monitorar estatísticas a cada 30 segundos
-setInterval(() => {
-    const uptime = Math.round((Date.now() - connectionTime) / 1000);
-    const timeSinceLastMessage = Math.round((Date.now() - lastMessageTime) / 1000);
+    console.log(`[${name}] Cliente conectado ao proxy`);
     
-    console.log(`\n📈 ESTATÍSTICAS MEXC:`);
-    console.log(`   ⏱️  Tempo online: ${uptime}s`);
-    console.log(`   📨 Mensagens recebidas: ${messageCount}`);
-    console.log(`   🔄 Reconexões: ${reconnectionCount}`);
-    console.log(`   🕐 Última mensagem: ${timeSinceLastMessage}s atrás`);
-    console.log(`   📊 Taxa: ${(messageCount / (uptime || 1) * 60).toFixed(1)} msg/min\n`);
-    
-    // Alerta se não recebeu mensagens por muito tempo
-    if (timeSinceLastMessage > 60) {
-        console.log('⚠️  ALERTA: Sem mensagens há mais de 1 minuto!');
-    }
-}, 30000);
+    const mexcWs = new WebSocket(targetUrl, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': '*/*',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+            'Connection': 'Upgrade',
+            'Upgrade': 'websocket'
+        },
+        followRedirects: true,
+        handshakeTimeout: 30000,
+        perMessageDeflate: false
+    });
 
-// Graceful shutdown
+    mexcWs.on('open', () => {
+        console.log(`[${name}] Conexão com MEXC estabelecida`);
+        
+        // Envia mensagem de subscrição
+        const message = {
+            method: 'sub.ticker',
+            param: {
+                symbol: 'BTC_USDT'
+            }
+        };
+
+        console.log(`[${name}] Enviando subscrição:`, JSON.stringify(message, null, 2));
+        mexcWs.send(JSON.stringify(message));
+
+        // Envia ping a cada 20 segundos para manter a conexão viva
+        const pingInterval = setInterval(() => {
+            if (mexcWs.readyState === WebSocket.OPEN) {
+                const pingMessage = { method: "ping" };
+                console.log(`[${name}] Enviando ping:`, JSON.stringify(pingMessage, null, 2));
+                mexcWs.send(JSON.stringify(pingMessage));
+            } else {
+                clearInterval(pingInterval);
+            }
+        }, 20000);
+    });
+
+    mexcWs.on('message', (data) => {
+        try {
+            const message = JSON.parse(data.toString());
+            console.log(`[${name}] Mensagem recebida:`, JSON.stringify(message, null, 2));
+            
+            if (message.channel === 'push.ticker' && message.data) {
+                const ticker = message.data;
+                console.log(`[${name}] Preços:`, {
+                    symbol: ticker.symbol,
+                    bestAsk: parseFloat(ticker.ask1),
+                    bestBid: parseFloat(ticker.bid1)
+                });
+            }
+            
+            ws.send(data); // Repassa para o cliente
+        } catch (error) {
+            console.error(`[${name}] Erro ao processar mensagem:`, error);
+            console.log(`[${name}] Mensagem raw:`, data.toString());
+        }
+    });
+
+    mexcWs.on('error', (error) => {
+        console.error(`[${name}] Erro WebSocket:`, error);
+    });
+
+    mexcWs.on('close', (code, reason) => {
+        console.log(`[${name}] Conexão fechada - Código: ${code}, Razão: ${reason}`);
+        ws.close();
+    });
+
+    ws.on('message', (data) => {
+        if (mexcWs.readyState === WebSocket.OPEN) {
+            mexcWs.send(data);
+        }
+    });
+
+    ws.on('close', () => {
+        console.log(`[${name}] Cliente desconectado do proxy`);
+        mexcWs.close();
+    });
+});
+
+// Inicia o servidor proxy
+const PORT = 8080;
+proxyServer.listen(PORT, () => {
+    console.log(`Servidor proxy iniciado na porta ${PORT}`);
+    
+    // Conecta ao proxy para testar
+    console.log('\n=== Testando MEXC Spot ===');
+    const spotWs = new WebSocket(`ws://localhost:${PORT}/spot`);
+    
+    setTimeout(() => {
+        console.log('\n=== Testando MEXC Futures ===');
+        const futuresWs = new WebSocket(`ws://localhost:${PORT}/futures`);
+    }, 5000);
+});
+
+// Mantém o script rodando
 process.on('SIGINT', () => {
-    console.log('\n🛑 Encerrando teste MEXC...');
-    mexcConnector.disconnect();
-    process.exit(0);
+    console.log('\nEncerrando servidor proxy...');
+    proxyServer.close();
+    process.exit();
 }); 
