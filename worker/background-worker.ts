@@ -1,6 +1,5 @@
 import { PrismaClient } from '@prisma/client';
 import WebSocket from 'ws';
-import { calculateSpread } from '../src/utils';
 
 // Interfaces
 interface MarketPrice {
@@ -29,19 +28,18 @@ interface WebSocketMessage {
   payload?: string[];
 }
 
-// Inicializa o cliente Prisma
-const prisma = new PrismaClient();
-
 // Configurações
 const MONITORING_INTERVAL = 5 * 60 * 1000; // 5 minutos
+const RECONNECT_INTERVAL = 5000; // 5 segundos
 let isWorkerRunning = false;
 let isShuttingDown = false;
+let prisma: PrismaClient | null = null;
 
 // Configurações WebSocket
 const GATEIO_WS_URL = 'wss://api.gateio.ws/ws/v4/';
 const MEXC_WS_URL = 'wss://wbs.mexc.com/ws';
 const GATEIO_FUTURES_WS_URL = 'wss://fx-ws.gateio.ws/v4/ws/usdt';
-const MEXC_FUTURES_WS_URL = 'wss://contract.mexc.com/ws';
+const MEXC_FUTURES_WS_URL = 'wss://futures.mexc.com/ws';
 
 // Função para criar conexão WebSocket
 function createWebSocket(url: string, name: string): WebSocket {
@@ -58,8 +56,19 @@ function createWebSocket(url: string, name: string): WebSocket {
   ws.on('close', () => {
     console.log(`[${name}] Conexão WebSocket fechada`);
     if (!isShuttingDown) {
-      console.log(`[${name}] Tentando reconectar em 5 segundos...`);
-      setTimeout(() => createWebSocket(url, name), 5000);
+      console.log(`[${name}] Tentando reconectar em ${RECONNECT_INTERVAL/1000} segundos...`);
+      setTimeout(() => {
+        try {
+          const newWs = createWebSocket(url, name);
+          // Substitui o WebSocket antigo pelo novo
+          if (name === 'Gate.io Spot') gateioWs = newWs;
+          else if (name === 'MEXC Spot') mexcWs = newWs;
+          else if (name === 'Gate.io Futures') gateioFuturesWs = newWs;
+          else if (name === 'MEXC Futures') mexcFuturesWs = newWs;
+        } catch (error) {
+          console.error(`[${name}] Erro ao reconectar:`, error);
+        }
+      }, RECONNECT_INTERVAL);
     }
   });
 
@@ -67,15 +76,39 @@ function createWebSocket(url: string, name: string): WebSocket {
 }
 
 // Inicializa as conexões WebSocket
-const gateioWs = createWebSocket(GATEIO_WS_URL, 'Gate.io Spot');
-const mexcWs = createWebSocket(MEXC_WS_URL, 'MEXC Spot');
-const gateioFuturesWs = createWebSocket(GATEIO_FUTURES_WS_URL, 'Gate.io Futures');
-const mexcFuturesWs = createWebSocket(MEXC_FUTURES_WS_URL, 'MEXC Futures');
+let gateioWs = createWebSocket(GATEIO_WS_URL, 'Gate.io Spot');
+let mexcWs = createWebSocket(MEXC_WS_URL, 'MEXC Spot');
+let gateioFuturesWs = createWebSocket(GATEIO_FUTURES_WS_URL, 'Gate.io Futures');
+let mexcFuturesWs = createWebSocket(MEXC_FUTURES_WS_URL, 'MEXC Futures');
+
+// Função para inicializar o Prisma com retry
+async function initializePrisma(retryCount = 0, maxRetries = 5): Promise<void> {
+  try {
+    if (!prisma) {
+      prisma = new PrismaClient();
+      await prisma.$connect();
+      console.log('[Worker] Conexão com o banco de dados estabelecida');
+    }
+  } catch (error) {
+    console.error('[Worker] Erro ao conectar com o banco de dados:', error);
+    if (retryCount < maxRetries) {
+      const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+      console.log(`[Worker] Tentando reconectar ao banco de dados em ${delay/1000} segundos...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      await initializePrisma(retryCount + 1, maxRetries);
+    } else {
+      throw new Error('Não foi possível conectar ao banco de dados após várias tentativas');
+    }
+  }
+}
 
 // Função para obter pares negociáveis
 async function getTradablePairs(): Promise<TradableSymbol[]> {
   try {
-    return await prisma.$queryRaw<TradableSymbol[]>`
+    if (!prisma) {
+      await initializePrisma();
+    }
+    return await prisma!.$queryRaw<TradableSymbol[]>`
       SELECT "baseSymbol", "gateioSymbol", "mexcSymbol", "gateioFuturesSymbol", "mexcFuturesSymbol"
       FROM "TradableSymbol"
       WHERE "isActive" = true
@@ -191,7 +224,9 @@ process.on('SIGTERM', async () => {
   gateioFuturesWs.close();
   mexcFuturesWs.close();
   
-  await prisma.$disconnect();
+  if (prisma) {
+    await prisma.$disconnect();
+  }
   process.exit(0);
 });
 
@@ -205,7 +240,9 @@ process.on('SIGINT', async () => {
   gateioFuturesWs.close();
   mexcFuturesWs.close();
   
-  await prisma.$disconnect();
+  if (prisma) {
+    await prisma.$disconnect();
+  }
   process.exit(0);
 });
 
