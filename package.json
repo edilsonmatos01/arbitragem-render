@@ -3,10 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node server.js",
-    "build": "next build && npm run build:tracker",
-    "start": "NODE_ENV=production node server.js",
-    "start:next": "next start",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
     "lint": "next lint",
     "dev:tracker": "ts-node-dev --respawn --transpile-only websocket-server.ts",
     "start:tracker": "node dist/websocket-server.js",
@@ -20,8 +19,10 @@
     "build:cron": "tsc -p tsconfig.server.json && npm run copy-env",
     "start:cron": "node dist/scripts/server.js",
     "copy-env": "cp .env dist/.env || true",
-    "build:worker": "tsc -p tsconfig.scripts.json",
-    "start:worker": "node dist/scripts/background-worker.js"
+    "build:worker": "tsc -p tsconfig.scripts.json && npm run copy-worker-files",
+    "copy-worker-files": "cp -r src/types dist/ && cp -r scripts/connectors dist/scripts/",
+    "start:worker": "node dist/scripts/background-worker.js",
+    "test:websocket": "ts-node scripts/test-websockets.ts"
   },
   "dependencies": {
     "@babel/core": "^7.27.4",

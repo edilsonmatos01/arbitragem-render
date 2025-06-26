@@ -32,7 +32,11 @@ services:
   env: node
   region: oregon
   plan: starter
-  buildCommand: npm install && npx prisma generate && npm run build:worker
+  buildCommand: |
+    npm install
+    npx prisma generate
+    mkdir -p dist/scripts
+    npm run build:worker
   startCommand: npm run start:worker
   envVars:
     - key: DATABASE_URL
