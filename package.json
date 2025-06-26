@@ -19,7 +19,9 @@
     "db:setup": "prisma migrate deploy",
     "build:cron": "tsc -p tsconfig.server.json && npm run copy-env",
     "start:cron": "node dist/scripts/server.js",
-    "copy-env": "cp .env dist/.env || true"
+    "copy-env": "cp .env dist/.env || true",
+    "build:worker": "tsc -p tsconfig.scripts.json",
+    "start:worker": "node dist/scripts/background-worker.js"
   },
   "dependencies": {
     "@babel/core": "^7.27.4",

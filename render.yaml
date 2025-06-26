@@ -27,13 +27,13 @@ services:
     - key: NODE_ENV
       value: production
 
-- type: cron
-  name: spread-monitor
+- type: worker
+  name: arbitrage-worker
   env: node
-  schedule: "*/30 * * * *"  # Roda a cada 30 minutos
-  buildCommand: npm install && npx prisma generate && npm run build:cron
-  startCommand: npm run start:cron
-  instanceType: starter  # Instância mais básica (512MB RAM, 0.5 CPU)
+  region: oregon
+  plan: starter
+  buildCommand: npm install && npx prisma generate && npm run build:worker
+  startCommand: npm run start:worker
   envVars:
     - key: DATABASE_URL
       fromDatabase:
@@ -42,7 +42,7 @@ services:
     - key: NODE_ENV
       value: production
     - key: GATEIO_API_KEY
-      sync: false  # Indica que este valor será definido manualmente no dashboard
+      sync: false
     - key: GATEIO_API_SECRET
       sync: false
     - key: MEXC_API_KEY
