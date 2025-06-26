@@ -1,7 +1,7 @@
 # Exported from Render on 2025-06-10T21:42:54Z
 databases:
-- name: arbitrage-db
-  databaseName: arbitrage
+- name: arbitragem-db
+  databaseName: arbitragem_banco
   user: arbitragem_banco_user
   plan: starter
   region: oregon
@@ -13,16 +13,16 @@ databases:
 
 services:
 - type: web
-  name: arbitrage-web
+  name: arbitragem-render-03
   env: node
   region: oregon
-  plan: starter
-  buildCommand: npm install && npm run build
+  plan: free
+  buildCommand: npm install && npx prisma generate && npm run build
   startCommand: npm start
   envVars:
     - key: DATABASE_URL
       fromDatabase:
-        name: arbitrage-db
+        name: arbitragem-db
         property: connectionString
     - key: NODE_ENV
       value: production
@@ -49,20 +49,5 @@ services:
       sync: false
     - key: MEXC_API_SECRET
       sync: false
-
-- type: worker
-  name: arbitrage-worker
-  env: node
-  region: oregon
-  plan: starter
-  buildCommand: npm install && npm run build:worker
-  startCommand: npm run start:worker
-  envVars:
-    - key: NODE_ENV
-      value: production
-    - key: DATABASE_URL
-      fromDatabase:
-        name: arbitrage-db
-        property: connectionString
 
 version: "1"

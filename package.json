@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "node server.js",
-    "build": "next build && npm run build:worker",
+    "build": "next build && npm run build:tracker",
     "start": "NODE_ENV=production node server.js",
     "start:next": "next start",
     "lint": "next lint",
@@ -19,10 +19,7 @@
     "db:setup": "prisma migrate deploy",
     "build:cron": "tsc -p tsconfig.server.json && npm run copy-env",
     "start:cron": "node dist/scripts/server.js",
-    "copy-env": "cp .env dist/.env || true",
-    "clean": "rimraf dist",
-    "build:worker": "npm run clean && tsc -p tsconfig.scripts.json",
-    "start:worker": "node dist/scripts/worker.js"
+    "copy-env": "cp .env dist/.env || true"
   },
   "dependencies": {
     "@babel/core": "^7.27.4",
@@ -59,7 +56,6 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "recharts": "^2.15.3",
-    "rimraf": "^5.0.10",
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^3.4.1",
     "ws": "^8.18.2"
@@ -68,10 +64,10 @@
     "@eslint/eslintrc": "^3",
     "@types/axios": "^0.9.36",
     "@types/node": "^20.19.0",
-    "@types/node-fetch": "^2.6.11",
+    "@types/node-fetch": "^2.6.12",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
-    "@types/ws": "^8.5.10",
+    "@types/ws": "^8.18.1",
     "concurrently": "^9.1.2",
     "dotenv-cli": "^8.0.0",
     "eslint": "^9",

@@ -32,7 +32,7 @@ function startMonitor(webSocketServer) {
 
   // Inicia o monitoramento
   console.log('Monitor iniciado. Executando a cada 5 minutos...');
-  setInterval(monitorSpread, 5 * 60 * 1000); // 5 minutos
+  setInterval(monitorSpread, INTERVAL);
   monitorSpread();
 }
 
@@ -48,23 +48,23 @@ const pool = new Pool({
 const SYMBOLS = {
   'BTC/USDT': {
     gateio: 'BTC_USDT',
-    mexc: 'BTC_USDT'
+    mexc: 'BTCUSDT'
   },
   'ETH/USDT': {
     gateio: 'ETH_USDT',
-    mexc: 'ETH_USDT'
+    mexc: 'ETHUSDT'
   },
   'SOL/USDT': {
     gateio: 'SOL_USDT',
-    mexc: 'SOL_USDT'
+    mexc: 'SOLUSDT'
   },
   'BNB/USDT': {
     gateio: 'BNB_USDT',
-    mexc: 'BNB_USDT'
+    mexc: 'BNBUSDT'
   },
   'XRP/USDT': {
     gateio: 'XRP_USDT',
-    mexc: 'XRP_USDT'
+    mexc: 'XRPUSDT'
   }
 };
 
@@ -105,25 +105,20 @@ async function getGateioPrice(symbol) {
   }
 }
 
-// Função para obter preço do MEXC Futures
+// Função para obter preço do MEXC
 async function getMexcPrice(symbol) {
   try {
-    const response = await fetch(`https://contract.mexc.com/api/v1/contract/ticker?symbol=${symbol}`);
-    const data = await response.json();
+    const response = await fetch(`https://api.mexc.com/api/v3/ticker/24hr?symbol=${symbol}`);
+    const ticker = await response.json();
     
-    if (!data.success || !data.data) {
-      throw new Error(`Invalid response for ${symbol}: ${JSON.stringify(data)}`);
-    }
-
-    const ticker = data.data;
-    const buy = Number(ticker.bid);
-    const sell = Number(ticker.ask);
+    const buy = Number(ticker.bidPrice);
+    const sell = Number(ticker.askPrice);
     const price = (buy + sell) / 2;
 
     // Envia os dados via broadcast
     broadcast({
       type: 'price-update',
-      exchange: 'MEXC_FUTURES',
+      exchange: 'MEXC',
       symbol,
       bestBid: buy,
       bestAsk: sell,
@@ -132,7 +127,7 @@ async function getMexcPrice(symbol) {
 
     return price;
   } catch (error) {
-    console.error(`Error fetching MEXC Futures price for ${symbol}:`, error);
+    console.error(`Error fetching MEXC price for ${symbol}:`, error);
     return 0;
   }
 }
@@ -181,19 +176,10 @@ async function monitorSpread() {
     console.log('Starting spread monitoring...');
     for (const [baseSymbol, exchangeSymbols] of Object.entries(SYMBOLS)) {
       try {
-        console.log(`Fetching prices for ${baseSymbol}...`);
-        console.log(`Gate.io symbol: ${exchangeSymbols.gateio}`);
-        console.log(`MEXC symbol: ${exchangeSymbols.mexc}`);
-
         const [gateioPrice, mexcPrice] = await Promise.all([
           getGateioPrice(exchangeSymbols.gateio),
           getMexcPrice(exchangeSymbols.mexc)
         ]);
-
-        console.log(`Prices for ${baseSymbol}:`, {
-          gateio: gateioPrice,
-          mexc: mexcPrice
-        });
 
         if (!gateioPrice || !mexcPrice) {
           console.log(`Preço não disponível para ${baseSymbol}`);
@@ -201,7 +187,6 @@ async function monitorSpread() {
         }
 
         const spreadPercentage = calculateSpread(gateioPrice, mexcPrice);
-        console.log(`Spread for ${baseSymbol}: ${spreadPercentage}%`);
 
         await saveSpread({
           symbol: baseSymbol,
@@ -221,17 +206,20 @@ async function monitorSpread() {
           timestamp: Date.now()
         });
 
+        console.log(`${baseSymbol}: Gate.io: ${gateioPrice}, MEXC: ${mexcPrice}, Spread: ${spreadPercentage}%`);
       } catch (error) {
-        console.error(`Error processing ${baseSymbol}:`, error);
+        console.error(`Erro ao processar ${baseSymbol}:`, error);
       }
     }
+
+    // Limpa spreads antigos (mantém 7 dias)
+    await cleanOldSpreads(7);
   } catch (error) {
-    console.error('Error in monitorSpread:', error);
+    console.error('Erro no monitoramento:', error);
   }
 }
 
-module.exports = {
-  startMonitor,
-  monitorSpread,
-  cleanOldSpreads
-}; 
+// Executa a cada 5 minutos
+const INTERVAL = 5 * 60 * 1000; // 5 minutos em milissegundos
+
+module.exports = { startMonitor, broadcast }; 
