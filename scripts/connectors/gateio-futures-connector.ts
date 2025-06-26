@@ -1,152 +1,94 @@
-import WebSocket from 'ws';
+const WebSocket = require('ws');
 import fetch from 'node-fetch';
 
-interface PriceUpdate {
-    identifier: string;
-    symbol: string;
-    marketType: 'spot' | 'futures';
-    bestAsk: number;
-    bestBid: number;
-}
-
-interface ExchangePair {
-    symbol: string;
-    active: boolean;
-}
-
 export class GateIoFuturesConnector {
-    private ws: WebSocket | null = null;
-    private readonly baseUrl = 'https://api.gateio.ws/api/v4';
-    private readonly wsUrl = 'wss://api.gateio.ws/ws/v4/';
+    private ws: any = null;
     private readonly identifier: string;
-    private readonly onPriceUpdate: (update: PriceUpdate) => void;
-    private readonly onConnect: () => void;
+    private readonly onPriceUpdate: Function;
+    private readonly onConnect: Function;
     private isConnected: boolean = false;
     private reconnectAttempts: number = 0;
     private readonly maxReconnectAttempts: number = 5;
     private readonly reconnectDelay: number = 5000;
+    private readonly WS_URL = 'wss://fx-ws.gateio.ws/v4/ws/usdt';
+    private readonly REST_URL = 'https://api.gateio.ws/api/v4';
     private subscribedSymbols: Set<string> = new Set();
 
-    constructor(
-        identifier: string,
-        onPriceUpdate: (update: PriceUpdate) => void,
-        onConnect: () => void
-    ) {
+    constructor(identifier: string, onPriceUpdate: Function, onConnect: Function) {
         this.identifier = identifier;
         this.onPriceUpdate = onPriceUpdate;
         this.onConnect = onConnect;
         console.log(`[${this.identifier}] Conector instanciado.`);
     }
 
-    public async getAvailablePairs(): Promise<ExchangePair[]> {
+    async connect() {
         try {
-            const response = await fetch(`${this.baseUrl}/futures/usdt/contracts`);
-            const data = await response.json() as any[];
-            
-            return data
-                .filter(pair => !pair.in_delisting && pair.trade_status !== 'delisting')
-                .map(pair => ({
-                    symbol: pair.name.replace('_', '/').toUpperCase(),
-                    active: true
-                }));
-        } catch (error) {
-            console.error('Erro ao obter pares do Gate.io Futures:', error);
-            return [];
-        }
-    }
+            console.log(`\n[${this.identifier}] Iniciando conexão WebSocket...`);
+            this.ws = new WebSocket(this.WS_URL);
 
-    public async connect(symbols: string[]): Promise<void> {
-        if (this.ws) {
-            await this.disconnect();
-        }
+            this.ws.on('open', () => {
+                console.log(`[${this.identifier}] WebSocket conectado`);
+                this.isConnected = true;
+                this.reconnectAttempts = 0;
+                this.resubscribeAll();
+                this.onConnect();
+            });
 
-        return new Promise((resolve, reject) => {
-            try {
-                this.ws = new WebSocket(this.wsUrl);
+            this.ws.on('message', (data: any) => {
+                try {
+                    const message = JSON.parse(data.toString());
+                    
+                    // Log para debug
+                    console.log(`\n[${this.identifier}] Mensagem recebida:`, message);
 
-                this.ws.on('open', () => {
-                    console.log('[GATEIO_FUTURES] Conexão WebSocket estabelecida.');
+                    // Processa atualizações de ticker
+                    if (message.event === 'update' && message.channel === 'futures.book_ticker') {
+                        const { s: symbol, a: ask, b: bid } = message.result;
+                        const formattedSymbol = symbol.replace('_', '/');
 
-                    // Inscreve em todos os pares fornecidos
-                    const subscribePayload = {
-                        time: Math.floor(Date.now() / 1000),
-                        channel: 'futures.order_book',
-                        event: 'subscribe',
-                        payload: symbols.map(symbol => symbol.replace('/', '_').toLowerCase())
-                    };
-
-                    if (this.ws) {
-                        this.ws.send(JSON.stringify(subscribePayload));
-                        console.log(`[GATEIO_FUTURES] Enviada inscrição para ${symbols.length} pares.`);
-                    }
-
-                    this.onConnect();
-                    resolve();
-                });
-
-                this.ws.on('message', (data: Buffer) => {
-                    try {
-                        const message = JSON.parse(data.toString());
-                        
-                        if (message.event === 'update' && message.channel === 'futures.order_book') {
-                            const symbol = message.result?.s?.replace('_', '/').toUpperCase();
-                            if (symbol && message.result?.b?.[0] && message.result?.a?.[0]) {
-                                const update: PriceUpdate = {
-                                    identifier: this.identifier,
-                                    symbol,
-                                    marketType: 'futures',
-                                    bestBid: parseFloat(message.result.b[0][0]),
-                                    bestAsk: parseFloat(message.result.a[0][0])
-                                };
-                                this.onPriceUpdate(update);
-                            }
+                        if (ask && bid) {
+                            this.onPriceUpdate({
+                                type: 'price-update',
+                                symbol: formattedSymbol,
+                                marketType: 'futures',
+                                bestAsk: parseFloat(ask),
+                                bestBid: parseFloat(bid),
+                                identifier: this.identifier
+                            });
                         }
-                    } catch (error) {
-                        console.error('[GATEIO_FUTURES] Erro ao processar mensagem:', error);
                     }
-                });
+                } catch (error) {
+                    console.error(`[${this.identifier}] Erro ao processar mensagem:`, error);
+                }
+            });
 
-                this.ws.on('error', (error) => {
-                    console.error('[GATEIO_FUTURES] Erro na conexão WebSocket:', error);
-                    reject(error);
-                });
+            this.ws.on('close', (code: number, reason: string) => {
+                console.log(`[${this.identifier}] WebSocket fechado. Código: ${code}, Razão: ${reason}`);
+                this.isConnected = false;
 
-                this.ws.on('close', () => {
-                    console.log('[GATEIO_FUTURES] Conexão WebSocket fechada.');
-                    this.reconnect(symbols);
-                });
+                if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                    console.log(`[${this.identifier}] Tentando reconectar em ${this.reconnectDelay}ms...`);
+                    setTimeout(() => this.connect(), this.reconnectDelay);
+                    this.reconnectAttempts++;
+                } else {
+                    console.error(`[${this.identifier}] Número máximo de tentativas de reconexão atingido`);
+                }
+            });
 
-            } catch (error) {
-                console.error('[GATEIO_FUTURES] Erro ao conectar:', error);
-                reject(error);
-            }
-        });
-    }
+            this.ws.on('error', (error: Error) => {
+                console.error(`[${this.identifier}] Erro na conexão WebSocket:`, error);
+            });
 
-    private async reconnect(symbols: string[]): Promise<void> {
-        console.log('[GATEIO_FUTURES] Tentando reconectar...');
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        await this.connect(symbols);
-    }
-
-    public async disconnect(): Promise<void> {
-        return new Promise((resolve) => {
-            if (this.ws) {
-                this.ws.on('close', () => {
-                    this.ws = null;
-                    resolve();
-                });
-                this.ws.close();
-            } else {
-                resolve();
-            }
-        });
+        } catch (error) {
+            console.error(`[${this.identifier}] Erro ao conectar:`, error);
+            throw error;
+        }
     }
 
     async getTradablePairs(): Promise<string[]> {
         try {
             console.log(`[${this.identifier}] Buscando pares negociáveis...`);
-            const response = await fetch(`${this.baseUrl}/futures/usdt/contracts`);
+            const response = await fetch(`${this.REST_URL}/futures/usdt/contracts`);
             const data = await response.json();
             
             if (!Array.isArray(data)) {

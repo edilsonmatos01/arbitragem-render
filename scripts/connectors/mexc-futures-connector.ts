@@ -11,24 +11,11 @@ interface MexcWebSocket {
     ping: () => void;
 }
 
-interface PriceUpdate {
-    identifier: string;
-    symbol: string;
-    marketType: 'spot' | 'futures';
-    bestAsk: number;
-    bestBid: number;
-}
-
-interface ExchangePair {
-    symbol: string;
-    active: boolean;
-}
-
 export class MexcFuturesConnector {
     private ws: MexcWebSocket | null = null;
     private readonly identifier: string;
-    private readonly onPriceUpdate: (update: PriceUpdate) => void;
-    private readonly onConnect: () => void;
+    private readonly onPriceUpdate: Function;
+    private readonly onConnect: Function;
     private isConnected: boolean = false;
     private reconnectAttempts: number = 0;
     private readonly maxReconnectAttempts: number = 10;
@@ -40,7 +27,7 @@ export class MexcFuturesConnector {
     private readonly HEARTBEAT_INTERVAL = 20000;
     private reconnectTimeout: NodeJS.Timeout | null = null;
 
-    constructor(identifier: string, onPriceUpdate: (update: PriceUpdate) => void, onConnect: () => void) {
+    constructor(identifier: string, onPriceUpdate: Function, onConnect: Function) {
         this.identifier = identifier;
         this.onPriceUpdate = onPriceUpdate;
         this.onConnect = onConnect;
@@ -119,7 +106,7 @@ export class MexcFuturesConnector {
         });
     }
 
-    async connect(): Promise<void> {
+    async connect() {
         try {
             await this.cleanup();
             console.log(`\n[${this.identifier}] Iniciando conexão WebSocket...`);
@@ -157,11 +144,12 @@ export class MexcFuturesConnector {
                         
                         if (bestAsk && bestBid) {
                             this.onPriceUpdate({
-                                identifier: this.identifier,
+                                type: 'price-update',
                                 symbol: symbol.replace('_', '/'),
                                 marketType: 'futures',
                                 bestAsk: parseFloat(bestAsk),
-                                bestBid: parseFloat(bestBid)
+                                bestBid: parseFloat(bestBid),
+                                identifier: this.identifier
                             });
                         }
                     }
@@ -186,27 +174,35 @@ export class MexcFuturesConnector {
         }
     }
 
-    async getAvailablePairs(): Promise<ExchangePair[]> {
+    async getTradablePairs(): Promise<string[]> {
         try {
             console.log(`[${this.identifier}] Buscando pares negociáveis...`);
+            const response = await fetch(this.REST_URL);
+            const data = await response.json();
             
-            // Lista fixa de pares comuns
-            const commonPairs = [
-                'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'XRP/USDT', 'ADA/USDT',
-                'DOGE/USDT', 'MATIC/USDT', 'SOL/USDT', 'DOT/USDT', 'SHIB/USDT',
-                'TRX/USDT', 'LTC/USDT', 'AVAX/USDT', 'LINK/USDT', 'UNI/USDT',
-                'ATOM/USDT', 'XLM/USDT', 'BCH/USDT', 'NEAR/USDT', 'ETC/USDT'
-            ];
+            console.log(`[${this.identifier}] Resposta da API:`, JSON.stringify(data).slice(0, 200) + '...');
+            
+            if (!Array.isArray(data)) {
+                console.error(`[${this.identifier}] Resposta inválida:`, data);
+                return [];
+            }
 
-            const pairs = commonPairs.map(symbol => ({
-                symbol,
-                active: true
-            }));
+            const pairs = data
+                .filter((contract: any) => {
+                    // Filtra apenas contratos ativos e que terminam em USDT
+                    return contract.state === 'ENABLED' && 
+                           contract.symbol.endsWith('_USDT') &&
+                           // Adiciona validações extras para garantir que são pares válidos
+                           contract.symbol.includes('_') &&
+                           contract.symbol.split('_').length === 2;
+                })
+                .map((contract: any) => contract.symbol.replace('_', '/'));
 
-            console.log(`[${this.identifier}] Usando ${pairs.length} pares comuns`);
-            console.log(`[${this.identifier}] Pares disponíveis:`, pairs.map(p => p.symbol).join(', '));
+            console.log(`[${this.identifier}] ${pairs.length} pares encontrados`);
+            if (pairs.length > 0) {
+                console.log('Primeiros 5 pares:', pairs.slice(0, 5));
+            }
             return pairs;
-
         } catch (error) {
             console.error(`[${this.identifier}] Erro ao buscar pares:`, error);
             return [];
@@ -247,8 +243,9 @@ export class MexcFuturesConnector {
         }
     }
 
-    public async disconnect(): Promise<void> {
+    // Método público para desconectar
+    public disconnect() {
         console.log(`[${this.identifier}] Desconectando...`);
-        await this.cleanup();
+        this.cleanup();
     }
 } 

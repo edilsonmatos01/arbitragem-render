@@ -178,8 +178,8 @@ async function fetchMarketSymbols() {
         const mexc = new MexcConnector('MEXC_FUTURES', () => {}, () => {});
 
         const [gateioSymbols, mexcSymbols] = await Promise.all([
-            gateio.getAvailablePairs().then(pairs => pairs.map(p => p.symbol)),
-            mexc.getAvailablePairs().then(pairs => pairs.map(p => p.symbol))
+            gateio.getTradablePairs(),
+            mexc.getTradablePairs()
         ]);
 
         const commonSymbols = gateioSymbols.filter(symbol => mexcSymbols.includes(symbol));
@@ -193,14 +193,3 @@ async function fetchMarketSymbols() {
 }
 
 fetchMarketSymbols(); 
-
-async function fetchGateIOPairs(): Promise<string[]> {
-    const gateioConnector = new GateIoConnector('GATEIO_SPOT', () => {});
-    try {
-        const pairs = await gateioConnector.getAvailablePairs();
-        return pairs.map(p => p.symbol);
-    } catch (error) {
-        console.error('Erro ao buscar pares do Gate.io:', error);
-        return [];
-    }
-} 

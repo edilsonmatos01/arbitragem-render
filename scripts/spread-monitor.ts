@@ -64,18 +64,18 @@ async function monitorAndStore() {
 
       try {
         // Coleta preços spot e futures
-        const [gateioSpotPairs, mexcSpotPairs, gateioFuturesPairs, mexcFuturesPairs] = await Promise.all([
-          gateioSpot.getAvailablePairs().then(pairs => pairs.map(p => p.symbol)),
-          mexcSpot.getAvailablePairs().then(pairs => pairs.map(p => p.symbol)),
-          gateioFutures.getAvailablePairs().then(pairs => pairs.map(p => p.symbol)),
-          mexcFutures.getAvailablePairs().then(pairs => pairs.map(p => p.symbol))
+        const [gateioSpotPrices, mexcSpotPrices, gateioFuturesPrices, mexcFuturesPrices] = await Promise.all([
+          gateioSpot.getTradablePairs(),
+          mexcSpot.getTradablePairs(),
+          gateioFutures.getTradablePairs(),
+          mexcFutures.getTradablePairs()
         ]);
 
         // Filtra os preços para o símbolo atual
-        const gateioSpotPrice = gateioSpotPairs.find((p: string) => p === symbol.gateioSymbol);
-        const mexcSpotPrice = mexcSpotPairs.find((p: string) => p === symbol.mexcSymbol);
-        const gateioFuturesPrice = gateioFuturesPairs.find((p: string) => p === symbol.gateioFuturesSymbol);
-        const mexcFuturesPrice = mexcFuturesPairs.find((p: string) => p === symbol.mexcFuturesSymbol);
+        const gateioSpotPrice = gateioSpotPrices.find((p: string) => p === symbol.gateioSymbol);
+        const mexcSpotPrice = mexcSpotPrices.find((p: string) => p === symbol.mexcSymbol);
+        const gateioFuturesPrice = gateioFuturesPrices.find((p: string) => p === symbol.gateioFuturesSymbol);
+        const mexcFuturesPrice = mexcFuturesPrices.find((p: string) => p === symbol.mexcFuturesSymbol);
 
         if (!gateioSpotPrice || !mexcSpotPrice || !gateioFuturesPrice || !mexcFuturesPrice) {
           console.warn(`[AVISO] Preços incompletos para ${symbol.baseSymbol}`);
@@ -199,15 +199,4 @@ process.on('SIGINT', async () => {
   isShuttingDown = true;
   await prisma.$disconnect();
   process.exit(0);
-});
-
-async function fetchGateIOPairs(): Promise<string[]> {
-    const gateioConnector = new GateIoConnector('GATEIO_SPOT', () => {});
-    try {
-        const pairs = await gateioConnector.getAvailablePairs();
-        return pairs.map(p => p.symbol);
-    } catch (error) {
-        console.error('Erro ao buscar pares do Gate.io:', error);
-        return [];
-    }
-} 
+}); 

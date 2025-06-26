@@ -11,11 +11,6 @@ interface PriceUpdate {
     bestBid: number;
 }
 
-interface ExchangePair {
-    symbol: string;
-    active: boolean;
-}
-
 /**
  * Gerencia a conexão WebSocket e as inscrições para os feeds da Gate.io.
  * Pode ser configurado para SPOT ou FUTURES.
@@ -37,7 +32,7 @@ export class GateIoConnector {
         console.log(`[${this.marketIdentifier}] Conector inicializado.`);
     }
 
-    public async getAvailablePairs(): Promise<ExchangePair[]> {
+    public async getTradablePairs(): Promise<string[]> {
         const endpoint = this.marketType === 'spot'
             ? 'https://api.gateio.ws/api/v4/spot/currency_pairs'
             : 'https://api.gateio.ws/api/v4/futures/usdt/contracts';
@@ -51,50 +46,18 @@ export class GateIoConnector {
             const data = await response.json();
 
             if (!Array.isArray(data)) {
-                console.warn(`[${this.marketIdentifier}] A resposta da API não foi uma lista (possível geoblocking).`);
-                return [];
-            }
-
-            // Log para debug
-            console.log(`[${this.marketIdentifier}] Total de pares recebidos:`, data.length);
-            if (data.length > 0) {
-                console.log(`[${this.marketIdentifier}] Exemplo do primeiro par:`, JSON.stringify(data[0]));
+                 console.warn(`[${this.marketIdentifier}] A resposta da API não foi uma lista (possível geoblocking).`);
+                 return [];
             }
 
             if (this.marketType === 'spot') {
-                const filteredPairs = data
-                    .filter(p => {
-                        const isValid = (p.trade_status === 'tradable' || p.trade_status === 'sellable') && p.quote === 'USDT';
-                        if (!isValid) {
-                            console.log(`[${this.marketIdentifier}] Par rejeitado:`, p.id, 'Status:', p.trade_status, 'Quote:', p.quote);
-                        }
-                        return isValid;
-                    })
-                    .map(p => ({
-                        symbol: p.id.replace('_', '/').toUpperCase(),
-                        active: true
-                    }));
-
-                console.log(`[${this.marketIdentifier}] Pares filtrados:`, filteredPairs.length);
-                if (filteredPairs.length > 0) {
-                    console.log(`[${this.marketIdentifier}] Primeiros 5 pares:`, filteredPairs.slice(0, 5));
-                }
-
-                return filteredPairs;
+                return data
+                    .filter(p => p.trade_status === 'tradable' && p.quote === 'USDT')
+                    .map(p => p.id.replace('_', '/')); // Converte 'BTC_USDT' para 'BTC/USDT'
             } else {
-                const filteredPairs = data
-                    .filter(c => !c.in_delisting)
-                    .map(c => ({
-                        symbol: c.name.replace('_', '/'),
-                        active: true
-                    }));
-
-                console.log(`[${this.marketIdentifier}] Pares filtrados:`, filteredPairs.length);
-                if (filteredPairs.length > 0) {
-                    console.log(`[${this.marketIdentifier}] Primeiros 5 pares:`, filteredPairs.slice(0, 5));
-                }
-
-                return filteredPairs;
+                return data
+                    .filter(c => c.in_delisting === false)
+                    .map(c => c.name.replace('_', '/')); // Converte 'BTC_USDT' para 'BTC/USDT'
             }
         } catch (error) {
             console.error(`[${this.marketIdentifier}] Erro ao buscar pares negociáveis:`, error);

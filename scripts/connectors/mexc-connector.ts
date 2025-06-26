@@ -10,12 +10,7 @@ interface PriceUpdate {
     bestBid: number;
 }
 
-interface ExchangePair {
-    symbol: string;
-    active: boolean;
-}
-
-const MEXC_FUTURES_WS_URL = 'wss://contract.mexc.com/ws';
+const MEXC_FUTURES_WS_URL = 'wss://contract.mexc.com/edge';
 
 export class MexcConnector extends EventEmitter {
     private ws: WebSocket | null = null;
@@ -26,8 +21,7 @@ export class MexcConnector extends EventEmitter {
     private isConnected: boolean = false;
     private marketIdentifier: string;
     private readonly identifier: string;
-    private readonly REST_URL = 'https://contract.mexc.com/api/v1/contract/detail';
-    private readonly baseUrl = 'https://contract.mexc.com';
+    private readonly REST_URL = 'https://api.mexc.com/api/v3/exchangeInfo';
 
     constructor(
         identifier: string, 
@@ -42,148 +36,16 @@ export class MexcConnector extends EventEmitter {
         console.log(`[${this.marketIdentifier}] Conector instanciado.`);
     }
 
-    public async getAvailablePairs(): Promise<ExchangePair[]> {
-        try {
-            console.log(`[${this.identifier}] Buscando pares negociáveis...`);
-            const response = await fetch(this.REST_URL, {
-                redirect: 'follow',
-                headers: {
-                    'Accept': 'application/json',
-                    'User-Agent': 'Mozilla/5.0'
-                }
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
-            console.log(`[${this.identifier}] Resposta da API:`, JSON.stringify(data).slice(0, 200) + '...');
-
-            if (!data.data) {
-                console.error(`[${this.identifier}] Resposta inválida:`, data);
-                return [];
-            }
-
-            const pairs = Object.values(data.data)
-                .filter((pair: any) => pair.state === 'ONLINE')
-                .map((pair: any) => ({
-                    symbol: pair.symbol.replace('_', '/'),
-                    active: true
-                }));
-
-            console.log(`[${this.identifier}] Total de pares encontrados: ${pairs.length}`);
-            if (pairs.length > 0) {
-                console.log(`[${this.identifier}] Primeiros 5 pares:`, pairs.slice(0, 5));
-            }
-
-            return pairs;
-        } catch (error) {
-            console.error(`[${this.identifier}] Erro ao obter pares:`, error);
-            return [];
-        }
-    }
-
-    public async connect(): Promise<void> {
+    public connect(): void {
         if (this.ws) {
-            await this.disconnect();
+            this.ws.close();
         }
-
-        return new Promise((resolve, reject) => {
-            try {
-                const wsOptions = {
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0',
-                        'Origin': 'https://contract.mexc.com'
-                    },
-                    followRedirects: true
-                };
-
-                this.ws = new WebSocket(MEXC_FUTURES_WS_URL, wsOptions);
-
-                this.ws.on('open', () => {
-                    console.log(`[${this.marketIdentifier}] Conexão WebSocket estabelecida.`);
-                    
-                    // Inscreve no canal de book de ordens para todos os pares
-                    const subscribePayload = {
-                        method: "sub.depth",
-                        param: {}
-                    };
-
-                    if (this.ws) {
-                        this.ws.send(JSON.stringify(subscribePayload));
-                    }
-
-                    this.isConnected = true;
-                    this.startPing();
-                    if (this.subscriptions.size > 0) {
-                        this.sendSubscriptionRequests(Array.from(this.subscriptions));
-                    }
-                    if (this.onConnectedCallback) {
-                        this.onConnectedCallback();
-                        this.onConnectedCallback = null;
-                    }
-                    resolve();
-                });
-
-                this.ws.on('message', (data: Buffer) => {
-                    try {
-                        const message = JSON.parse(data.toString());
-                        
-                        if (message.type === 'DEPTH' && message.data && message.data.asks && message.data.bids) {
-                            const symbol = message.symbol.replace('_', '/');
-                            const update: PriceUpdate = {
-                                identifier: this.marketIdentifier,
-                                symbol,
-                                marketType: 'futures',
-                                bestBid: parseFloat(message.data.bids[0][0]),
-                                bestAsk: parseFloat(message.data.asks[0][0])
-                            };
-                            this.priceUpdateCallback(update);
-                        }
-                    } catch (error) {
-                        console.error(`[${this.marketIdentifier}] Erro ao processar mensagem:`, error);
-                    }
-                });
-
-                this.ws.on('error', (error) => {
-                    console.error(`[${this.marketIdentifier}] Erro na conexão WebSocket:`, error);
-                    this.ws?.close();
-                    reject(error);
-                });
-
-                this.ws.on('close', () => {
-                    console.log(`[${this.marketIdentifier}] Conexão WebSocket fechada.`);
-                    this.reconnect();
-                });
-
-            } catch (error) {
-                console.error(`[${this.marketIdentifier}] Erro ao conectar:`, error);
-                reject(error);
-            }
-        });
-    }
-
-    private async reconnect(): Promise<void> {
-        console.log(`[${this.marketIdentifier}] Tentando reconectar...`);
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        await this.connect();
-    }
-
-    public async disconnect(): Promise<void> {
-        return new Promise((resolve) => {
-            if (this.ws) {
-                this.ws.on('close', () => {
-                    this.ws = null;
-                    this.isConnected = false;
-                    this.stopPing();
-                    resolve();
-                });
-                this.ws.close();
-            } else {
-                resolve();
-            }
-        });
+        console.log(`[${this.marketIdentifier}] Conectando a ${MEXC_FUTURES_WS_URL}`);
+        this.ws = new WebSocket(MEXC_FUTURES_WS_URL);
+        this.ws.on('open', this.onOpen.bind(this));
+        this.ws.on('message', this.onMessage.bind(this));
+        this.ws.on('close', this.onClose.bind(this));
+        this.ws.on('error', this.onError.bind(this));
     }
 
     public subscribe(symbols: string[]): void {
@@ -193,20 +55,65 @@ export class MexcConnector extends EventEmitter {
         }
     }
 
+    private onOpen(): void {
+        console.log(`[${this.marketIdentifier}] Conexão WebSocket estabelecida.`);
+        this.isConnected = true;
+        this.startPing();
+        if (this.subscriptions.size > 0) {
+            this.sendSubscriptionRequests(Array.from(this.subscriptions));
+        }
+        if (this.onConnectedCallback) {
+            this.onConnectedCallback();
+            this.onConnectedCallback = null;
+        }
+    }
+
     private sendSubscriptionRequests(symbols: string[]): void {
         const ws = this.ws;
         if (!ws) return;
         symbols.forEach(symbol => {
-            const msg = {
-                method: 'SUBSCRIPTION',
-                params: {
-                    type: 'DEPTH',
-                    symbol: symbol.replace('/', '_').toUpperCase()
-                }
-            };
+            const msg = { method: 'sub.ticker', param: { symbol: symbol.replace('/', '_') } };
             ws.send(JSON.stringify(msg));
-            console.log(`[${this.marketIdentifier}] Inscrito no par ${symbol}`);
         });
+    }
+
+    private onMessage(data: WebSocket.Data): void {
+        try {
+            const message = JSON.parse(data.toString());
+            if (message.channel === 'push.ticker' && message.data) {
+                const ticker = message.data;
+                const pair = ticker.symbol.replace('_', '/');
+
+                const priceData = {
+                    bestAsk: parseFloat(ticker.ask1),
+                    bestBid: parseFloat(ticker.bid1),
+                };
+
+                if (!priceData.bestAsk || !priceData.bestBid) return;
+
+                this.priceUpdateCallback({
+                    identifier: this.marketIdentifier,
+                    symbol: pair,
+                    marketType: 'futures',
+                    bestAsk: priceData.bestAsk,
+                    bestBid: priceData.bestBid,
+                });
+            }
+        } catch (error) {
+            console.error(`[${this.marketIdentifier}] Erro ao processar mensagem:`, error);
+        }
+    }
+
+    private onClose(): void {
+        console.warn(`[${this.marketIdentifier}] Conexão fechada. Reconectando...`);
+        this.isConnected = false;
+        this.stopPing();
+        setTimeout(() => this.connect(), 5000);
+    }
+
+    private onError(error: Error): void {
+        console.error(`[${this.marketIdentifier}] Erro no WebSocket:`, error.message);
+        this.ws?.close();
     }
 
     private startPing(): void {
@@ -220,6 +127,16 @@ export class MexcConnector extends EventEmitter {
 
     private stopPing(): void {
         if (this.pingInterval) clearInterval(this.pingInterval);
+    }
+
+    public disconnect(): void {
+        console.log(`[${this.marketIdentifier}] Desconectando...`);
+        this.isConnected = false;
+        this.stopPing();
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
+        }
     }
 
     async getTradablePairs(): Promise<string[]> {
