@@ -19,9 +19,9 @@
     "build:cron": "tsc -p tsconfig.server.json && npm run copy-env",
     "start:cron": "node dist/scripts/server.js",
     "copy-env": "cp .env dist/.env || true",
-    "build:worker": "tsc -p tsconfig.scripts.json && npm run copy-worker-files",
+    "build:worker": "tsc -p tsconfig.scripts.json",
     "copy-worker-files": "cp -r src/types dist/ && cp -r scripts/connectors dist/scripts/",
-    "start:worker": "node dist/scripts/background-worker.js",
+    "start:worker": "node dist/worker/background-worker.js",
     "test:websocket": "ts-node scripts/test-websockets.ts"
   },
   "dependencies": {

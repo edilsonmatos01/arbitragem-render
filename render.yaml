@@ -3,7 +3,7 @@ databases:
 - name: arbitragem-db
   databaseName: arbitragem_banco
   user: arbitragem_banco_user
-  plan: starter
+  plan: free
   region: oregon
   ipAllowList:
   - source: 0.0.0.0/0
@@ -13,45 +13,31 @@ databases:
 
 services:
 - type: web
-  name: arbitragem-render-03
+  name: arbitragem-render
   env: node
-  region: oregon
   plan: free
-  buildCommand: npm install && npx prisma generate && npm run build
+  buildCommand: npm install && npm run build
   startCommand: npm start
   envVars:
+    - key: NODE_ENV
+      value: production
     - key: DATABASE_URL
       fromDatabase:
         name: arbitragem-db
         property: connectionString
-    - key: NODE_ENV
-      value: production
 
 - type: worker
-  name: arbitrage-worker
+  name: arbitragem-worker
   env: node
-  region: oregon
-  plan: starter
-  buildCommand: |
-    npm install
-    npx prisma generate
-    mkdir -p dist/scripts
-    npm run build:worker
+  plan: free
+  buildCommand: npm install && npm run build:worker
   startCommand: npm run start:worker
   envVars:
+    - key: NODE_ENV
+      value: production
     - key: DATABASE_URL
       fromDatabase:
         name: arbitragem-db
         property: connectionString
-    - key: NODE_ENV
-      value: production
-    - key: GATEIO_API_KEY
-      sync: false
-    - key: GATEIO_API_SECRET
-      sync: false
-    - key: MEXC_API_KEY
-      sync: false
-    - key: MEXC_API_SECRET
-      sync: false
 
 version: "1"
