@@ -139,8 +139,14 @@ export class GateioConnector implements ExchangeConnector {
         try {
             const message = JSON.parse(data.toString());
             
+            // Log todas as mensagens para debug
+            console.log('[GATEIO DEBUG] Mensagem recebida:', JSON.stringify(message).substring(0, 200));
+            
+            // Verifica diferentes tipos de resposta
             if (message.channel === 'futures.tickers' && message.result) {
                 const ticker = message.result;
+                console.log('[GATEIO DEBUG] Ticker recebido:', JSON.stringify(ticker));
+                
                 // Usar ask e bid reais ao invés do last price
                 const bestAsk = parseFloat(ticker.ask) || parseFloat(ticker.last);
                 const bestBid = parseFloat(ticker.bid) || parseFloat(ticker.last);
@@ -159,8 +165,15 @@ export class GateioConnector implements ExchangeConnector {
                     this.priceUpdateCallback(update);
                 }
             }
+            
+            // Verifica se é resposta de subscrição
+            if (message.event === 'subscribe' || message.event === 'update') {
+                console.log('[GATEIO DEBUG] Evento de subscrição/update:', message.event, message.result);
+            }
+            
         } catch (error) {
             console.error('Erro ao processar mensagem Gate.io:', error);
+            console.error('Dados brutos:', data.toString().substring(0, 200));
         }
     }
 
