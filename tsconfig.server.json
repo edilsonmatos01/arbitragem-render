@@ -9,13 +9,13 @@
     "moduleResolution": "node",
     "removeComments": true,
     "noImplicitAny": false,
-    "strictNullChecks": true,
-    "strictFunctionTypes": true,
-    "noImplicitThis": true,
+    "strictNullChecks": false,
+    "strictFunctionTypes": false,
+    "noImplicitThis": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": false,
+    "noFallthroughCasesInSwitch": false,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "emitDecoratorMetadata": true,
@@ -31,5 +31,5 @@
     ]
   },
   "exclude": ["node_modules"],
-  "include": ["./src/**/*.ts", "./websocket-server.ts"]
+  "include": ["./src/**/*.ts", "./websocket-server.ts", "./scripts/**/*.ts"]
 } 

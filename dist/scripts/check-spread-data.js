@@ -4,7 +4,6 @@ const client_1 = require("@prisma/client");
 const prisma = new client_1.PrismaClient();
 async function checkSpreadData() {
     try {
-        // Busca os últimos 10 registros
         const lastRecords = await prisma.spreadHistory.findMany({
             take: 10,
             orderBy: {
@@ -20,10 +19,8 @@ async function checkSpreadData() {
                 direction: record.direction
             });
         });
-        // Conta total de registros
         const totalCount = await prisma.spreadHistory.count();
         console.log('\nTotal de registros:', totalCount);
-        // Agrupa por símbolo
         const symbolCounts = await prisma.spreadHistory.groupBy({
             by: ['symbol'],
             _count: {

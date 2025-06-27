@@ -1,124 +1,54 @@
 require('dotenv').config();
 
-import { WebSocket, WebSocketServer as WSServer } from 'ws';
-import { createServer, IncomingMessage, Server as HttpServer } from 'http';
+import WebSocket from 'ws';
+import { createServer, IncomingMessage, Server } from 'http';
 import { GateioConnector } from './src/gateio-connector';
 import { MexcConnector } from './src/mexc-connector';
-import { MarketPrices, ArbitrageOpportunity, CustomWebSocket, PriceUpdate } from './src/types';
+import { MarketPrices, ArbitrageOpportunity, PriceUpdate, CustomWebSocket } from './src/types';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
-const PORT = process.env.PORT || 10000;
+const PORT = parseInt(process.env.PORT || '8080', 10);
+console.log(`[CONFIG] Iniciando servidor na porta ${PORT}`);
+
 const MIN_PROFIT_PERCENTAGE = 0.1;
 
 let marketPrices: MarketPrices = {};
+let targetPairs: string[] = [
+    'BTC_USDT',
+    'ETH_USDT',
+    'SOL_USDT',
+    'XRP_USDT',
+    'BNB_USDT'
+];
+
 let clients: CustomWebSocket[] = [];
-let exchangeConnectors: Map<string, GateioConnector | MexcConnector> = new Map();
-
-export class WebSocketServer {
-    private wss: WSServer;
-    private mexcConnector: MexcConnector;
-    private gateioConnector: GateioConnector;
-    private clients: Set<WebSocket> = new Set();
-
-    constructor(port: number) {
-        this.wss = new WSServer({ port });
-        this.mexcConnector = new MexcConnector();
-        this.gateioConnector = new GateioConnector();
-
-        this.setupWebSocketServer();
-        this.setupExchangeConnectors();
-    }
-
-    private setupWebSocketServer() {
-        this.wss.on('connection', (ws: WebSocket) => {
-            console.log('Cliente conectado');
-            this.clients.add(ws);
-
-            ws.on('message', (message: string) => {
-                console.log('Mensagem recebida:', message);
-            });
-
-            ws.on('close', () => {
-                console.log('Cliente desconectado');
-                this.clients.delete(ws);
-            });
-
-            ws.on('error', (error: Error) => {
-                console.error('Erro no WebSocket:', error);
-            });
-        });
-    }
-
-    private setupExchangeConnectors() {
-        this.mexcConnector.onPriceUpdate((update: PriceUpdate) => {
-            this.broadcastPriceUpdate(update);
-        });
-
-        this.gateioConnector.onPriceUpdate((update: PriceUpdate) => {
-            this.broadcastPriceUpdate(update);
-        });
-
-        this.startConnectors();
-    }
-
-    private async startConnectors() {
-        try {
-            await this.mexcConnector.connect();
-            await this.gateioConnector.connect();
-        } catch (error) {
-            console.error('Erro ao iniciar conectores:', error);
-        }
-    }
-
-    private broadcastPriceUpdate(update: PriceUpdate) {
-        const message = JSON.stringify(update);
-        this.clients.forEach(client => {
-            if (client.readyState === WebSocket.OPEN) {
-                client.send(message);
-            }
-        });
-    }
-
-    public start() {
-        console.log('Servidor WebSocket iniciado');
-    }
-
-    public stop() {
-        this.mexcConnector.disconnect();
-        this.gateioConnector.disconnect();
-        this.wss.close();
-    }
-}
 
 function handlePriceUpdate(update: PriceUpdate) {
     const { identifier, symbol, marketType, bestAsk, bestBid } = update;
 
-    // 1. Atualiza o estado central de preços
     if (!marketPrices[identifier]) {
         marketPrices[identifier] = {};
     }
     marketPrices[identifier][symbol] = { bestAsk, bestBid, timestamp: Date.now() };
     
-    // 2. Transmite a atualização para todos os clientes
     broadcast({
         type: 'price-update',
         symbol,
         marketType,
         bestAsk,
-        bestBid,
-        identifier
+        bestBid
     });
 }
 
-export function startWebSocketServer(httpServer: HttpServer) {
-    const wss = new WSServer({ server: httpServer });
+function startWebSocketServer(httpServer: Server) {
+    const wss = new WebSocket.Server({ server: httpServer });
 
     wss.on('connection', (ws: CustomWebSocket, req: IncomingMessage) => {
         ws.isAlive = true;
 
         ws.on('pong', () => {
-            ws.isAlive = true;
+          ws.isAlive = true;
         });
         
         const clientIp = req.socket.remoteAddress || req.headers['x-forwarded-for'];
@@ -135,7 +65,6 @@ export function startWebSocketServer(httpServer: HttpServer) {
         });
     });
     
-    // Intervalo para verificar conexões e mantê-las vivas
     const interval = setInterval(() => {
         wss.clients.forEach(client => {
             const ws = client as CustomWebSocket;
@@ -145,18 +74,13 @@ export function startWebSocketServer(httpServer: HttpServer) {
                 return ws.terminate();
             }
 
-            ws.isAlive = false;
-            ws.ping();
+            ws.isAlive = false; 
+            ws.ping(() => {});
         });
     }, 30000);
 
     wss.on('close', () => {
         clearInterval(interval);
-        // Limpa todas as conexões de exchange
-        exchangeConnectors.forEach(connector => {
-            connector.disconnect?.();
-        });
-        exchangeConnectors.clear();
     });
 
     console.log(`Servidor WebSocket iniciado e anexado ao servidor HTTP.`);
@@ -194,18 +118,33 @@ function broadcast(data: any) {
     });
 }
 
-async function broadcastOpportunity(opportunity: ArbitrageOpportunity) {
-    console.log(`[DEBUG] Verificando ${opportunity.baseSymbol} | Spread: ${opportunity.profitPercentage.toFixed(2)}%`);
+function broadcastOpportunity(opportunity: ArbitrageOpportunity) {
+    const timestamp = new Date(opportunity.timestamp).toLocaleTimeString('pt-BR');
+    const profitColor = opportunity.profitPercentage > 0.5 ? '\x1b[32m' : '\x1b[33m';
+    const resetColor = '\x1b[0m';
+
+    console.log(`
+${profitColor}╔══════════════════════════════════════════════════════════════════════════════
+║ 🔍 OPORTUNIDADE DETECTADA - ${timestamp}
+║ 💱 Par: ${opportunity.baseSymbol}
+║ 📈 Spread: ${opportunity.profitPercentage.toFixed(4)}%
+║ 🔄 Direção: ${opportunity.arbitrageType}
+║ 
+║ 📥 COMPRA: ${opportunity.buyAt.exchange.toUpperCase()}
+║    Preço: ${opportunity.buyAt.price.toFixed(8)} USDT
+║    Tipo: ${opportunity.buyAt.marketType}
+║ 
+║ 📤 VENDA: ${opportunity.sellAt.exchange.toUpperCase()}
+║    Preço: ${opportunity.sellAt.price.toFixed(8)} USDT
+║    Tipo: ${opportunity.sellAt.marketType}
+╚══════════════════════════════════════════════════════════════════════════════${resetColor}`);
 
     if (!isFinite(opportunity.profitPercentage) || opportunity.profitPercentage > 100) {
-        console.warn(`[FILTRO] Spread >100% IGNORADO para ${opportunity.baseSymbol}: ${opportunity.profitPercentage.toFixed(2)}%`);
+        console.warn(`\x1b[31m[ALERTA] Spread >100% IGNORADO para ${opportunity.baseSymbol}: ${opportunity.profitPercentage.toFixed(2)}%\x1b[0m`);
         return;
     }
     
     broadcast({ ...opportunity, type: 'arbitrage' });
-    console.log(`[Broadcast] Oportunidade VÁLIDA enviada: ${opportunity.baseSymbol} ${opportunity.profitPercentage.toFixed(2)}%`);
-
-    await recordSpread(opportunity);
 }
 
 async function recordSpread(opportunity: ArbitrageOpportunity) {
@@ -229,76 +168,132 @@ async function recordSpread(opportunity: ArbitrageOpportunity) {
     }
 }
 
-async function startFeeds() {
+async function getSpreadStats(opportunity: ArbitrageOpportunity): Promise<{ spMax: number | null; spMin: number | null; crosses: number }> {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     try {
-        // Inicializa os conectores
-        const mexcConnector = new MexcConnector(
-            'MEXC_FUTURES',
-            handlePriceUpdate,
-            () => console.log('[MEXC] Conexão estabelecida')
-        );
-        
-        const gateioSpotConnector = new GateioConnector(
-            'GATEIO_SPOT',
-            handlePriceUpdate,
-            () => console.log('[GateIO Spot] Conexão estabelecida')
-        );
+        const stats = await prisma.spreadHistory.aggregate({
+            _max: { spread: true },
+            _min: { spread: true },
+            _count: { id: true },
+            where: {
+                symbol: opportunity.baseSymbol,
+                exchangeBuy: opportunity.buyAt.exchange,
+                exchangeSell: opportunity.sellAt.exchange,
+                direction: opportunity.arbitrageType,
+                timestamp: {
+                    gte: twentyFourHoursAgo,
+                },
+            },
+        });
 
-        const gateioFuturesConnector = new GateioConnector(
-            'GATEIO_FUTURES',
-            handlePriceUpdate,
-            () => console.log('[GateIO Futures] Conexão estabelecida')
-        );
-
-        // Armazena os conectores
-        exchangeConnectors.set('MEXC_FUTURES', mexcConnector);
-        exchangeConnectors.set('GATEIO_SPOT', gateioSpotConnector);
-        exchangeConnectors.set('GATEIO_FUTURES', gateioFuturesConnector);
-
-        // Busca os pares negociáveis de cada exchange
-        const [mexcPairs, gateioSpotPairs, gateioFuturesPairs] = await Promise.all([
-            mexcConnector.getTradablePairs(),
-            gateioSpotConnector.getTradablePairs(),
-            gateioFuturesConnector.getTradablePairs()
-        ]);
-
-        // Encontra pares comuns entre os exchanges
-        const commonPairs = findCommonPairs(mexcPairs, gateioSpotPairs, gateioFuturesPairs);
-        console.log(`[Pares] ${commonPairs.length} pares comuns encontrados`);
-
-        // Inicia as conexões
-        mexcConnector.connect();
-        gateioSpotConnector.connect();
-        gateioFuturesConnector.connect();
-
-        // Inscreve nos pares comuns
-        mexcConnector.subscribe(commonPairs);
-        gateioSpotConnector.subscribe(commonPairs);
-        gateioFuturesConnector.subscribe(commonPairs);
-
+        return {
+            spMax: stats._max.spread,
+            spMin: stats._min.spread,
+            crosses: stats._count.id,
+        };
     } catch (error) {
-        console.error('[Feeds] Erro ao iniciar feeds:', error);
+        console.error(`[Prisma] Erro ao buscar estatísticas de spread para ${opportunity.baseSymbol}:`, error);
+        return { spMax: null, spMin: null, crosses: 0 };
     }
 }
 
-function findCommonPairs(mexcPairs: string[], gateioSpotPairs: string[], gateioFuturesPairs: string[]): string[] {
-    const pairSet = new Set<string>();
-    
-    // Converte todos os pares para o mesmo formato (maiúsculo)
-    const normalizedMexc = new Set(mexcPairs.map(p => p.toUpperCase()));
-    const normalizedGateioSpot = new Set(gateioSpotPairs.map(p => p.toUpperCase()));
-    const normalizedGateioFutures = new Set(gateioFuturesPairs.map(p => p.toUpperCase()));
+function getNormalizedData(symbol: string): { baseSymbol: string, factor: number } {
+    const match = symbol.match(/^(\d+)(.+)$/);
+    if (match) {
+        return {
+            baseSymbol: match[2],
+            factor: parseInt(match[1], 10)
+        };
+    }
+    return {
+        baseSymbol: symbol,
+        factor: 1
+    };
+}
 
-    // Encontra pares que existem em todos os exchanges
-    for (const pair of normalizedMexc) {
-        if (normalizedGateioSpot.has(pair) && normalizedGateioFutures.has(pair)) {
-            pairSet.add(pair);
+async function findAndBroadcastArbitrage() {
+    for (const symbol of targetPairs) {
+        const gateioData = marketPrices['gateio']?.[symbol];
+        const mexcData = marketPrices['mexc']?.[symbol];
+
+        if (!gateioData || !mexcData) continue;
+
+        if (!isFinite(gateioData.bestAsk) || !isFinite(gateioData.bestBid) ||
+            !isFinite(mexcData.bestAsk) || !isFinite(mexcData.bestBid)) {
+            continue;
+        }
+
+        const gateioToMexc = ((mexcData.bestBid - gateioData.bestAsk) / gateioData.bestAsk) * 100;
+        const mexcToGateio = ((gateioData.bestBid - mexcData.bestAsk) / mexcData.bestAsk) * 100;
+
+        if (gateioToMexc > MIN_PROFIT_PERCENTAGE) {
+            const opportunity: ArbitrageOpportunity = {
+                type: 'arbitrage',
+                baseSymbol: symbol,
+                profitPercentage: gateioToMexc,
+                arbitrageType: 'gateio_to_mexc',
+                buyAt: {
+                    exchange: 'gateio',
+                    price: gateioData.bestAsk,
+                    marketType: 'spot'
+                },
+                sellAt: {
+                    exchange: 'mexc',
+                    price: mexcData.bestBid,
+                    marketType: 'futures'
+                },
+                timestamp: Date.now()
+            };
+            
+            broadcastOpportunity(opportunity);
+            await recordSpread(opportunity);
+        }
+
+        if (mexcToGateio > MIN_PROFIT_PERCENTAGE) {
+            const opportunity: ArbitrageOpportunity = {
+                type: 'arbitrage',
+                baseSymbol: symbol,
+                profitPercentage: mexcToGateio,
+                arbitrageType: 'mexc_to_gateio',
+                buyAt: {
+                    exchange: 'mexc',
+                    price: mexcData.bestAsk,
+                    marketType: 'futures'
+                },
+                sellAt: {
+                    exchange: 'gateio',
+                    price: gateioData.bestBid,
+                    marketType: 'spot'
+                },
+                timestamp: Date.now()
+            };
+            
+            broadcastOpportunity(opportunity);
+            await recordSpread(opportunity);
         }
     }
-
-    return Array.from(pairSet);
 }
 
-// Inicializa o servidor na porta 8080
-const server = new WebSocketServer(8080);
-server.start();
+async function startFeeds() {
+    const gateio = new GateioConnector();
+    const mexc = new MexcConnector();
+
+    gateio.onPriceUpdate(handlePriceUpdate);
+    mexc.onPriceUpdate(handlePriceUpdate);
+
+    try {
+        await gateio.connect();
+        await mexc.connect();
+
+        setInterval(findAndBroadcastArbitrage, 1000);
+
+    } catch (error) {
+        console.error('Erro ao iniciar os feeds:', error);
+        process.exit(1);
+    }
+}
+
+export {
+    startWebSocketServer,
+    initializeStandaloneServer
+};

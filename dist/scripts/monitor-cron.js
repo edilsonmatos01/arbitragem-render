@@ -6,21 +6,16 @@ const mexc_connector_1 = require("./connectors/mexc-connector");
 const gateio_futures_connector_1 = require("./connectors/gateio-futures-connector");
 const mexc_futures_connector_1 = require("./connectors/mexc-futures-connector");
 const utils_1 = require("./utils");
-// Inicializa o cliente Prisma
 const prisma = new client_1.PrismaClient();
-// Variáveis globais
 let targetPairs = [];
 let isShuttingDown = false;
 let isCronRunning = false;
-// Função para processar atualizações de preço
 const handlePriceUpdate = (data) => {
     console.log(`Atualização de preço para ${data.symbol}`);
 };
-// Função de callback para conexão
 const handleConnected = () => {
     console.log('Conexão estabelecida com sucesso');
 };
-// Inicializa os conectores
 const gateioSpot = new gateio_connector_1.GateIoConnector('GATEIO_SPOT', handlePriceUpdate);
 const mexcSpot = new mexc_connector_1.MexcConnector('MEXC_SPOT', handlePriceUpdate, handleConnected);
 const gateioFutures = new gateio_futures_connector_1.GateIoFuturesConnector('GATEIO_FUTURES', handlePriceUpdate, handleConnected);
@@ -28,14 +23,12 @@ const mexcFutures = new mexc_futures_connector_1.MexcFuturesConnector('MEXC_FUTU
 async function findCommonPairs() {
     try {
         console.log('Buscando pares negociáveis em todas as exchanges...');
-        // Obtém lista de pares de cada exchange
         const [gateioSpotPairs, mexcSpotPairs, gateioFuturesPairs, mexcFuturesPairs] = await Promise.all([
             gateioSpot.getTradablePairs(),
             mexcSpot.getTradablePairs(),
             gateioFutures.getTradablePairs(),
             mexcFutures.getTradablePairs()
         ]);
-        // Encontra pares em comum
         const commonPairs = gateioSpotPairs.filter(pair => mexcSpotPairs.includes(pair) &&
             gateioFuturesPairs.includes(pair) &&
             mexcFuturesPairs.includes(pair));
@@ -56,9 +49,7 @@ async function monitorAndStore() {
     try {
         isCronRunning = true;
         console.log(`[${new Date().toISOString()}] Iniciando monitoramento...`);
-        // Atualiza a lista de pares em comum
         targetPairs = await findCommonPairs();
-        // Inscreve nos pares em todas as exchanges
         gateioSpot.connect(targetPairs);
         mexcSpot.subscribe(targetPairs);
         gateioFutures.subscribe(targetPairs);
@@ -67,14 +58,12 @@ async function monitorAndStore() {
             if (isShuttingDown)
                 break;
             try {
-                // Coleta preços spot e futures
                 const [gateioSpotPrices, mexcSpotPrices, gateioFuturesPrices, mexcFuturesPrices] = await Promise.all([
                     gateioSpot.getTradablePairs(),
                     mexcSpot.getTradablePairs(),
                     gateioFutures.getTradablePairs(),
                     mexcFutures.getTradablePairs()
                 ]);
-                // Filtra os preços para o símbolo atual
                 const gateioSpotPrice = gateioSpotPrices.find((p) => p === symbol);
                 const mexcSpotPrice = mexcSpotPrices.find((p) => p === symbol);
                 const gateioFuturesPrice = gateioFuturesPrices.find((p) => p === symbol);
@@ -83,11 +72,9 @@ async function monitorAndStore() {
                     console.warn(`[AVISO] Preços incompletos para ${symbol}`);
                     continue;
                 }
-                // Calcula spreads
                 const gateioSpotToMexcFutures = (0, utils_1.calculateSpread)(Number(gateioSpotPrice), Number(mexcFuturesPrice));
                 const mexcSpotToGateioFutures = (0, utils_1.calculateSpread)(Number(mexcSpotPrice), Number(gateioFuturesPrice));
                 const timestamp = new Date();
-                // Salva os dados em uma transação
                 await prisma.$transaction([
                     prisma.$executeRaw `
             INSERT INTO "PriceHistory" (
@@ -174,17 +161,13 @@ async function monitorAndStore() {
         isCronRunning = false;
     }
 }
-// Função principal que mantém o monitoramento rodando
 async function startMonitoring() {
     console.log('Iniciando monitoramento contínuo...');
-    // Conecta aos WebSockets
     gateioSpot.connect([]);
     mexcSpot.connect();
     gateioFutures.connect();
     mexcFutures.connect();
-    // Aguarda um momento para as conexões se estabelecerem
     await new Promise(resolve => setTimeout(resolve, 5000));
-    // Obtém os pares e faz a subscrição
     const pairs = await findCommonPairs();
     if (pairs.length > 0) {
         gateioSpot.connect(pairs);
@@ -194,11 +177,9 @@ async function startMonitoring() {
     }
     while (!isShuttingDown) {
         await monitorAndStore();
-        // Aguarda 5 minutos antes da próxima execução
         await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
     }
 }
-// Tratamento de encerramento gracioso
 process.on('SIGTERM', async () => {
     console.log('Recebido sinal SIGTERM, encerrando graciosamente...');
     isShuttingDown = true;

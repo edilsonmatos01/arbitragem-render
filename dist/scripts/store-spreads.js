@@ -3,12 +3,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const client_1 = require("@prisma/client");
 const gateio_connector_1 = require("./connectors/gateio-connector");
 const mexc_connector_1 = require("./connectors/mexc-connector");
-// Inicializa o cliente Prisma
 const prisma = new client_1.PrismaClient({
     log: ['error'],
     errorFormat: 'minimal',
 });
-// Pares de trading a serem monitorados
 const TRADING_PAIRS = [
     'BTC/USDT',
     'ETH/USDT',
@@ -16,11 +14,8 @@ const TRADING_PAIRS = [
     'BNB/USDT',
     'XRP/USDT'
 ];
-// Armazena os preços mais recentes
 const latestPrices = {};
-// Flag para controle de execução
 let isRunning = false;
-// Função para processar atualizações de preço
 function handlePriceUpdate(data) {
     const { identifier, symbol, bestAsk, bestBid } = data;
     if (!latestPrices[symbol]) {
@@ -34,7 +29,6 @@ function handlePriceUpdate(data) {
     }
     console.log(`[${new Date().toISOString()}] Atualização de preço - ${symbol} ${identifier}: Ask=${bestAsk}, Bid=${bestBid}`);
 }
-// Função para manipular conexão estabelecida
 function handleConnected() {
     console.log(`[${new Date().toISOString()}] Conexão WebSocket estabelecida`);
 }
@@ -46,19 +40,14 @@ async function storeSpreadData() {
     try {
         isRunning = true;
         console.log(`[${new Date().toISOString()}] Iniciando coleta de dados de spread...`);
-        // Limpa os preços anteriores
         Object.keys(latestPrices).forEach(key => delete latestPrices[key]);
-        // Inicializa os conectores
         const gateio = new gateio_connector_1.GateIoConnector('GATEIO_SPOT', handlePriceUpdate);
         const mexc = new mexc_connector_1.MexcConnector('MEXC_FUTURES', handlePriceUpdate, handleConnected);
-        // Conecta aos WebSockets
         gateio.connect(TRADING_PAIRS);
         mexc.connect();
         mexc.subscribe(TRADING_PAIRS);
-        // Aguarda 10 segundos para receber os preços iniciais
         console.log('Aguardando recebimento dos preços iniciais...');
         await new Promise(resolve => setTimeout(resolve, 10000));
-        // Processa e salva os dados
         for (const symbol of TRADING_PAIRS) {
             try {
                 const prices = latestPrices[symbol];
@@ -69,7 +58,6 @@ async function storeSpreadData() {
                 const spotPrice = (prices.spot.bestBid + prices.spot.bestAsk) / 2;
                 const futuresPrice = (prices.futures.bestBid + prices.futures.bestAsk) / 2;
                 const spreadValue = ((futuresPrice - spotPrice) / spotPrice) * 100;
-                // Salva no banco de dados
                 await prisma.spreadHistory.create({
                     data: {
                         symbol,
@@ -86,7 +74,6 @@ async function storeSpreadData() {
                 console.error(`[${new Date().toISOString()}] Erro ao processar ${symbol}:`, error);
             }
         }
-        // Fecha as conexões
         if (typeof gateio.disconnect === 'function')
             gateio.disconnect();
         if (typeof mexc.disconnect === 'function')
@@ -101,7 +88,6 @@ async function storeSpreadData() {
         await prisma.$disconnect();
     }
 }
-// Executa a função principal
 storeSpreadData()
     .catch(console.error)
     .finally(() => process.exit(0));

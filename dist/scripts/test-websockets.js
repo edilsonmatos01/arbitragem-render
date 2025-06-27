@@ -4,21 +4,17 @@ const gateio_connector_1 = require("./connectors/gateio-connector");
 const mexc_connector_1 = require("./connectors/mexc-connector");
 const gateio_futures_connector_1 = require("./connectors/gateio-futures-connector");
 const mexc_futures_connector_1 = require("./connectors/mexc-futures-connector");
-// Função para processar atualizações de preço
 const handlePriceUpdate = (data) => {
     console.log(`[${new Date().toISOString()}] Atualização de preço:`, data);
 };
-// Função de callback para conexão
 const handleConnected = (exchange) => {
     console.log(`[${new Date().toISOString()}] ✅ ${exchange}: Conexão estabelecida com sucesso`);
 };
-// Inicializa os conectores
 console.log('[TESTE] Iniciando teste de conexões WebSocket...\n');
 const gateioSpot = new gateio_connector_1.GateIoConnector('GATEIO_SPOT', handlePriceUpdate);
 const mexcSpot = new mexc_connector_1.MexcConnector('MEXC_SPOT', handlePriceUpdate, () => handleConnected('MEXC Spot'));
 const gateioFutures = new gateio_futures_connector_1.GateIoFuturesConnector('GATEIO_FUTURES', handlePriceUpdate, () => handleConnected('Gate.io Futures'));
 const mexcFutures = new mexc_futures_connector_1.MexcFuturesConnector('MEXC_FUTURES', handlePriceUpdate, () => handleConnected('MEXC Futures'));
-// Função para testar a obtenção de pares negociáveis
 async function testTradablePairs() {
     try {
         console.log('\n[TESTE] Obtendo pares negociáveis...\n');
@@ -35,12 +31,9 @@ async function testTradablePairs() {
         console.error('\n[ERRO] Falha ao obter pares negociáveis:', error);
     }
 }
-// Executa o teste
 console.log('Aguardando conexões (30 segundos)...\n');
-// Aguarda 30 segundos para verificar as conexões e então testa os pares negociáveis
 setTimeout(async () => {
     await testTradablePairs();
-    // Aguarda mais 30 segundos para receber algumas atualizações de preço
     console.log('\nAguardando atualizações de preço (30 segundos)...');
     setTimeout(() => {
         console.log('\n[TESTE] Teste concluído. Encerrando...');

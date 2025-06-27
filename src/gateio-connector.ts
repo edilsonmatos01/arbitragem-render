@@ -2,6 +2,11 @@ import WebSocket from 'ws';
 import fetch from 'node-fetch';
 import { CustomWebSocket, ExchangeConnector, PriceUpdate } from './types';
 
+interface GateioContract {
+    name: string;
+    settle: string;
+}
+
 const GATEIO_WS_URL = 'wss://api.gateio.ws/ws/v4/';
 
 /**
@@ -70,16 +75,23 @@ export class GateioConnector implements ExchangeConnector {
             
             if (Array.isArray(data)) {
                 return data
-                    .filter(contract => 
+                    .filter((contract: GateioContract) => 
                         contract.settle === 'usdt' && 
                         !contract.name.includes('_INDEX')
                     )
-                    .map(contract => contract.name);
+                    .map((contract: GateioContract) => contract.name);
             }
             
-            throw new Error('Formato de resposta inválido');
+            console.warn('Formato de resposta inválido do Gate.io, usando lista padrão');
+            return [
+                'BTC_USDT',
+                'ETH_USDT',
+                'SOL_USDT',
+                'XRP_USDT',
+                'BNB_USDT'
+            ];
         } catch (error) {
-            console.error('Erro ao buscar símbolos:', error);
+            console.error('Erro ao buscar símbolos do Gate.io:', error);
             return [
                 'BTC_USDT',
                 'ETH_USDT',

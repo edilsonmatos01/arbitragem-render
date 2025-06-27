@@ -8,10 +8,6 @@ const ws_1 = __importDefault(require("ws"));
 const node_fetch_1 = __importDefault(require("node-fetch"));
 const events_1 = require("events");
 const GATEIO_WS_URL = 'wss://api.gateio.ws/ws/v4/';
-/**
- * Gerencia a conexão WebSocket e as inscrições para os feeds da Gate.io.
- * Pode ser configurado para SPOT ou FUTURES.
- */
 class GateIoConnector extends events_1.EventEmitter {
     constructor(identifier, priceUpdateCallback) {
         super();
@@ -42,12 +38,12 @@ class GateIoConnector extends events_1.EventEmitter {
             if (this.marketType === 'spot') {
                 return data
                     .filter(p => p.trade_status === 'tradable' && p.quote === 'USDT')
-                    .map(p => p.id.replace('_', '/')); // Converte 'BTC_USDT' para 'BTC/USDT'
+                    .map(p => p.id.replace('_', '/'));
             }
             else {
                 return data
                     .filter(c => c.in_delisting === false)
-                    .map(c => c.name.replace('_', '/')); // Converte 'BTC_USDT' para 'BTC/USDT'
+                    .map(c => c.name.replace('_', '/'));
             }
         }
         catch (error) {
@@ -60,7 +56,7 @@ class GateIoConnector extends events_1.EventEmitter {
             console.warn(`[${this.marketIdentifier}] Lista de pares vazia ou inválida`);
             return;
         }
-        this.subscriptionQueue = pairs.map(p => p.replace('/', '_')); // Gate.io usa '_'
+        this.subscriptionQueue = pairs.map(p => p.replace('/', '_'));
         if (this.ws) {
             this.ws.close();
         }
@@ -80,7 +76,7 @@ class GateIoConnector extends events_1.EventEmitter {
         try {
             const message = JSON.parse(data.toString());
             if (message.channel === 'spot.ping' || message.channel === 'futures.ping') {
-                return; // Ignora pongs
+                return;
             }
             if (message.event === 'update' && message.result) {
                 this.handleTickerUpdate(message.result);
@@ -112,7 +108,7 @@ class GateIoConnector extends events_1.EventEmitter {
         }
         const channel = this.marketType === 'spot' ? 'spot.tickers' : 'futures.tickers';
         const payload = this.subscriptionQueue;
-        this.subscriptionQueue = []; // Limpa a fila
+        this.subscriptionQueue = [];
         const msg = {
             time: Math.floor(Date.now() / 1000),
             channel: channel,

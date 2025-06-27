@@ -35,9 +35,7 @@ class GateIoFuturesConnector {
             this.ws.on('message', (data) => {
                 try {
                     const message = JSON.parse(data.toString());
-                    // Log para debug
                     console.log(`\n[${this.identifier}] Mensagem recebida:`, message);
-                    // Processa atualizações de ticker
                     if (message.event === 'update' && message.channel === 'futures.book_ticker') {
                         const { s: symbol, a: ask, b: bid } = message.result;
                         const formattedSymbol = symbol.replace('_', '/');

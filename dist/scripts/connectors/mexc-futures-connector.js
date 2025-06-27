@@ -69,7 +69,6 @@ class MexcFuturesConnector extends events_1.EventEmitter {
                 console.error(`[${this.identifier}] Erro na conexão:`, error);
                 this.handleDisconnect();
             });
-            // Inicia heartbeat
             this.startHeartbeat();
         }
         catch (error) {

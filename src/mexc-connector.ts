@@ -2,6 +2,12 @@ import WebSocket from 'ws';
 import fetch from 'node-fetch';
 import { CustomWebSocket, ExchangeConnector, PriceUpdate } from './types';
 
+interface MexcContract {
+    symbol: string;
+    quoteCoin: string;
+    futureType: number;
+}
+
 export class MexcConnector implements ExchangeConnector {
     private ws: CustomWebSocket | null = null;
     private priceUpdateCallback: ((update: PriceUpdate) => void) | null = null;
@@ -9,6 +15,13 @@ export class MexcConnector implements ExchangeConnector {
     private readonly restUrl = 'https://contract.mexc.com/api/v1/contract/detail';
     private symbols: string[] = [];
     private pingInterval: NodeJS.Timeout | null = null;
+    private readonly relevantPairs = [
+        'BTC_USDT',
+        'ETH_USDT',
+        'SOL_USDT',
+        'XRP_USDT',
+        'BNB_USDT'
+    ];
 
     async connect(): Promise<void> {
         try {
@@ -61,19 +74,26 @@ export class MexcConnector implements ExchangeConnector {
 
             const data = await response.json();
             
-            if (Array.isArray(data)) {
-                return data
-                    .filter(contract => 
+            if (data && data.data && Array.isArray(data.data)) {
+                return data.data
+                    .filter((contract: MexcContract) => 
                         contract.quoteCoin === 'USDT' && 
                         contract.futureType === 1 && 
                         !contract.symbol.includes('_INDEX_')
                     )
-                    .map(contract => contract.symbol);
+                    .map((contract: MexcContract) => contract.symbol);
             }
             
-            throw new Error('Formato de resposta inválido');
+            console.warn('Formato de resposta inválido da MEXC, usando lista padrão');
+            return [
+                'BTC_USDT',
+                'ETH_USDT',
+                'SOL_USDT',
+                'XRP_USDT',
+                'BNB_USDT'
+            ];
         } catch (error) {
-            console.error('Erro ao buscar símbolos:', error);
+            console.error('Erro ao buscar símbolos da MEXC:', error);
             return [
                 'BTC_USDT',
                 'ETH_USDT',
@@ -125,6 +145,9 @@ export class MexcConnector implements ExchangeConnector {
                 const bestBid = parseFloat(ticker.bid1);
                 
                 if (bestAsk && bestBid && this.priceUpdateCallback) {
+                    // Calcula o spread percentual
+                    const spreadPercent = ((bestBid - bestAsk) / bestAsk) * 100;
+                    
                     const update: PriceUpdate = {
                         identifier: 'mexc',
                         symbol: ticker.symbol,
@@ -133,12 +156,26 @@ export class MexcConnector implements ExchangeConnector {
                         bestAsk,
                         bestBid
                     };
+
+                    // Só mostra logs para os pares relevantes e quando o spread for significativo
+                    if (this.relevantPairs.includes(ticker.symbol) && Math.abs(spreadPercent) > 0.1) {
+                        const spreadColor = spreadPercent > 0.5 ? '\x1b[32m' : '\x1b[36m';
+                        const resetColor = '\x1b[0m';
+                        console.log(`
+${spreadColor}┌──────────────────────────────────────────────
+│ 📊 MEXC Atualização - ${new Date().toLocaleTimeString('pt-BR')}
+│ 🔸 Par: ${update.symbol}
+│ 📉 Compra (Ask): ${bestAsk.toFixed(8)} USDT
+│ 📈 Venda (Bid): ${bestBid.toFixed(8)} USDT
+│ 📊 Spread: ${spreadPercent.toFixed(4)}%
+└──────────────────────────────────────────────${resetColor}`);
+                    }
                     
                     this.priceUpdateCallback(update);
                 }
             }
         } catch (error) {
-            console.error('Erro ao processar mensagem MEXC:', error);
+            console.error('\x1b[31mErro ao processar mensagem MEXC:', error, '\x1b[0m');
         }
     }
 

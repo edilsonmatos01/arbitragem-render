@@ -108,14 +108,11 @@ class MexcFuturesConnector {
             this.ws.on('message', (data) => {
                 try {
                     const message = JSON.parse(data.toString());
-                    // Log para debug
                     console.log(`\n[${this.identifier}] Mensagem recebida:`, message);
-                    // Handle pong response
                     if (message.op === 'pong') {
                         console.log(`[${this.identifier}] Pong recebido`);
                         return;
                     }
-                    // Handle subscription data
                     if (message.channel === 'push.ticker') {
                         const { symbol, bestAsk, bestBid } = message.data;
                         if (bestAsk && bestBid) {
@@ -160,10 +157,8 @@ class MexcFuturesConnector {
             }
             const pairs = data
                 .filter((contract) => {
-                // Filtra apenas contratos ativos e que terminam em USDT
                 return contract.state === 'ENABLED' &&
                     contract.symbol.endsWith('_USDT') &&
-                    // Adiciona validações extras para garantir que são pares válidos
                     contract.symbol.includes('_') &&
                     contract.symbol.split('_').length === 2;
             })
@@ -186,7 +181,6 @@ class MexcFuturesConnector {
         }
         try {
             console.log(`\n[${this.identifier}] Inscrevendo-se em ${pairs.length} pares`);
-            // Converte os pares para o formato do MEXC (BTC/USDT -> BTC_USDT)
             const formattedPairs = pairs.map(pair => pair.replace('/', '_'));
             const subscribeMessage = {
                 "op": "sub.ticker",
@@ -208,7 +202,6 @@ class MexcFuturesConnector {
             this.subscribe(symbols);
         }
     }
-    // Método público para desconectar
     disconnect() {
         console.log(`[${this.identifier}] Desconectando...`);
         this.cleanup();

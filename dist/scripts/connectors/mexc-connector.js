@@ -1,232 +1,272 @@
 "use strict";
-var __extends = (this && this.__extends) || (function () {
-    var extendStatics = function (d, b) {
-        extendStatics = Object.setPrototypeOf ||
-            ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
-            function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
-        return extendStatics(d, b);
-    };
-    return function (d, b) {
-        if (typeof b !== "function" && b !== null)
-            throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
-        extendStatics(d, b);
-        function __() { this.constructor = d; }
-        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
-    };
-})();
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
-var __generator = (this && this.__generator) || function (thisArg, body) {
-    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g = Object.create((typeof Iterator === "function" ? Iterator : Object).prototype);
-    return g.next = verb(0), g["throw"] = verb(1), g["return"] = verb(2), typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
-    function verb(n) { return function (v) { return step([n, v]); }; }
-    function step(op) {
-        if (f) throw new TypeError("Generator is already executing.");
-        while (g && (g = 0, op[0] && (_ = 0)), _) try {
-            if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
-            if (y = 0, t) op = [op[0] & 2, t.value];
-            switch (op[0]) {
-                case 0: case 1: t = op; break;
-                case 4: _.label++; return { value: op[1], done: false };
-                case 5: _.label++; y = op[1]; op = [0]; continue;
-                case 7: op = _.ops.pop(); _.trys.pop(); continue;
-                default:
-                    if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
-                    if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
-                    if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
-                    if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
-                    if (t[2]) _.ops.pop();
-                    _.trys.pop(); continue;
-            }
-            op = body.call(thisArg, _);
-        } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
-        if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
-    }
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MexcConnector = void 0;
-var WebSocket = require('ws');
-var events_1 = require("events");
-var MEXC_SPOT_WS_URL = 'wss://wbs.mexc.com/ws';
-var MexcConnector = /** @class */ (function (_super) {
-    __extends(MexcConnector, _super);
-    function MexcConnector(identifier, onPriceUpdate, onConnect) {
-        var _this = _super.call(this) || this;
-        _this.ws = null;
-        _this.isConnected = false;
-        _this.isConnecting = false;
-        _this.reconnectAttempts = 0;
-        _this.maxReconnectAttempts = 5;
-        _this.reconnectDelay = 5000;
-        _this.subscriptions = new Set();
-        _this.pingInterval = null;
-        _this.marketIdentifier = identifier;
-        _this.onPriceUpdate = onPriceUpdate;
-        _this.onConnectedCallback = onConnect;
-        console.log("[".concat(_this.marketIdentifier, "] Conector instanciado."));
-        return _this;
+const WS = require('ws');
+const events_1 = require("events");
+const MEXC_SPOT_WS_URL = 'wss://wbs.mexc.com/ws';
+class MexcConnector extends events_1.EventEmitter {
+    constructor(identifier, onPriceUpdate, onConnect) {
+        super();
+        this.ws = null;
+        this.isConnected = false;
+        this.isConnecting = false;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 10;
+        this.reconnectDelay = 3000;
+        this.subscriptions = new Set();
+        this.pingInterval = null;
+        this.pingTimeout = null;
+        this.pendingSubscriptions = [];
+        this.lastPingTime = 0;
+        this.marketIdentifier = identifier;
+        this.onPriceUpdate = onPriceUpdate;
+        this.onConnectedCallback = onConnect;
+        if (process && typeof process.on === 'function') {
+            process.on('SIGINT', () => {
+                console.log(`[${this.marketIdentifier}] Recebido SIGINT, desconectando...`);
+                this.disconnect();
+                process.exit(0);
+            });
+        }
+        console.log(`[${this.marketIdentifier}] Conector instanciado.`);
     }
-    MexcConnector.prototype.connect = function () {
-        var _this = this;
+    connect() {
         if (this.isConnecting) {
-            console.log("[".concat(this.marketIdentifier, "] Conex\u00E3o j\u00E1 em andamento."));
+            console.log(`[${this.marketIdentifier}] Conexão já em andamento.`);
             return;
         }
         if (this.ws) {
-            console.log("[".concat(this.marketIdentifier, "] Fechando conex\u00E3o existente..."));
-            this.ws.close();
+            console.log(`[${this.marketIdentifier}] Fechando conexão existente...`);
+            this.ws.terminate();
+            this.ws = null;
         }
         this.isConnecting = true;
-        console.log("[".concat(this.marketIdentifier, "] Conectando a ").concat(MEXC_SPOT_WS_URL));
+        console.log(`[${this.marketIdentifier}] Conectando a ${MEXC_SPOT_WS_URL}`);
         try {
-            this.ws = new WebSocket(MEXC_SPOT_WS_URL);
+            this.ws = new WS(MEXC_SPOT_WS_URL);
             if (!this.ws) {
                 throw new Error('Falha ao criar WebSocket');
             }
-            this.ws.on('open', function () {
-                console.log("[".concat(_this.marketIdentifier, "] Conex\u00E3o WebSocket estabelecida."));
-                _this.isConnected = true;
-                _this.isConnecting = false;
-                _this.reconnectAttempts = 0;
-                _this.startHeartbeat();
-                if (_this.subscriptions.size > 0) {
-                    _this.sendSubscriptionRequests(Array.from(_this.subscriptions));
+            const connectionTimeout = setTimeout(() => {
+                if (!this.isConnected) {
+                    console.log(`[${this.marketIdentifier}] Timeout na conexão inicial`);
+                    this.handleDisconnect();
                 }
-                if (_this.onConnectedCallback) {
-                    _this.onConnectedCallback();
+            }, 30000);
+            this.ws.on('open', () => {
+                clearTimeout(connectionTimeout);
+                console.log(`[${this.marketIdentifier}] Conexão WebSocket estabelecida.`);
+                this.isConnected = true;
+                this.isConnecting = false;
+                this.reconnectAttempts = 0;
+                this.startHeartbeat();
+                if (this.pendingSubscriptions.length > 0) {
+                    console.log(`[${this.marketIdentifier}] Processando ${this.pendingSubscriptions.length} subscrições pendentes...`);
+                    setTimeout(() => {
+                        this.sendSubscriptionRequests(this.pendingSubscriptions);
+                        this.pendingSubscriptions = [];
+                    }, 1000);
+                }
+                if (this.onConnectedCallback) {
+                    this.onConnectedCallback();
                 }
             });
-            this.ws.on('message', function (data) {
+            this.ws.on('pong', () => {
+                this.lastPingTime = Date.now();
+                if (this.pingTimeout) {
+                    clearTimeout(this.pingTimeout);
+                    this.pingTimeout = null;
+                }
+                console.log(`[${this.marketIdentifier}] Pong recebido`);
+            });
+            this.ws.on('message', (data) => {
                 try {
-                    var message = JSON.parse(data.toString());
+                    const message = JSON.parse(data.toString());
+                    this.lastPingTime = Date.now();
                     if (message.c === 'spot.ticker') {
-                        var ticker = message.d;
-                        var pair = ticker.s.replace('_', '/').toUpperCase();
-                        var priceData = {
+                        const ticker = message.d;
+                        const pair = ticker.s.replace('_', '/').toUpperCase();
+                        const priceData = {
                             bestAsk: parseFloat(ticker.a),
                             bestBid: parseFloat(ticker.b),
                         };
                         if (!priceData.bestAsk || !priceData.bestBid) {
-                            console.log("[".concat(_this.marketIdentifier, "] Pre\u00E7os inv\u00E1lidos recebidos:"), ticker);
+                            console.log(`[${this.marketIdentifier}] Preços inválidos recebidos:`, ticker);
                             return;
                         }
-                        console.log("[".concat(_this.marketIdentifier, "] Atualiza\u00E7\u00E3o de pre\u00E7o para ").concat(pair, ":"), priceData);
-                        _this.onPriceUpdate({
+                        this.onPriceUpdate({
                             type: 'price-update',
                             symbol: pair,
                             marketType: 'spot',
                             bestAsk: priceData.bestAsk,
                             bestBid: priceData.bestBid,
-                            identifier: _this.marketIdentifier
+                            identifier: this.marketIdentifier
                         });
+                    }
+                    else if (message.code !== undefined) {
+                        console.log(`[${this.marketIdentifier}] Resposta da API:`, message);
+                        if (message.code !== 0) {
+                            console.error(`[${this.marketIdentifier}] Erro na resposta:`, message);
+                        }
                     }
                 }
                 catch (error) {
-                    console.error("[".concat(_this.marketIdentifier, "] Erro ao processar mensagem:"), error);
+                    console.error(`[${this.marketIdentifier}] Erro ao processar mensagem:`, error);
                 }
             });
-            this.ws.on('close', function () {
-                console.log("[".concat(_this.marketIdentifier, "] Conex\u00E3o fechada"));
-                _this.handleDisconnect();
+            this.ws.on('close', (code, reason) => {
+                clearTimeout(connectionTimeout);
+                console.log(`[${this.marketIdentifier}] Conexão fechada. Código: ${code}, Razão: ${reason || 'Não especificada'}`);
+                this.handleDisconnect();
             });
-            this.ws.on('error', function (error) {
-                console.error("[".concat(_this.marketIdentifier, "] Erro na conex\u00E3o:"), error);
-                _this.handleDisconnect();
+            this.ws.on('error', (error) => {
+                clearTimeout(connectionTimeout);
+                console.error(`[${this.marketIdentifier}] Erro na conexão:`, error);
+                this.handleDisconnect();
             });
         }
         catch (error) {
-            console.error("[".concat(this.marketIdentifier, "] Erro ao criar WebSocket:"), error);
+            console.error(`[${this.marketIdentifier}] Erro ao criar WebSocket:`, error);
             this.handleDisconnect();
         }
-    };
-    MexcConnector.prototype.startHeartbeat = function () {
-        var _this = this;
+    }
+    startHeartbeat() {
         if (this.pingInterval) {
             clearInterval(this.pingInterval);
         }
-        this.pingInterval = setInterval(function () {
+        this.pingInterval = setInterval(() => {
             var _a;
-            if (_this.isConnected && ((_a = _this.ws) === null || _a === void 0 ? void 0 : _a.readyState) === WebSocket.OPEN) {
-                var pingMsg = { method: "ping" };
-                _this.ws.send(JSON.stringify(pingMsg));
+            if (this.isConnected && ((_a = this.ws) === null || _a === void 0 ? void 0 : _a.readyState) === 1) {
+                try {
+                    const pingMsg = { method: "ping" };
+                    console.log(`[${this.marketIdentifier}] Enviando ping`);
+                    this.ws.ping();
+                    if (this.pingTimeout) {
+                        clearTimeout(this.pingTimeout);
+                    }
+                    this.pingTimeout = setTimeout(() => {
+                        console.error(`[${this.marketIdentifier}] Timeout no ping`);
+                        this.handleDisconnect();
+                    }, 5000);
+                    this.ws.send(JSON.stringify(pingMsg));
+                }
+                catch (error) {
+                    console.error(`[${this.marketIdentifier}] Erro ao enviar ping:`, error);
+                    this.handleDisconnect();
+                }
             }
-        }, 20000);
-    };
-    MexcConnector.prototype.handleDisconnect = function () {
-        var _this = this;
+        }, 15000);
+    }
+    handleDisconnect() {
         this.isConnected = false;
         this.isConnecting = false;
         if (this.pingInterval) {
             clearInterval(this.pingInterval);
             this.pingInterval = null;
         }
-        if (this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.reconnectAttempts++;
-            var delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
-            console.log("[".concat(this.marketIdentifier, "] Tentando reconectar em ").concat(delay, "ms..."));
-            setTimeout(function () { return _this.connect(); }, delay);
-        }
-        else {
-            console.error("[".concat(this.marketIdentifier, "] M\u00E1ximo de tentativas de reconex\u00E3o atingido"));
-        }
-    };
-    MexcConnector.prototype.subscribe = function (symbols) {
-        var _this = this;
-        var _a;
-        console.log("[".concat(this.marketIdentifier, "] Inscrevendo nos s\u00EDmbolos:"), symbols);
-        symbols.forEach(function (symbol) { return _this.subscriptions.add(symbol); });
-        if (this.isConnected && ((_a = this.ws) === null || _a === void 0 ? void 0 : _a.readyState) === WebSocket.OPEN) {
-            this.sendSubscriptionRequests(Array.from(this.subscriptions));
-        }
-    };
-    MexcConnector.prototype.sendSubscriptionRequests = function (symbols) {
-        var _this = this;
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            console.log("[".concat(this.marketIdentifier, "] WebSocket n\u00E3o est\u00E1 pronto para subscri\u00E7\u00E3o"));
-            return;
-        }
-        var ws = this.ws; // Capture reference to avoid null check issues
-        symbols.forEach(function (symbol) {
-            var formattedSymbol = symbol.replace('/', '').toLowerCase();
-            var msg = { method: 'sub.ticker', param: { symbol: formattedSymbol } };
-            console.log("[".concat(_this.marketIdentifier, "] Enviando subscri\u00E7\u00E3o:"), JSON.stringify(msg));
-            ws.send(JSON.stringify(msg));
-        });
-    };
-    MexcConnector.prototype.disconnect = function () {
-        console.log("[".concat(this.marketIdentifier, "] Desconectando..."));
-        this.isConnected = false;
-        this.isConnecting = false;
-        if (this.pingInterval) {
-            clearInterval(this.pingInterval);
-            this.pingInterval = null;
+        if (this.pingTimeout) {
+            clearTimeout(this.pingTimeout);
+            this.pingTimeout = null;
         }
         if (this.ws) {
-            this.ws.close();
+            try {
+                this.ws.terminate();
+            }
+            catch (error) {
+                console.error(`[${this.marketIdentifier}] Erro ao terminar WebSocket:`, error);
+            }
             this.ws = null;
         }
-    };
-    MexcConnector.prototype.getTradablePairs = function () {
-        return __awaiter(this, void 0, void 0, function () {
-            return __generator(this, function (_a) {
-                // Implementação simplificada para teste
-                return [2 /*return*/, [
-                        'BTC/USDT',
-                        'ETH/USDT',
-                        'SOL/USDT',
-                        'XRP/USDT',
-                        'BNB/USDT'
-                    ]];
-            });
+        this.pendingSubscriptions = Array.from(this.subscriptions);
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+            this.reconnectAttempts++;
+            const delay = this.reconnectDelay * Math.pow(1.5, this.reconnectAttempts - 1);
+            console.log(`[${this.marketIdentifier}] Tentando reconectar em ${delay}ms... (Tentativa ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+            setTimeout(() => this.connect(), delay);
+        }
+        else {
+            console.error(`[${this.marketIdentifier}] Máximo de tentativas de reconexão atingido. Reiniciando contador...`);
+            this.reconnectAttempts = 0;
+            setTimeout(() => this.connect(), this.reconnectDelay);
+        }
+    }
+    subscribe(symbols) {
+        var _a;
+        console.log(`[${this.marketIdentifier}] Inscrevendo nos símbolos:`, symbols);
+        symbols.forEach(symbol => this.subscriptions.add(symbol));
+        if (this.isConnected && ((_a = this.ws) === null || _a === void 0 ? void 0 : _a.readyState) === 1) {
+            setTimeout(() => {
+                this.sendSubscriptionRequests(Array.from(this.subscriptions));
+            }, 1000);
+        }
+        else {
+            console.log(`[${this.marketIdentifier}] WebSocket não está pronto. Adicionando à fila de subscrições pendentes.`);
+            this.pendingSubscriptions = Array.from(this.subscriptions);
+            if (!this.isConnecting) {
+                this.connect();
+            }
+        }
+    }
+    sendSubscriptionRequests(symbols) {
+        if (!this.ws || this.ws.readyState !== 1) {
+            console.log(`[${this.marketIdentifier}] WebSocket não está pronto para subscrição`);
+            this.pendingSubscriptions = symbols;
+            return;
+        }
+        symbols.forEach((symbol, index) => {
+            setTimeout(() => {
+                if (!this.ws || this.ws.readyState !== 1)
+                    return;
+                const formattedSymbol = symbol.replace('/', '').toLowerCase();
+                const msg = {
+                    method: 'sub.ticker',
+                    param: {
+                        symbol: formattedSymbol
+                    },
+                    id: Date.now()
+                };
+                try {
+                    console.log(`[${this.marketIdentifier}] Enviando subscrição:`, JSON.stringify(msg));
+                    this.ws.send(JSON.stringify(msg));
+                }
+                catch (error) {
+                    console.error(`[${this.marketIdentifier}] Erro ao enviar subscrição para ${symbol}:`, error);
+                    this.pendingSubscriptions.push(symbol);
+                }
+            }, index * 100);
         });
-    };
-    return MexcConnector;
-}(events_1.EventEmitter));
+    }
+    disconnect() {
+        console.log(`[${this.marketIdentifier}] Desconectando...`);
+        this.isConnected = false;
+        this.isConnecting = false;
+        if (this.pingInterval) {
+            clearInterval(this.pingInterval);
+            this.pingInterval = null;
+        }
+        if (this.pingTimeout) {
+            clearTimeout(this.pingTimeout);
+            this.pingTimeout = null;
+        }
+        if (this.ws) {
+            try {
+                this.ws.terminate();
+                this.ws = null;
+            }
+            catch (error) {
+                console.error(`[${this.marketIdentifier}] Erro ao fechar WebSocket:`, error);
+            }
+        }
+    }
+    async getTradablePairs() {
+        return [
+            'BTC/USDT',
+            'ETH/USDT',
+            'SOL/USDT',
+            'XRP/USDT',
+            'BNB/USDT'
+        ];
+    }
+}
 exports.MexcConnector = MexcConnector;
+//# sourceMappingURL=mexc-connector.js.map

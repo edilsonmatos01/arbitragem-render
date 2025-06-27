@@ -39,20 +39,17 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const client_1 = require("@prisma/client");
 const ws_1 = __importDefault(require("ws"));
 const https = __importStar(require("https"));
-// Configurações
-const MONITORING_INTERVAL = 5 * 60 * 1000; // 5 minutos
-const RECONNECT_INTERVAL = 5000; // 5 segundos
-const DB_RETRY_INTERVAL = 30000; // 30 segundos
-const SUBSCRIPTION_INTERVAL = 60000; // 1 minuto
+const MONITORING_INTERVAL = 5 * 60 * 1000;
+const RECONNECT_INTERVAL = 5000;
+const DB_RETRY_INTERVAL = 30000;
+const SUBSCRIPTION_INTERVAL = 60000;
 let isWorkerRunning = false;
 let isShuttingDown = false;
 let prisma = null;
-// Configurações WebSocket
 const GATEIO_WS_URL = 'wss://api.gateio.ws/ws/v4/';
 const MEXC_WS_URL = 'wss://wbs.mexc.com/ws';
 const GATEIO_FUTURES_WS_URL = 'wss://fx-ws.gateio.ws/v4/ws/usdt';
 const MEXC_FUTURES_WS_URL = 'wss://contract.mexc.com/ws';
-// Mensagens de subscrição específicas para cada exchange
 const SUBSCRIPTION_MESSAGES = {
     'Gate.io Spot': (symbol) => ({
         id: Date.now(),
@@ -79,10 +76,8 @@ const SUBSCRIPTION_MESSAGES = {
         channel: "contract.ticker"
     })
 };
-// Função para verificar URL antes de conectar WebSocket
 async function checkEndpoint(url, name) {
     if (name === 'MEXC Futures') {
-        // Para MEXC Futures, tentamos várias URLs conhecidas
         const possibleUrls = [
             'wss://contract.mexc.com/ws',
             'wss://futures.mexc.com/ws',
@@ -136,7 +131,6 @@ async function checkEndpoint(url, name) {
         });
     });
 }
-// Função para criar conexão WebSocket
 async function createWebSocket(url, name) {
     console.log(`[${name}] Tentando conectar em: ${url}`);
     const ws = new ws_1.default(url, {
@@ -144,7 +138,7 @@ async function createWebSocket(url, name) {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         },
         followRedirects: true,
-        handshakeTimeout: name.includes('MEXC') ? 30000 : 10000 // Aumenta timeout para MEXC
+        handshakeTimeout: name.includes('MEXC') ? 30000 : 10000
     });
     let subscriptionInterval;
     let isFirstConnection = true;
@@ -179,7 +173,6 @@ async function createWebSocket(url, name) {
     ws.on('open', async () => {
         console.log(`[${name}] Conexão WebSocket estabelecida`);
         try {
-            // Na primeira conexão, tenta subscrever imediatamente
             if (isFirstConnection) {
                 isFirstConnection = false;
                 const symbols = await getTradablePairs();
@@ -195,7 +188,6 @@ async function createWebSocket(url, name) {
                     subscribe(symbol);
                 }
             }
-            // Inicia o intervalo de resubscrição
             subscriptionInterval = setInterval(async () => {
                 const symbols = await getTradablePairs();
                 const defaultSymbols = symbols.length > 0 ? symbols : [{
@@ -231,11 +223,9 @@ async function createWebSocket(url, name) {
     ws.on('message', (data) => {
         try {
             const message = JSON.parse(data.toString());
-            // Log específico para mensagens da MEXC
             if (name.includes('MEXC')) {
                 console.log(`[${name}] Mensagem recebida:`, JSON.stringify(message, null, 2));
             }
-            // Se for uma mensagem de erro da MEXC
             if (name.includes('MEXC') && (message.code !== undefined || message.msg !== undefined)) {
                 console.error(`[${name}] Erro recebido da exchange:`, JSON.stringify(message, null, 2));
             }
@@ -263,12 +253,10 @@ async function createWebSocket(url, name) {
     });
     return ws;
 }
-// Inicializa as conexões WebSocket
 let gateioWs;
 let mexcWs;
 let gateioFuturesWs;
 let mexcFuturesWs;
-// Função para inicializar as conexões WebSocket
 async function initializeWebSockets() {
     try {
         gateioWs = await createWebSocket(GATEIO_WS_URL, 'Gate.io Spot');
@@ -280,7 +268,6 @@ async function initializeWebSockets() {
         console.error('[Worker] Erro ao inicializar conexões WebSocket:', error);
     }
 }
-// Função para inicializar o Prisma com retry
 async function initializePrisma() {
     while (!isShuttingDown) {
         try {
@@ -298,13 +285,12 @@ async function initializePrisma() {
         }
     }
 }
-// Função para obter pares negociáveis
 async function getTradablePairs() {
     try {
         if (!prisma) {
             await initializePrisma();
             if (!prisma)
-                return []; // Se ainda não conseguiu conectar, retorna array vazio
+                return [];
         }
         return await prisma.$queryRaw `
       SELECT "baseSymbol", "gateioSymbol", "mexcSymbol", "gateioFuturesSymbol", "mexcFuturesSymbol"
@@ -317,7 +303,6 @@ async function getTradablePairs() {
         return [];
     }
 }
-// Função para processar mensagens WebSocket
 function processWebSocketMessage(exchange, data) {
     try {
         const message = JSON.parse(data.toString());
@@ -327,7 +312,6 @@ function processWebSocketMessage(exchange, data) {
         console.error(`[${exchange}] Erro ao processar mensagem:`, error);
     }
 }
-// Função principal de monitoramento
 async function monitorAndStore() {
     if (isWorkerRunning) {
         console.log('[Worker] Monitoramento já está em execução');
@@ -337,7 +321,6 @@ async function monitorAndStore() {
         isWorkerRunning = true;
         console.log(`[Worker ${new Date().toISOString()}] Iniciando monitoramento...`);
         const symbols = await getTradablePairs();
-        // Se não conseguiu obter símbolos do banco, usa um conjunto padrão para manter as conexões ativas
         const defaultSymbols = symbols.length > 0 ? symbols : [{
                 baseSymbol: 'BTC',
                 gateioSymbol: 'BTC_USDT',
@@ -349,7 +332,6 @@ async function monitorAndStore() {
             if (isShuttingDown)
                 break;
             try {
-                // Subscreve aos canais de preço para cada símbolo
                 if ((gateioWs === null || gateioWs === void 0 ? void 0 : gateioWs.readyState) === ws_1.default.OPEN) {
                     const message = {
                         time: Date.now(),
@@ -398,21 +380,17 @@ async function monitorAndStore() {
         isWorkerRunning = false;
     }
 }
-// Função principal que mantém o worker rodando
 async function startWorker() {
     console.log('[Worker] Iniciando worker em segundo plano...');
-    // Inicializa as conexões WebSocket
     await initializeWebSockets();
     while (!isShuttingDown) {
         await monitorAndStore();
         await new Promise(resolve => setTimeout(resolve, MONITORING_INTERVAL));
     }
 }
-// Tratamento de encerramento gracioso
 process.on('SIGTERM', async () => {
     console.log('[Worker] Recebido sinal SIGTERM, encerrando graciosamente...');
     isShuttingDown = true;
-    // Fecha as conexões WebSocket
     if (gateioWs)
         gateioWs.close();
     if (mexcWs)
@@ -429,7 +407,6 @@ process.on('SIGTERM', async () => {
 process.on('SIGINT', async () => {
     console.log('[Worker] Recebido sinal SIGINT, encerrando graciosamente...');
     isShuttingDown = true;
-    // Fecha as conexões WebSocket
     if (gateioWs)
         gateioWs.close();
     if (mexcWs)
@@ -443,7 +420,6 @@ process.on('SIGINT', async () => {
     }
     process.exit(0);
 });
-// Inicia o worker
 startWorker().catch(error => {
     console.error('[Worker] Erro fatal:', error);
     process.exit(1);

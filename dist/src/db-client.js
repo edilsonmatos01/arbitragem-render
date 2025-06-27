@@ -48,7 +48,6 @@ class DatabaseClient {
         await this.pool.end();
     }
 }
-// Singleton instance
 const db = new DatabaseClient();
 exports.default = db;
 //# sourceMappingURL=db-client.js.map
