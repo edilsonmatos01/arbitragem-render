@@ -1,3 +1,5 @@
+import WebSocket from 'ws';
+
 export interface PriceData {
   bestAsk: number;
   bestBid: number;
@@ -58,11 +60,27 @@ export interface SpreadData {
     timestamp: number;
 }
 
+export interface CustomWebSocket extends WebSocket {
+    isAlive?: boolean;
+    symbol?: string;
+}
+
+export interface ExchangeConnector {
+    connect(): Promise<void>;
+    disconnect(): void;
+    onPriceUpdate(callback: (update: PriceUpdate) => void): void;
+}
+
 export interface PriceUpdate {
-    type: string;
+    identifier: string;
     symbol: string;
+    type: 'spot' | 'futures';
     marketType: 'spot' | 'futures';
     bestAsk: number;
     bestBid: number;
-    identifier: string;
+}
+
+export interface WebSocketMessage {
+    type: string;
+    data: any;
 } 

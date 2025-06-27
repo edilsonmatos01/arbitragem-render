@@ -8,244 +8,169 @@ const GATEIO_WS_URL = 'wss://api.gateio.ws/ws/v4/';
  * Gerencia a conexão WebSocket e as inscrições para os feeds da Gate.io.
  * Pode ser configurado para SPOT ou FUTURES.
  */
-export class GateIoConnector implements ExchangeConnector {
+export class GateioConnector implements ExchangeConnector {
     private ws: CustomWebSocket | null = null;
-    private readonly identifier: string;
-    private readonly marketType: 'spot' | 'futures';
-    private readonly onPriceUpdate: (data: PriceUpdate) => void;
-    private readonly onConnect: () => void;
-    
-    private subscriptionQueue: string[] = [];
-    private isConnected: boolean = false;
-    private isConnecting: boolean = false;
-    private reconnectAttempts: number = 0;
-    private readonly maxReconnectAttempts: number = 5;
-    private readonly baseReconnectDelay: number = 5000;
-    private readonly maxReconnectDelay: number = 300000;
-    private heartbeatInterval: NodeJS.Timeout | null = null;
-    private readonly HEARTBEAT_INTERVAL = 20000;
+    private priceUpdateCallback: ((update: PriceUpdate) => void) | null = null;
+    private readonly wsUrl = 'wss://api.gateio.ws/ws/v4/';
+    private readonly restUrl = 'https://api.gateio.ws/api/v4/futures/usdt/contracts';
+    private symbols: string[] = [];
+    private pingInterval: NodeJS.Timeout | null = null;
 
-    constructor(
-        identifier: string,
-        onPriceUpdate: (data: PriceUpdate) => void,
-        onConnect: () => void
-    ) {
-        this.identifier = identifier;
-        this.marketType = identifier.includes('_SPOT') ? 'spot' : 'futures';
-        this.onPriceUpdate = onPriceUpdate;
-        this.onConnect = onConnect;
-        console.log(`[${this.identifier}] Conector inicializado.`);
+    async connect(): Promise<void> {
+        try {
+            this.symbols = await this.getSymbols();
+            console.log('Conectando ao WebSocket do Gate.io...');
+            
+            this.ws = new WebSocket(this.wsUrl, {
+                handshakeTimeout: 30000,
+                perMessageDeflate: false,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+            }) as CustomWebSocket;
+
+            this.ws.on('open', () => {
+                console.log('Conexão estabelecida com Gate.io!');
+                this.setupHeartbeat();
+                this.subscribeToSymbols();
+            });
+
+            this.ws.on('message', (data) => this.handleMessage(data));
+            
+            this.ws.on('error', (error) => {
+                console.error('Erro na conexão Gate.io:', error);
+            });
+
+            this.ws.on('close', (code, reason) => {
+                console.log('Conexão Gate.io fechada:', code, reason?.toString());
+                this.cleanup();
+                // Reconecta após 5 segundos
+                setTimeout(() => this.connect(), 5000);
+            });
+
+        } catch (error) {
+            console.error('Erro ao conectar com Gate.io:', error);
+            throw error;
+        }
     }
 
-    public async getTradablePairs(): Promise<string[]> {
-        const endpoint = this.marketType === 'spot'
-            ? 'https://api.gateio.ws/api/v4/spot/currency_pairs'
-            : 'https://api.gateio.ws/api/v4/futures/usdt/contracts';
-
+    private async getSymbols(): Promise<string[]> {
         try {
-            console.log(`[${this.identifier}] Buscando pares negociáveis de ${endpoint}`);
-            const response = await fetch(endpoint);
-            
+            const response = await fetch(this.restUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+            });
+
             if (!response.ok) {
-                throw new Error(`Falha na API: ${response.statusText}`);
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
 
             const data = await response.json();
             
-            if (!Array.isArray(data)) {
-                console.warn(`[${this.identifier}] A resposta da API não foi uma lista (possível geoblocking).`);
-                return [];
-            }
-
-            if (this.marketType === 'spot') {
+            if (Array.isArray(data)) {
                 return data
-                    .filter((p: any) => p.trade_status === 'tradable' && p.quote === 'USDT')
-                    .map((p: any) => p.id.replace('_', '/'));
-            } else {
-                return data
-                    .filter((c: any) => c.in_delisting === false)
-                    .map((c: any) => c.name.replace('_', '/'));
+                    .filter(contract => 
+                        contract.settle === 'usdt' && 
+                        !contract.name.includes('_INDEX')
+                    )
+                    .map(contract => contract.name);
             }
+            
+            throw new Error('Formato de resposta inválido');
         } catch (error) {
-            console.error(`[${this.identifier}] Erro ao buscar pares negociáveis:`, error);
-            return [];
+            console.error('Erro ao buscar símbolos:', error);
+            return [
+                'BTC_USDT',
+                'ETH_USDT',
+                'SOL_USDT',
+                'XRP_USDT',
+                'BNB_USDT'
+            ];
         }
     }
 
-    public connect(): void {
-        if (this.isConnecting) {
-            console.log(`[${this.identifier}] Conexão já em andamento.`);
-            return;
+    private setupHeartbeat() {
+        if (this.pingInterval) {
+            clearInterval(this.pingInterval);
         }
 
-        if (this.ws) {
-            this.ws.close();
-            this.ws = null;
-        }
+        this.pingInterval = setInterval(() => {
+            if (this.ws?.readyState === WebSocket.OPEN) {
+                this.ws.ping();
+                console.log('Ping enviado para Gate.io');
+            }
+        }, 20000);
 
-        this.isConnecting = true;
-        console.log(`[${this.identifier}] Conectando a ${GATEIO_WS_URL}`);
-        
-        try {
-            this.ws = new WebSocket(GATEIO_WS_URL) as CustomWebSocket;
-            this.ws.isAlive = true;
-
-            this.ws.on('open', this.onOpen.bind(this));
-            this.ws.on('message', this.onMessage.bind(this));
-            this.ws.on('close', this.onClose.bind(this));
-            this.ws.on('error', this.onError.bind(this));
-            this.ws.on('pong', this.onPong.bind(this));
-        } catch (error) {
-            console.error(`[${this.identifier}] Erro ao criar WebSocket:`, error);
-            this.handleDisconnect();
-        }
-    }
-
-    public subscribe(symbols: string[]): void {
-        if (!symbols || symbols.length === 0) {
-            console.warn(`[${this.identifier}] Lista de pares vazia ou inválida`);
-            return;
-        }
-
-        this.subscriptionQueue = symbols.map(p => p.replace('/', '_'));
-        
-        if (this.isConnected && this.ws) {
-            this.sendSubscriptions();
-        }
-    }
-
-    private sendSubscriptions(): void {
-        if (!this.ws || !this.isConnected) return;
-
-        const channel = this.marketType === 'spot' ? 'spot.book_ticker' : 'futures.book_ticker';
-        
-        this.subscriptionQueue.forEach(symbol => {
-            const subscription = {
-                time: Math.floor(Date.now() / 1000),
-                channel,
-                event: 'subscribe',
-                payload: [symbol]
-            };
-
-            this.ws?.send(JSON.stringify(subscription));
-            console.log(`[${this.identifier}] Inscrito em ${symbol}`);
+        this.ws?.on('pong', () => {
+            console.log('Pong recebido do Gate.io');
         });
     }
 
-    private onOpen(): void {
-        console.log(`[${this.identifier}] Conexão estabelecida`);
-        this.isConnected = true;
-        this.isConnecting = false;
-        this.reconnectAttempts = 0;
-        this.startHeartbeat();
-
-        if (this.subscriptionQueue.length > 0) {
-            this.sendSubscriptions();
-        }
-
-        this.onConnect();
+    private subscribeToSymbols() {
+        this.symbols.forEach(symbol => {
+            if (this.ws?.readyState === WebSocket.OPEN) {
+                const msg = {
+                    time: Math.floor(Date.now() / 1000),
+                    channel: "futures.tickers",
+                    event: "subscribe",
+                    payload: [symbol]
+                };
+                
+                console.log('Enviando subscrição Gate.io:', JSON.stringify(msg));
+                this.ws.send(JSON.stringify(msg));
+            }
+        });
     }
 
-    private onMessage(data: WebSocket.Data): void {
+    private handleMessage(data: WebSocket.Data) {
         try {
             const message = JSON.parse(data.toString());
-
-            if (message.event === 'update' && (message.channel === 'spot.book_ticker' || message.channel === 'futures.book_ticker')) {
+            
+            if (message.channel === 'futures.tickers' && message.result) {
                 const ticker = message.result;
-                const symbol = ticker.s || ticker.currency_pair;
-                const pair = symbol.replace('_', '/');
-
-                const bestAsk = parseFloat(ticker.a || ticker.ask);
-                const bestBid = parseFloat(ticker.b || ticker.bid);
-
-                if (!bestAsk || !bestBid) return;
-
-                this.onPriceUpdate({
-                    identifier: this.identifier,
-                    symbol: pair,
-                    marketType: this.marketType,
-                    bestAsk,
-                    bestBid
-                });
+                const bestAsk = parseFloat(ticker.last);
+                const bestBid = parseFloat(ticker.last);
+                
+                if (bestAsk && bestBid && this.priceUpdateCallback) {
+                    const update: PriceUpdate = {
+                        identifier: 'gateio',
+                        symbol: ticker.contract,
+                        type: 'futures',
+                        marketType: 'futures',
+                        bestAsk,
+                        bestBid
+                    };
+                    
+                    this.priceUpdateCallback(update);
+                }
             }
         } catch (error) {
-            console.error(`[${this.identifier}] Erro ao processar mensagem:`, error);
+            console.error('Erro ao processar mensagem Gate.io:', error);
         }
     }
 
-    private onClose(): void {
-        console.log(`[${this.identifier}] Conexão fechada`);
+    public disconnect(): void {
         this.cleanup();
-        this.handleDisconnect();
-    }
-
-    private onError(error: Error): void {
-        console.error(`[${this.identifier}] Erro na conexão:`, error);
-        this.cleanup();
-        this.handleDisconnect();
-    }
-
-    private onPong(): void {
-        if (this.ws) {
-            this.ws.isAlive = true;
-        }
-    }
-
-    private startHeartbeat(): void {
-        if (this.heartbeatInterval) {
-            clearInterval(this.heartbeatInterval);
-        }
-
-        this.heartbeatInterval = setInterval(() => {
-            if (!this.ws) return;
-
-            if (this.ws.isAlive === false) {
-                console.log(`[${this.identifier}] Heartbeat falhou, reconectando...`);
-                this.ws.terminate();
-                return;
-            }
-
-            this.ws.isAlive = false;
-            this.ws.ping();
-        }, this.HEARTBEAT_INTERVAL);
     }
 
     private cleanup(): void {
-        this.isConnected = false;
-        this.isConnecting = false;
-        
-        if (this.heartbeatInterval) {
-            clearInterval(this.heartbeatInterval);
-            this.heartbeatInterval = null;
+        if (this.pingInterval) {
+            clearInterval(this.pingInterval);
+            this.pingInterval = null;
         }
 
         if (this.ws) {
             this.ws.removeAllListeners();
+            if (this.ws.readyState === WebSocket.OPEN) {
+                this.ws.close();
+            }
             this.ws = null;
         }
     }
 
-    private handleDisconnect(): void {
-        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.error(`[${this.identifier}] Máximo de tentativas de reconexão atingido`);
-            return;
-        }
-
-        const delay = Math.min(
-            this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts),
-            this.maxReconnectDelay
-        );
-
-        console.log(`[${this.identifier}] Tentando reconectar em ${delay/1000} segundos...`);
-        
-        setTimeout(() => {
-            this.reconnectAttempts++;
-            this.connect();
-        }, delay);
+    public onPriceUpdate(callback: (update: PriceUpdate) => void): void {
+        this.priceUpdateCallback = callback;
     }
-
-    public disconnect(): void {
-        console.log(`[${this.identifier}] Desconectando...`);
-        this.cleanup();
-    }
+} 
 } 

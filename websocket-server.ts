@@ -15,6 +15,82 @@ let marketPrices: MarketPrices = {};
 let clients: CustomWebSocket[] = [];
 let exchangeConnectors: Map<string, GateIoConnector | MexcConnector> = new Map();
 
+export class WebSocketServer {
+    private wss: WebSocket.Server;
+    private mexcConnector: MexcConnector;
+    private gateioConnector: GateIoConnector;
+    private clients: Set<WebSocket> = new Set();
+
+    constructor(port: number) {
+        this.wss = new WebSocket.Server({ port });
+        this.mexcConnector = new MexcConnector();
+        this.gateioConnector = new GateIoConnector();
+
+        this.setupWebSocketServer();
+        this.setupExchangeConnectors();
+    }
+
+    private setupWebSocketServer() {
+        this.wss.on('connection', (ws: WebSocket) => {
+            console.log('Cliente conectado');
+            this.clients.add(ws);
+
+            ws.on('message', (message: string) => {
+                console.log('Mensagem recebida:', message);
+            });
+
+            ws.on('close', () => {
+                console.log('Cliente desconectado');
+                this.clients.delete(ws);
+            });
+
+            ws.on('error', (error: Error) => {
+                console.error('Erro no WebSocket:', error);
+            });
+        });
+    }
+
+    private setupExchangeConnectors() {
+        this.mexcConnector.onPriceUpdate((update: PriceUpdate) => {
+            this.broadcastPriceUpdate(update);
+        });
+
+        this.gateioConnector.onPriceUpdate((update: PriceUpdate) => {
+            this.broadcastPriceUpdate(update);
+        });
+
+        this.startConnectors();
+    }
+
+    private async startConnectors() {
+        try {
+            await this.mexcConnector.connect();
+            await this.gateioConnector.connect();
+        } catch (error) {
+            console.error('Erro ao iniciar conectores:', error);
+        }
+    }
+
+    private broadcastPriceUpdate(update: PriceUpdate) {
+        const message = JSON.stringify(update);
+        this.clients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(message);
+            }
+        });
+    }
+
+    public start() {
+        console.log('Servidor WebSocket iniciado');
+    }
+
+    public stop() {
+        this.mexcConnector.disconnect();
+        this.gateioConnector.disconnect();
+        this.wss.close();
+    }
+}
+
 function handlePriceUpdate(update: PriceUpdate) {
     const { identifier, symbol, marketType, bestAsk, bestBid } = update;
 
