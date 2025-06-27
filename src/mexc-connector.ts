@@ -11,7 +11,7 @@ interface MexcContract {
 export class MexcConnector implements ExchangeConnector {
     private ws: CustomWebSocket | null = null;
     private priceUpdateCallback: ((update: PriceUpdate) => void) | null = null;
-    private readonly wsUrl = 'wss://contract.mexc.com/ws';
+    private readonly wsUrl = 'wss://contract.mexc.com/edge';
     private readonly restUrl = 'https://contract.mexc.com/api/v1/contract/detail';
     private symbols: string[] = [];
     private pingInterval: NodeJS.Timeout | null = null;
