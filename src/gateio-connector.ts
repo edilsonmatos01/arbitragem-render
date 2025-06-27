@@ -2,31 +2,46 @@ import WebSocket from 'ws';
 import fetch from 'node-fetch';
 import { CustomWebSocket, ExchangeConnector, PriceUpdate } from './types';
 
-interface GateioContract {
-    name: string;
-    settle: string;
+interface GateioSpotSymbol {
+    id: string;
+    base: string;
+    quote: string;
+    fee: string;
+    min_base_amount: string;
+    min_quote_amount: string;
+    amount_precision: number;
+    precision: number;
+    trade_status: string;
+    sell_start: number;
+    buy_start: number;
 }
 
-const GATEIO_WS_URL = 'wss://api.gateio.ws/ws/v4/';
-
 /**
- * Gerencia a conexão WebSocket e as inscrições para os feeds da Gate.io.
- * Pode ser configurado para SPOT ou FUTURES.
+ * Conector para Gate.io SPOT (não futures)
+ * Usado para a estratégia: Comprar Gate.io Spot -> Vender MEXC Futures
  */
 export class GateioConnector implements ExchangeConnector {
     private ws: CustomWebSocket | null = null;
     private priceUpdateCallback: ((update: PriceUpdate) => void) | null = null;
     private readonly wsUrl = 'wss://api.gateio.ws/ws/v4/';
-    private readonly restUrl = 'https://api.gateio.ws/api/v4/futures/usdt/contracts';
+    private readonly restUrl = 'https://api.gateio.ws/api/v4/spot/currency_pairs';
     private symbols: string[] = [];
     private pingInterval: NodeJS.Timeout | null = null;
+    private reconnectAttempts = 0;
+    private readonly maxReconnectAttempts = 5;
 
     async connect(): Promise<void> {
         try {
-            console.log('[GATEIO CONNECT] Iniciando conexão...');
-            this.symbols = await this.getSymbols();
-            console.log(`[GATEIO CONNECT] ${this.symbols.length} símbolos obtidos`);
-            console.log('[GATEIO CONNECT] Conectando ao WebSocket do Gate.io...');
+            if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+                console.log('[GATEIO] Máximo de tentativas atingido, aguardando 1 minuto...');
+                this.reconnectAttempts = 0;
+                setTimeout(() => this.connect(), 60000);
+                return;
+            }
+
+            console.log('[GATEIO CONNECT] Iniciando conexão SPOT...');
+            this.symbols = await this.getSpotSymbols();
+            console.log(`[GATEIO CONNECT] ${this.symbols.length} símbolos SPOT obtidos`);
             
             this.ws = new WebSocket(this.wsUrl, {
                 handshakeTimeout: 30000,
@@ -37,34 +52,38 @@ export class GateioConnector implements ExchangeConnector {
             }) as CustomWebSocket;
 
             this.ws.on('open', () => {
-                console.log('[GATEIO CONNECT] ✅ Conexão estabelecida com Gate.io!');
-                console.log('[GATEIO CONNECT] Configurando heartbeat...');
+                console.log('[GATEIO CONNECT] ✅ Conexão SPOT estabelecida!');
+                this.reconnectAttempts = 0;
                 this.setupHeartbeat();
-                console.log('[GATEIO CONNECT] Iniciando subscrições...');
-                this.subscribeToSymbols();
+                this.subscribeToSpotSymbols();
             });
 
             this.ws.on('message', (data) => this.handleMessage(data));
             
             this.ws.on('error', (error) => {
-                console.error('Erro na conexão Gate.io:', error);
+                console.error('[GATEIO ERROR] Erro na conexão:', error);
+                this.cleanup();
+                this.reconnectAttempts++;
+                setTimeout(() => this.connect(), 5000);
             });
 
             this.ws.on('close', (code, reason) => {
-                console.log('Conexão Gate.io fechada:', code, reason?.toString());
+                console.log(`[GATEIO CLOSE] Conexão fechada: ${code} ${reason?.toString()}`);
                 this.cleanup();
-                // Reconecta após 5 segundos
+                this.reconnectAttempts++;
                 setTimeout(() => this.connect(), 5000);
             });
 
         } catch (error) {
-            console.error('Erro ao conectar com Gate.io:', error);
-            throw error;
+            console.error('[GATEIO ERROR] Erro ao conectar:', error);
+            this.reconnectAttempts++;
+            setTimeout(() => this.connect(), 5000);
         }
     }
 
-    private async getSymbols(): Promise<string[]> {
+    private async getSpotSymbols(): Promise<string[]> {
         try {
+            console.log('[GATEIO API] Buscando símbolos SPOT...');
             const response = await fetch(this.restUrl, {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -76,26 +95,25 @@ export class GateioConnector implements ExchangeConnector {
             }
 
             const data = await response.json();
+            console.log(`[GATEIO API] Resposta recebida: ${Array.isArray(data) ? data.length : 0} símbolos`);
             
             if (Array.isArray(data)) {
-                return data
-                    .filter((contract: GateioContract) => 
-                        contract.settle === 'usdt' && 
-                        !contract.name.includes('_INDEX')
+                const usdtPairs = data
+                    .filter((pair: GateioSpotSymbol) => 
+                        pair.quote === 'USDT' && 
+                        pair.trade_status === 'tradable'
                     )
-                    .map((contract: GateioContract) => contract.name);
+                    .map((pair: GateioSpotSymbol) => `${pair.base}_${pair.quote}`);
+                
+                console.log(`[GATEIO API] ✅ ${usdtPairs.length} pares USDT encontrados`);
+                console.log(`[GATEIO API] Primeiros 5: ${usdtPairs.slice(0, 5).join(', ')}`);
+                return usdtPairs;
             }
             
-            console.warn('Formato de resposta inválido do Gate.io, usando lista padrão');
-            return [
-                'BTC_USDT',
-                'ETH_USDT',
-                'SOL_USDT',
-                'XRP_USDT',
-                'BNB_USDT'
-            ];
+            throw new Error('Formato de resposta inválido');
         } catch (error) {
-            console.error('Erro ao buscar símbolos do Gate.io:', error);
+            console.error('[GATEIO API] Erro ao buscar símbolos:', error);
+            console.log('[GATEIO API] Usando lista de fallback...');
             return [
                 'BTC_USDT',
                 'ETH_USDT',
@@ -114,82 +132,91 @@ export class GateioConnector implements ExchangeConnector {
         this.pingInterval = setInterval(() => {
             if (this.ws?.readyState === WebSocket.OPEN) {
                 this.ws.ping();
-                console.log('Ping enviado para Gate.io');
+                console.log('[GATEIO PING] Ping enviado');
             }
         }, 20000);
 
         this.ws?.on('pong', () => {
-            console.log('Pong recebido do Gate.io');
+            console.log('[GATEIO PONG] Pong recebido');
         });
     }
 
-    private subscribeToSymbols() {
-        console.log(`[GATEIO] Iniciando subscrições para ${this.symbols.length} símbolos`);
+    private subscribeToSpotSymbols() {
+        console.log(`[GATEIO SUB] Iniciando subscrições SPOT para ${this.symbols.length} símbolos`);
+        
+        // Usar TODOS os símbolos da lista dinâmica (não filtrar)
+        console.log(`[GATEIO SUB] Usando lista dinâmica completa: ${this.symbols.length} símbolos`);
+        console.log(`[GATEIO SUB] Primeiros 10: ${this.symbols.slice(0, 10).join(', ')}`);
+        console.log(`[GATEIO SUB] Últimos 5: ${this.symbols.slice(-5).join(', ')}`);
         
         this.symbols.forEach((symbol, index) => {
             if (this.ws?.readyState === WebSocket.OPEN) {
-                // Usar formato correto da API v4
+                // Usar canal de tickers para SPOT
                 const msg = {
                     time: Math.floor(Date.now() / 1000),
-                    channel: "futures.tickers",
+                    channel: "spot.tickers",
                     event: "subscribe",
                     payload: [symbol]
                 };
                 
-                console.log(`[GATEIO] (${index + 1}/${this.symbols.length}) Enviando subscrição para ${symbol}:`, JSON.stringify(msg));
+                // Log apenas a cada 100 símbolos para não sobrecarregar
+                if (index % 100 === 0 || index < 5 || index >= this.symbols.length - 5) {
+                    console.log(`[GATEIO SUB] (${index + 1}/${this.symbols.length}) ${symbol}`);
+                }
+                
                 this.ws.send(JSON.stringify(msg));
                 
-                // Pequeno delay entre subscrições para evitar rate limit
+                // Delay pequeno entre subscrições para não sobrecarregar
                 if (index < this.symbols.length - 1) {
                     setTimeout(() => {}, 10);
                 }
             }
         });
         
-        console.log(`[GATEIO] Todas as ${this.symbols.length} subscrições enviadas!`);
+        console.log(`[GATEIO SUB] ✅ Todas as ${this.symbols.length} subscrições SPOT enviadas!`);
     }
 
     private handleMessage(data: WebSocket.Data) {
         try {
             const message = JSON.parse(data.toString());
             
-            // Log simplificado para não sobrecarregar
-            console.log(`[GATEIO MSG] Recebida:`, Object.keys(message).join(','));
-            
-            // Verifica se é resposta de subscrição
+            // Log apenas eventos importantes
             if (message.event) {
-                console.log(`[GATEIO EVENT] ${message.event}: ${message.result || message.error || 'sem resultado'}`);
+                console.log(`[GATEIO EVENT] ${message.event}: ${message.result || message.error || 'ok'}`);
+                return;
             }
             
-            // Verifica diferentes tipos de resposta de dados
-            if (message.channel === 'futures.tickers' && message.result) {
+            // Processar dados de ticker SPOT
+            if (message.channel === 'spot.tickers' && message.result) {
                 const ticker = message.result;
-                const bestAsk = parseFloat(ticker.ask) || parseFloat(ticker.last);
-                const bestBid = parseFloat(ticker.bid) || parseFloat(ticker.last);
+                const symbol = ticker.currency_pair;
+                const bestAsk = parseFloat(ticker.lowest_ask);
+                const bestBid = parseFloat(ticker.highest_bid);
                 
-                if (bestAsk && bestBid && this.priceUpdateCallback) {
+                if (bestAsk && bestBid && bestAsk > 0 && bestBid > 0 && this.priceUpdateCallback) {
                     const update: PriceUpdate = {
                         identifier: 'gateio',
-                        symbol: ticker.contract,
-                        type: 'futures',
-                        marketType: 'futures',
+                        symbol: symbol,
+                        type: 'spot',
+                        marketType: 'spot',
                         bestAsk,
                         bestBid
                     };
                     
-                    console.log(`[GATEIO PRICE] ${ticker.contract}: ${bestAsk}/${bestBid}`);
+                    console.log(`[GATEIO PRICE] ${symbol}: Ask=${bestAsk}, Bid=${bestBid}`);
                     this.priceUpdateCallback(update);
                 } else {
-                    console.log(`[GATEIO SKIP] ${ticker.contract}: dados inválidos`);
+                    console.log(`[GATEIO SKIP] ${symbol}: Ask=${bestAsk}, Bid=${bestBid} (inválido)`);
                 }
             }
             
         } catch (error) {
-            console.error('[GATEIO ERROR]:', error instanceof Error ? error.message : String(error));
+            console.error('[GATEIO MSG ERROR]:', error instanceof Error ? error.message : String(error));
         }
     }
 
     public disconnect(): void {
+        console.log('[GATEIO DISCONNECT] Desconectando...');
         this.cleanup();
     }
 
@@ -198,7 +225,7 @@ export class GateioConnector implements ExchangeConnector {
             clearInterval(this.pingInterval);
             this.pingInterval = null;
         }
-
+        
         if (this.ws) {
             this.ws.removeAllListeners();
             if (this.ws.readyState === WebSocket.OPEN) {

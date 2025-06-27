@@ -11,16 +11,17 @@ const prisma = new PrismaClient();
 const PORT = parseInt(process.env.PORT || '8080', 10);
 console.log(`[CONFIG] Iniciando servidor na porta ${PORT}`);
 
-const MIN_PROFIT_PERCENTAGE = 0.05; // Reduzido para 0.05% para detectar mais oportunidades
+const MIN_PROFIT_PERCENTAGE = 0.05; // 0.05% para detectar mais oportunidades
 
 let marketPrices: MarketPrices = {};
-let targetPairs: string[] = [
+// Lista dinâmica será construída automaticamente a partir dos dados recebidos
+let priorityPairs: string[] = [
     'BTC_USDT',
     'ETH_USDT',
     'SOL_USDT',
     'XRP_USDT',
     'BNB_USDT'
-];
+]; // Apenas para prioridade de logs, não limitação
 
 let clients: CustomWebSocket[] = [];
 
@@ -219,27 +220,35 @@ function getNormalizedData(symbol: string): { baseSymbol: string, factor: number
 }
 
 async function findAndBroadcastArbitrage() {
-    // SOLUÇÃO TEMPORÁRIA: Detectar oportunidades só com MEXC
-    // Simular spreads internos do MEXC para mostrar funcionamento
+    // Estratégia: Comprar na Gate.io Spot e Vender na MEXC Futures
     
     if (Object.keys(marketPrices).length === 0) {
         console.log(`[ARBITRAGE] Aguardando dados de mercado...`);
         return;
     }
     
-    // Se só temos MEXC, vamos simular oportunidades baseadas nos spreads
-    if (marketPrices['mexc']) {
-        const mexcSymbols = Object.keys(marketPrices['mexc']);
-        console.log(`[ARBITRAGE] Analisando ${mexcSymbols.length} símbolos da MEXC`);
-        
-        for (const symbol of mexcSymbols.slice(0, 5)) { // Apenas primeiros 5 para não spam
+    const gateioSymbols = Object.keys(marketPrices['gateio'] || {});
+    const mexcSymbols = Object.keys(marketPrices['mexc'] || {});
+    
+    console.log(`[ARBITRAGE] Status das exchanges:`);
+    console.log(`  Gate.io: ${gateioSymbols.length} símbolos`);
+    console.log(`  MEXC: ${mexcSymbols.length} símbolos`);
+    
+    // Verificar se ambas as exchanges estão funcionando
+    if (gateioSymbols.length === 0 && mexcSymbols.length === 0) {
+        console.log(`[ARBITRAGE] ⚠️ Nenhuma exchange com dados disponíveis`);
+        return;
+    }
+    
+    if (gateioSymbols.length === 0) {
+        console.log(`[ARBITRAGE] ⚠️ Gate.io sem dados - usando apenas MEXC para demonstração`);
+        // Mostrar spreads internos da MEXC como fallback
+        for (const symbol of mexcSymbols.slice(0, 5)) {
             const mexcData = marketPrices['mexc'][symbol];
             if (!mexcData) continue;
             
-            // Calcular spread interno da MEXC
             const internalSpread = ((mexcData.bestAsk - mexcData.bestBid) / mexcData.bestBid) * 100;
             
-            // Se spread > 0.1%, mostrar como "oportunidade"
             if (internalSpread > 0.1) {
                 const opportunity = {
                     type: 'arbitrage',
@@ -259,42 +268,65 @@ async function findAndBroadcastArbitrage() {
                     timestamp: Date.now()
                 };
                 
-                console.log(`🔍 SPREAD MEXC DETECTADO: ${symbol} - ${internalSpread.toFixed(4)}%`);
+                console.log(`🔍 SPREAD MEXC: ${symbol} - ${internalSpread.toFixed(4)}%`);
                 broadcast({ ...opportunity, type: 'arbitrage' });
             }
         }
+        return;
     }
     
-    // Código original para quando GateIO funcionar
-    for (const symbol of targetPairs) {
+    if (mexcSymbols.length === 0) {
+        console.log(`[ARBITRAGE] ⚠️ MEXC sem dados - aguardando conexão`);
+        return;
+    }
+    
+    // ARBITRAGEM PRINCIPAL: Gate.io Spot -> MEXC Futures
+    let opportunitiesFound = 0;
+    
+    // Criar lista dinâmica de símbolos comuns entre as duas exchanges
+    const commonSymbols = gateioSymbols.filter(symbol => mexcSymbols.includes(symbol));
+    console.log(`[ARBITRAGE] Analisando ${commonSymbols.length} símbolos comuns entre as exchanges`);
+    
+    // Priorizar símbolos principais para logs detalhados
+    const prioritySymbols = commonSymbols.filter(symbol => priorityPairs.includes(symbol));
+    const otherSymbols = commonSymbols.filter(symbol => !priorityPairs.includes(symbol));
+    
+    console.log(`[ARBITRAGE] Símbolos prioritários: ${prioritySymbols.length} | Outros: ${otherSymbols.length}`);
+    
+    // Analisar TODOS os símbolos comuns
+    for (const symbol of commonSymbols) {
         const gateioData = marketPrices['gateio']?.[symbol];
         const mexcData = marketPrices['mexc']?.[symbol];
 
         if (!gateioData || !mexcData) {
-            // Debug: verificar quais dados estão disponíveis (só mostrar uma vez por minuto)
-            if (Date.now() % 60000 < 1000) {
-                console.log(`[DEBUG] Dados ausentes para ${symbol}:`);
-                console.log(`  GateIO: ${gateioData ? 'OK' : 'AUSENTE'}`);
-                console.log(`  MEXC: ${mexcData ? 'AUSENTE' : 'OK'}`);
-                console.log(`  Exchanges disponíveis:`, Object.keys(marketPrices));
+            // Log detalhado apenas para símbolos prioritários
+            if (priorityPairs.includes(symbol)) {
+                console.log(`[DEBUG] ${symbol}: Gate.io=${gateioData ? 'OK' : 'AUSENTE'}, MEXC=${mexcData ? 'OK' : 'AUSENTE'}`);
             }
             continue;
         }
 
         if (!isFinite(gateioData.bestAsk) || !isFinite(gateioData.bestBid) ||
             !isFinite(mexcData.bestAsk) || !isFinite(mexcData.bestBid)) {
+            if (priorityPairs.includes(symbol)) {
+                console.log(`[DEBUG] ${symbol}: Preços inválidos`);
+            }
             continue;
         }
 
-        const gateioToMexc = ((mexcData.bestBid - gateioData.bestAsk) / gateioData.bestAsk) * 100;
-        const mexcToGateio = ((gateioData.bestBid - mexcData.bestAsk) / mexcData.bestAsk) * 100;
+        // Estratégia principal: Comprar Gate.io Spot -> Vender MEXC Futures
+        const gateioToMexcProfit = ((mexcData.bestBid - gateioData.bestAsk) / gateioData.bestAsk) * 100;
+        
+        // Estratégia reversa: Comprar MEXC Futures -> Vender Gate.io Spot
+        const mexcToGateioProfit = ((gateioData.bestBid - mexcData.bestAsk) / mexcData.bestAsk) * 100;
 
-        if (gateioToMexc > MIN_PROFIT_PERCENTAGE) {
+        // Oportunidade principal: Gate.io Spot -> MEXC Futures
+        if (gateioToMexcProfit > MIN_PROFIT_PERCENTAGE) {
             const opportunity: ArbitrageOpportunity = {
                 type: 'arbitrage',
                 baseSymbol: symbol,
-                profitPercentage: gateioToMexc,
-                arbitrageType: 'gateio_to_mexc',
+                profitPercentage: gateioToMexcProfit,
+                arbitrageType: 'gateio_spot_to_mexc_futures',
                 buyAt: {
                     exchange: 'gateio',
                     price: gateioData.bestAsk,
@@ -310,14 +342,16 @@ async function findAndBroadcastArbitrage() {
             
             broadcastOpportunity(opportunity);
             await recordSpread(opportunity);
+            opportunitiesFound++;
         }
 
-        if (mexcToGateio > MIN_PROFIT_PERCENTAGE) {
+        // Oportunidade reversa: MEXC Futures -> Gate.io Spot
+        if (mexcToGateioProfit > MIN_PROFIT_PERCENTAGE) {
             const opportunity: ArbitrageOpportunity = {
                 type: 'arbitrage',
                 baseSymbol: symbol,
-                profitPercentage: mexcToGateio,
-                arbitrageType: 'mexc_to_gateio',
+                profitPercentage: mexcToGateioProfit,
+                arbitrageType: 'mexc_futures_to_gateio_spot',
                 buyAt: {
                     exchange: 'mexc',
                     price: mexcData.bestAsk,
@@ -333,45 +367,75 @@ async function findAndBroadcastArbitrage() {
             
             broadcastOpportunity(opportunity);
             await recordSpread(opportunity);
+            opportunitiesFound++;
         }
+    }
+    
+    if (opportunitiesFound === 0) {
+        console.log(`[ARBITRAGE] Nenhuma oportunidade encontrada nos ${commonSymbols.length} pares analisados`);
+    } else {
+        console.log(`[ARBITRAGE] ✅ ${opportunitiesFound} oportunidades detectadas em ${commonSymbols.length} pares!`);
     }
 }
 
 async function startFeeds() {
     console.log('[Feeds] ===== INICIANDO SISTEMA DE ARBITRAGEM =====');
-    console.log('[Feeds] Versão de emergência - apenas MEXC por enquanto');
+    console.log('[Feeds] Estratégia: Gate.io Spot <-> MEXC Futures');
     
     try {
-        console.log('[Feeds] ===== INICIANDO MEXC =====');
+        // Inicializar ambas as exchanges em paralelo
+        console.log('[Feeds] ===== INICIANDO CONEXÕES PARALELAS =====');
+        
         const mexc = new MexcConnector();
-        console.log('[Feeds] MEXC instanciado com sucesso');
-
+        const gateio = new GateioConnector();
+        
+        // Configurar callbacks
         mexc.onPriceUpdate((update) => {
-            console.log('[MEXC] Atualização de preço recebida:', update.symbol);
             handlePriceUpdate(update);
         });
-        console.log('[Feeds] Callback MEXC configurado');
-
-        console.log('[Feeds] ===== CONECTANDO MEXC =====');
-        console.log('[MEXC] Tentando conectar...');
-        await mexc.connect();
-        console.log('[MEXC] Conexão estabelecida com sucesso!');
-
+        
+        gateio.onPriceUpdate((update) => {
+            handlePriceUpdate(update);
+        });
+        
+        console.log('[Feeds] Callbacks configurados para ambas as exchanges');
+        
+        // Conectar em paralelo
+        console.log('[Feeds] ===== CONECTANDO EXCHANGES =====');
+        
+        const mexcPromise = mexc.connect().then(() => {
+            console.log('[MEXC] ✅ Conectado com sucesso!');
+        }).catch((error) => {
+            console.error('[MEXC] ❌ Erro na conexão:', error);
+        });
+        
+        const gateioPromise = gateio.connect().then(() => {
+            console.log('[GATEIO] ✅ Conectado com sucesso!');
+        }).catch((error) => {
+            console.error('[GATEIO] ❌ Erro na conexão:', error);
+        });
+        
+        // Aguardar ambas as conexões (não falhar se uma falhar)
+        await Promise.allSettled([mexcPromise, gateioPromise]);
+        
         console.log('[Feeds] ===== INICIANDO MONITORAMENTO =====');
-        console.log('[Feeds] Iniciando monitoramento de spreads MEXC...');
-        setInterval(findAndBroadcastArbitrage, 5000); // A cada 5 segundos
-
-        // TODO: Reativar GateIO quando o problema for resolvido
-        console.log('[Feeds] ⚠️ GateIO temporariamente desabilitado para debug');
+        console.log('[Feeds] Iniciando detecção de arbitragem...');
+        
+        // Monitorar oportunidades a cada 3 segundos
+        setInterval(findAndBroadcastArbitrage, 3000);
+        
+        // Status report a cada 30 segundos
+        setInterval(() => {
+            const gateioCount = Object.keys(marketPrices['gateio'] || {}).length;
+            const mexcCount = Object.keys(marketPrices['mexc'] || {}).length;
+            console.log(`[STATUS] Gate.io: ${gateioCount} símbolos | MEXC: ${mexcCount} símbolos`);
+        }, 30000);
 
     } catch (error) {
         console.error('[Feeds] ===== ERRO CRÍTICO =====');
         console.error('[Feeds] Erro ao iniciar os feeds:', error);
-        if (error instanceof Error) {
-            console.error('[Feeds] Stack trace:', error.stack);
-        }
         
-        // Não sair - tentar novamente
+        // Tentar novamente em 10 segundos
         console.log('[Feeds] Tentando novamente em 10 segundos...');
         setTimeout(startFeeds, 10000);
     }
