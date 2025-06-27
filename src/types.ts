@@ -86,7 +86,7 @@ export interface WebSocketMessage {
 }
 
 export interface WebSocketServer {
-    wss: WebSocket.Server;
+    wss: typeof WebSocket.Server;
     clients: Set<WebSocket>;
     start(): void;
     stop(): void;
