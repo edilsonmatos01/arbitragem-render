@@ -290,32 +290,46 @@ async function findAndBroadcastArbitrage() {
 
 async function startFeeds() {
     console.log('[Feeds] Iniciando conexões com as exchanges...');
+    
+    console.log('[Feeds] ===== INICIANDO GATEIO =====');
     const gateio = new GateioConnector();
+    console.log('[Feeds] GateIO instanciado com sucesso');
+    
+    console.log('[Feeds] ===== INICIANDO MEXC =====');
     const mexc = new MexcConnector();
+    console.log('[Feeds] MEXC instanciado com sucesso');
 
+    console.log('[Feeds] ===== CONFIGURANDO CALLBACKS =====');
+    
     gateio.onPriceUpdate((update) => {
         console.log('[GateIO] Atualização de preço recebida:', update);
         handlePriceUpdate(update);
     });
+    console.log('[Feeds] Callback GateIO configurado');
     
     mexc.onPriceUpdate((update) => {
         console.log('[MEXC] Atualização de preço recebida:', update);
         handlePriceUpdate(update);
     });
+    console.log('[Feeds] Callback MEXC configurado');
 
     try {
+        console.log('[Feeds] ===== CONECTANDO GATEIO =====');
         console.log('[GateIO] Tentando conectar...');
         await gateio.connect();
         console.log('[GateIO] Conexão estabelecida com sucesso!');
 
+        console.log('[Feeds] ===== CONECTANDO MEXC =====');
         console.log('[MEXC] Tentando conectar...');
         await mexc.connect();
         console.log('[MEXC] Conexão estabelecida com sucesso!');
 
+        console.log('[Feeds] ===== INICIANDO MONITORAMENTO =====');
         console.log('[Feeds] Iniciando monitoramento de arbitragem...');
         setInterval(findAndBroadcastArbitrage, 1000);
 
     } catch (error) {
+        console.error('[Feeds] ===== ERRO CRÍTICO =====');
         console.error('[Feeds] Erro ao iniciar os feeds:', error);
         if (error instanceof Error) {
             console.error('[Feeds] Stack trace:', error.stack);
