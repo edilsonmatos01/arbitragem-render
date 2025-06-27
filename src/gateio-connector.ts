@@ -120,8 +120,11 @@ export class GateioConnector implements ExchangeConnector {
     }
 
     private subscribeToSymbols() {
-        this.symbols.forEach(symbol => {
+        console.log(`[GATEIO] Iniciando subscrições para ${this.symbols.length} símbolos`);
+        
+        this.symbols.forEach((symbol, index) => {
             if (this.ws?.readyState === WebSocket.OPEN) {
+                // Usar formato correto da API v4
                 const msg = {
                     time: Math.floor(Date.now() / 1000),
                     channel: "futures.tickers",
@@ -129,51 +132,84 @@ export class GateioConnector implements ExchangeConnector {
                     payload: [symbol]
                 };
                 
-                console.log('Enviando subscrição Gate.io:', JSON.stringify(msg));
+                console.log(`[GATEIO] (${index + 1}/${this.symbols.length}) Enviando subscrição para ${symbol}:`, JSON.stringify(msg));
                 this.ws.send(JSON.stringify(msg));
+                
+                // Pequeno delay entre subscrições para evitar rate limit
+                if (index < this.symbols.length - 1) {
+                    setTimeout(() => {}, 10);
+                }
             }
         });
+        
+        console.log(`[GATEIO] Todas as ${this.symbols.length} subscrições enviadas!`);
     }
 
     private handleMessage(data: WebSocket.Data) {
         try {
             const message = JSON.parse(data.toString());
             
-            // Log todas as mensagens para debug
-            console.log('[GATEIO DEBUG] Mensagem recebida:', JSON.stringify(message).substring(0, 200));
+            // Log TODAS as mensagens para debug completo
+            console.log('[GATEIO DEBUG] ===== MENSAGEM RECEBIDA =====');
+            console.log('[GATEIO DEBUG] Tipo:', typeof message);
+            console.log('[GATEIO DEBUG] Conteúdo completo:', JSON.stringify(message, null, 2));
+            console.log('[GATEIO DEBUG] Propriedades:', Object.keys(message));
             
-            // Verifica diferentes tipos de resposta
-            if (message.channel === 'futures.tickers' && message.result) {
-                const ticker = message.result;
-                console.log('[GATEIO DEBUG] Ticker recebido:', JSON.stringify(ticker));
-                
-                // Usar ask e bid reais ao invés do last price
-                const bestAsk = parseFloat(ticker.ask) || parseFloat(ticker.last);
-                const bestBid = parseFloat(ticker.bid) || parseFloat(ticker.last);
-                
-                if (bestAsk && bestBid && this.priceUpdateCallback) {
-                    const update: PriceUpdate = {
-                        identifier: 'gateio',
-                        symbol: ticker.contract,
-                        type: 'futures',
-                        marketType: 'futures',
-                        bestAsk,
-                        bestBid
-                    };
-                    
-                    console.log(`[GATEIO] Enviando update para ${ticker.contract}: Ask ${bestAsk}, Bid ${bestBid}`);
-                    this.priceUpdateCallback(update);
+            // Verifica se é resposta de subscrição
+            if (message.event) {
+                console.log(`[GATEIO DEBUG] EVENTO: ${message.event}`);
+                if (message.result) {
+                    console.log(`[GATEIO DEBUG] RESULTADO: ${message.result}`);
+                }
+                if (message.error) {
+                    console.log(`[GATEIO DEBUG] ERRO: ${JSON.stringify(message.error)}`);
                 }
             }
             
-            // Verifica se é resposta de subscrição
-            if (message.event === 'subscribe' || message.event === 'update') {
-                console.log('[GATEIO DEBUG] Evento de subscrição/update:', message.event, message.result);
+            // Verifica diferentes tipos de resposta de dados
+            if (message.channel === 'futures.tickers') {
+                console.log('[GATEIO DEBUG] TICKER CHANNEL DETECTADO!');
+                
+                if (message.result) {
+                    const ticker = message.result;
+                    console.log('[GATEIO DEBUG] Ticker dados:', JSON.stringify(ticker, null, 2));
+                    
+                    // Usar ask e bid reais ao invés do last price
+                    const bestAsk = parseFloat(ticker.ask) || parseFloat(ticker.last);
+                    const bestBid = parseFloat(ticker.bid) || parseFloat(ticker.last);
+                    
+                    console.log(`[GATEIO DEBUG] Preços extraídos - Ask: ${bestAsk}, Bid: ${bestBid}`);
+                    
+                    if (bestAsk && bestBid && this.priceUpdateCallback) {
+                        const update: PriceUpdate = {
+                            identifier: 'gateio',
+                            symbol: ticker.contract,
+                            type: 'futures',
+                            marketType: 'futures',
+                            bestAsk,
+                            bestBid
+                        };
+                        
+                        console.log(`[GATEIO] ✅ Enviando update para ${ticker.contract}: Ask ${bestAsk}, Bid ${bestBid}`);
+                        this.priceUpdateCallback(update);
+                    } else {
+                        console.log(`[GATEIO DEBUG] ❌ Dados inválidos ou callback ausente:`, {
+                            bestAsk,
+                            bestBid,
+                            hasCallback: !!this.priceUpdateCallback
+                        });
+                    }
+                }
+            }
+            
+            // Log para outros tipos de mensagem
+            if (!message.channel && !message.event) {
+                console.log('[GATEIO DEBUG] MENSAGEM DESCONHECIDA - Estrutura:', Object.keys(message));
             }
             
         } catch (error) {
-            console.error('Erro ao processar mensagem Gate.io:', error);
-            console.error('Dados brutos:', data.toString().substring(0, 200));
+            console.error('[GATEIO DEBUG] ERRO ao processar mensagem:', error);
+            console.error('[GATEIO DEBUG] Dados brutos:', data.toString());
         }
     }
 
