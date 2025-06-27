@@ -1,5 +1,6 @@
 import WebSocket from 'ws';
 import fetch from 'node-fetch';
+import { EventEmitter } from 'events';
 
 const GATEIO_WS_URL = 'wss://api.gateio.ws/ws/v4/';
 
@@ -15,7 +16,7 @@ interface PriceUpdate {
  * Gerencia a conexão WebSocket e as inscrições para os feeds da Gate.io.
  * Pode ser configurado para SPOT ou FUTURES.
  */
-export class GateIoConnector {
+export class GateIoConnector extends EventEmitter {
     private ws: WebSocket | null = null;
     private marketIdentifier: string; // Ex: 'GATEIO_SPOT' ou 'GATEIO_FUTURES'
     private marketType: 'spot' | 'futures';
@@ -26,6 +27,7 @@ export class GateIoConnector {
     private reconnectTimeout: NodeJS.Timeout | null = null;
 
     constructor(identifier: string, priceUpdateCallback: (data: PriceUpdate) => void) {
+        super();
         this.marketIdentifier = identifier;
         this.marketType = identifier.includes('_SPOT') ? 'spot' : 'futures';
         this.priceUpdateCallback = priceUpdateCallback;
@@ -92,7 +94,7 @@ export class GateIoConnector {
         this.processSubscriptionQueue();
     }
 
-    private onMessage(data: WebSocket.Data): void {
+    private onMessage(data: any): void {
         try {
             const message = JSON.parse(data.toString());
             

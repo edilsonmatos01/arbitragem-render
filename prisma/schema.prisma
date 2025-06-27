@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider      = "prisma-client-js"
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
@@ -8,7 +5,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url      = "postgresql://arbitragem_banco_zs65_user:dxfWUaMDvmzlZRFYqWH7ieF8H9CteSaI@dpg-d1ere9ripnbc73e945a0-a.oregon-postgres.render.com/arbitragem_banco_zs65"
 }
 
 model SpreadHistory {
@@ -18,6 +15,8 @@ model SpreadHistory {
   exchangeSell String
   direction    String
   spread       Float
+  spotPrice    Float    @default(0)
+  futuresPrice Float    @default(0)
   timestamp    DateTime @default(now())
 
   @@index([symbol, exchangeBuy, exchangeSell, direction])
@@ -27,14 +26,14 @@ model PriceHistory {
   id                            String   @id @default(cuid())
   symbol                        String
   timestamp                     DateTime @default(now())
-  gateioSpotAsk                Float
-  gateioSpotBid                Float
-  mexcSpotAsk                  Float
-  mexcSpotBid                  Float
-  gateioFuturesAsk             Float
-  gateioFuturesBid             Float
-  mexcFuturesAsk               Float
-  mexcFuturesBid               Float
+  gateioSpotAsk                 Float
+  gateioSpotBid                 Float
+  mexcSpotAsk                   Float
+  mexcSpotBid                   Float
+  gateioFuturesAsk              Float
+  gateioFuturesBid              Float
+  mexcFuturesAsk                Float
+  mexcFuturesBid                Float
   gateioSpotToMexcFuturesSpread Float
   mexcSpotToGateioFuturesSpread Float
 
@@ -42,15 +41,15 @@ model PriceHistory {
 }
 
 model TradableSymbol {
-  id                 String   @id @default(cuid())
-  baseSymbol         String   @unique
-  gateioSymbol       String
-  mexcSymbol         String
+  id                  String   @id @default(cuid())
+  baseSymbol          String   @unique
+  gateioSymbol        String
+  mexcSymbol          String
   gateioFuturesSymbol String
   mexcFuturesSymbol   String
-  isActive           Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   @@index([baseSymbol])
 }

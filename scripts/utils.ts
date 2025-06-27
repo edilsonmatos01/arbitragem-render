@@ -6,38 +6,25 @@ import Decimal from 'decimal.js';
  * @param buyPrice Preço de compra
  * @returns Spread percentual com 4 casas decimais ou null se inválido
  */
-export function calculateSpread(sellPrice: number | string, buyPrice: number | string): string | null {
-  try {
-    // Garante que os valores são strings para evitar erros de precisão do JavaScript
-    const sell = new Decimal(sellPrice.toString().trim());
-    const buy = new Decimal(buyPrice.toString().trim());
-
-    // Validações rigorosas
-    if (buy.isZero() || buy.isNegative() || sell.isNegative() || 
-        !buy.isFinite() || !sell.isFinite() ||
-        buy.equals(0) || sell.equals(0)) {
-      return null;
-    }
-
-    // Se os valores forem exatamente iguais, retorna null (spread zero)
-    if (sell.equals(buy)) {
-      return null;
-    }
-
-    // Cálculo do spread mantendo precisão máxima em cada etapa
-    const difference = sell.minus(buy);
-    const ratio = difference.dividedBy(buy);
-    const percentageSpread = ratio.times(100);
-
-    // Validação do resultado
-    if (percentageSpread.isNegative() || percentageSpread.isZero() || !percentageSpread.isFinite()) {
-      return null;
-    }
-
-    // Arredonda para 4 casas decimais apenas no final
-    return percentageSpread.toDecimalPlaces(4, Decimal.ROUND_HALF_UP).toString();
-  } catch (error) {
-    console.error('Erro ao calcular spread:', error);
-    return null;
+export function calculateSpread(buyPrice: number, sellPrice: number): number {
+  if (!buyPrice || !sellPrice || buyPrice <= 0 || sellPrice <= 0) {
+    return 0;
   }
+  return ((sellPrice - buyPrice) / buyPrice) * 100;
+}
+
+export function formatSpread(spread: number): string {
+  return spread.toFixed(2) + '%';
+}
+
+export function isValidSpread(spread: number): boolean {
+  return !isNaN(spread) && isFinite(spread) && spread > -100 && spread < 100;
+}
+
+export function normalizeSymbol(symbol: string): string {
+  return symbol.replace('_', '/').toUpperCase();
+}
+
+export function denormalizeSymbol(symbol: string): string {
+  return symbol.replace('/', '_').toLowerCase();
 } 

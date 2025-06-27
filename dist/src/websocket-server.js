@@ -16,26 +16,30 @@ const MIN_PROFIT_PERCENTAGE = 0.1;
 let marketPrices = {};
 let targetPairs = [];
 let clients = [];
+let exchangeConnectors = new Map();
 function handlePriceUpdate(update) {
-    const { identifier, symbol, priceData, marketType, bestAsk, bestBid } = update;
+    const { identifier, symbol, marketType, bestAsk, bestBid } = update;
+    // 1. Atualiza o estado central de preços
     if (!marketPrices[identifier]) {
         marketPrices[identifier] = {};
     }
     marketPrices[identifier][symbol] = { bestAsk, bestBid, timestamp: Date.now() };
+    // 2. Transmite a atualização para todos os clientes
     broadcast({
         type: 'price-update',
         symbol,
         marketType,
         bestAsk,
-        bestBid
+        bestBid,
+        identifier
     });
 }
 function startWebSocketServer(httpServer) {
     const wss = new ws_1.default.Server({ server: httpServer });
     wss.on('connection', (ws, req) => {
-        ws.isAlive = true;
+        ws.isAlive = true; // A conexão está viva ao ser estabelecida
         ws.on('pong', () => {
-            ws.isAlive = true;
+            ws.isAlive = true; // O cliente respondeu ao nosso ping, então está vivo
         });
         const clientIp = req.socket.remoteAddress || req.headers['x-forwarded-for'];
         clients.push(ws);
@@ -48,25 +52,32 @@ function startWebSocketServer(httpServer) {
             console.log(`[WS Server] Cliente desconectado: ${clientIp}. Total: ${clients.length}`);
         });
     });
+    // Intervalo para verificar conexões e mantê-las vivas
     const interval = setInterval(() => {
         wss.clients.forEach(client => {
             const ws = client;
+            // Se o cliente não respondeu ao PING do ciclo anterior, encerre.
             if (ws.isAlive === false) {
                 console.log('[WS Server] Conexão inativa terminada.');
                 return ws.terminate();
             }
+            // Marque como inativo e envie um PING. A resposta 'pong' marcará como vivo novamente.
             ws.isAlive = false;
-            ws.ping(() => { });
+            ws.ping(() => { }); // A função de callback vazia é necessária.
         });
-    }, 30000);
+    }, 30000); // A cada 30 segundos
     wss.on('close', () => {
-        clearInterval(interval);
+        clearInterval(interval); // Limpa o intervalo quando o servidor é fechado
     });
     console.log(`Servidor WebSocket iniciado e anexado ao servidor HTTP.`);
     startFeeds();
 }
+// --- Início: Adição para Servidor Standalone ---
+// Esta função cria e inicia um servidor HTTP que usa a nossa lógica WebSocket.
 function initializeStandaloneServer() {
     const httpServer = (0, http_1.createServer)((req, res) => {
+        // O servidor HTTP básico não fará nada além de fornecer uma base para o WebSocket.
+        // Podemos adicionar um endpoint de health check simples.
         if (req.url === '/health') {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ status: 'ok', message: 'WebSocket server is running' }));
@@ -76,14 +87,20 @@ function initializeStandaloneServer() {
             res.end();
         }
     });
+    // Anexa a lógica do WebSocket ao nosso servidor HTTP.
     startWebSocketServer(httpServer);
     httpServer.listen(PORT, () => {
         console.log(`[Servidor Standalone] Servidor HTTP e WebSocket escutando na porta ${PORT}`);
     });
 }
+// Inicia o servidor standalone.
+// O `require.main === module` garante que este código só rode quando
+// o arquivo é executado diretamente (ex: `node dist/websocket-server.js`),
+// mas não quando é importado por outro arquivo (como o `server.js` em dev).
 if (require.main === module) {
     initializeStandaloneServer();
 }
+// --- Fim: Adição para Servidor Standalone ---
 function broadcast(data) {
     const serializedData = JSON.stringify(data);
     clients.forEach(client => {
@@ -92,6 +109,7 @@ function broadcast(data) {
         }
     });
 }
+// Versão corrigida da função com logs de depuração
 function broadcastOpportunity(opportunity) {
     console.log(`[DEBUG] Verificando ${opportunity.baseSymbol} | Spread: ${opportunity.profitPercentage.toFixed(2)}%`);
     if (!isFinite(opportunity.profitPercentage) || opportunity.profitPercentage > 100) {
@@ -159,6 +177,7 @@ function getNormalizedData(symbol) {
     return { baseSymbol: symbol, factor: 1 };
 }
 async function findAndBroadcastArbitrage() {
+    // Não precisamos mais de um array local, processaremos uma a uma
     const exchangeIdentifiers = Object.keys(marketPrices);
     if (exchangeIdentifiers.length < 2)
         return;
@@ -183,10 +202,12 @@ async function findAndBroadcastArbitrage() {
                 if (buyPriceSpot <= 0 || sellPriceFutures <= 0 || buyPriceFutures <= 0 || sellPriceSpot <= 0) {
                     continue;
                 }
+                // Normalizar preços se necessário
                 const normalizedSpotAsk = spotPrices[spotSymbol].bestAsk * (futuresData.factor / spotData.factor);
                 const normalizedSpotBid = spotPrices[spotSymbol].bestBid * (futuresData.factor / spotData.factor);
                 const normalizedFuturesAsk = futuresPrices[futuresSymbol].bestAsk * (futuresData.factor / spotData.factor);
                 const normalizedFuturesBid = futuresPrices[futuresSymbol].bestBid * (futuresData.factor / spotData.factor);
+                // Cálculo do spread para arbitragem spot-to-futures
                 const profitSpotToFutures = ((normalizedFuturesBid - normalizedSpotAsk) / normalizedSpotAsk) * 100;
                 if (profitSpotToFutures >= MIN_PROFIT_PERCENTAGE) {
                     const opportunity = {
@@ -201,6 +222,7 @@ async function findAndBroadcastArbitrage() {
                     await recordSpread(opportunity);
                     broadcastOpportunity(opportunity);
                 }
+                // Cálculo do spread para arbitragem futures-to-spot
                 const profitFuturesToSpot = ((normalizedSpotBid - normalizedFuturesAsk) / normalizedSpotAsk) * 100;
                 if (profitFuturesToSpot >= MIN_PROFIT_PERCENTAGE) {
                     const opportunity = {
@@ -220,65 +242,49 @@ async function findAndBroadcastArbitrage() {
     }
 }
 async function startFeeds() {
-    console.log("🚀 Iniciando feeds de dados com BUSCA DINÂMICA...");
-    const gateIoSpotConnector = new gateio_connector_1.GateIoConnector('GATEIO_SPOT', handlePriceUpdate);
-    const gateIoFuturesConnector = new gateio_connector_1.GateIoConnector('GATEIO_FUTURES', handlePriceUpdate);
-    let mexcConnector;
-    let dynamicPairs = [];
     try {
-        console.log("📡 Buscando pares negociáveis das exchanges...");
-        const [spotPairs, futuresPairs] = await Promise.all([
-            gateIoSpotConnector.getTradablePairs(),
-            gateIoFuturesConnector.getTradablePairs()
+        // Inicializa os conectores
+        const mexcConnector = new mexc_connector_1.MexcConnector('MEXC_FUTURES', handlePriceUpdate, () => console.log('[MEXC] Conexão estabelecida'));
+        const gateioSpotConnector = new gateio_connector_1.GateIoConnector('GATEIO_SPOT', handlePriceUpdate, () => console.log('[GateIO Spot] Conexão estabelecida'));
+        const gateioFuturesConnector = new gateio_connector_1.GateIoConnector('GATEIO_FUTURES', handlePriceUpdate, () => console.log('[GateIO Futures] Conexão estabelecida'));
+        // Armazena os conectores
+        exchangeConnectors.set('MEXC_FUTURES', mexcConnector);
+        exchangeConnectors.set('GATEIO_SPOT', gateioSpotConnector);
+        exchangeConnectors.set('GATEIO_FUTURES', gateioFuturesConnector);
+        // Busca os pares negociáveis de cada exchange
+        const [mexcPairs, gateioSpotPairs, gateioFuturesPairs] = await Promise.all([
+            mexcConnector.getTradablePairs(),
+            gateioSpotConnector.getTradablePairs(),
+            gateioFuturesConnector.getTradablePairs()
         ]);
-        console.log(`✅ Gate.io Spot: ${spotPairs.length} pares encontrados`);
-        console.log(`✅ Gate.io Futures: ${futuresPairs.length} pares encontrados`);
-        dynamicPairs = spotPairs.filter((pair) => futuresPairs.includes(pair));
-        console.log(`🎯 PARES EM COMUM: ${dynamicPairs.length} pares para arbitragem`);
-        console.log(`📋 Primeiros 10 pares: ${dynamicPairs.slice(0, 10).join(', ')}`);
-        mexcConnector = new mexc_connector_1.MexcConnector('MEXC_FUTURES', handlePriceUpdate, () => {
-            console.log('✅ MEXC conectado! Inscrevendo em pares dinâmicos...');
-            mexcConnector.subscribe(dynamicPairs);
-        });
-        console.log(`🔄 Conectando exchanges com ${dynamicPairs.length} pares dinâmicos...`);
-        gateIoSpotConnector.connect(dynamicPairs);
-        gateIoFuturesConnector.connect(dynamicPairs);
+        // Encontra pares comuns entre os exchanges
+        const commonPairs = findCommonPairs(mexcPairs, gateioSpotPairs, gateioFuturesPairs);
+        console.log(`[Pares] ${commonPairs.length} pares comuns encontrados`);
+        // Inicia as conexões
         mexcConnector.connect();
-        console.log(`💰 Monitorando ${dynamicPairs.length} pares para arbitragem!`);
-        setInterval(findAndBroadcastArbitrage, 5000);
-        setInterval(async () => {
-            console.log("🔄 Atualizando lista de pares dinâmicos...");
-            try {
-                const [newSpotPairs, newFuturesPairs] = await Promise.all([
-                    gateIoSpotConnector.getTradablePairs(),
-                    gateIoFuturesConnector.getTradablePairs()
-                ]);
-                const newDynamicPairs = newSpotPairs.filter((pair) => newFuturesPairs.includes(pair));
-                if (newDynamicPairs.length !== dynamicPairs.length) {
-                    console.log(`📈 Pares atualizados: ${dynamicPairs.length} → ${newDynamicPairs.length}`);
-                    dynamicPairs = newDynamicPairs;
-                    mexcConnector.subscribe(dynamicPairs);
-                }
-                else {
-                    console.log("✅ Lista de pares permanece igual");
-                }
-            }
-            catch (error) {
-                console.error("❌ Erro ao atualizar pares:", error);
-            }
-        }, 3600000);
+        gateioSpotConnector.connect();
+        gateioFuturesConnector.connect();
+        // Inscreve nos pares comuns
+        mexcConnector.subscribe(commonPairs);
+        gateioSpotConnector.subscribe(commonPairs);
+        gateioFuturesConnector.subscribe(commonPairs);
     }
     catch (error) {
-        console.error("❌ Erro fatal ao iniciar os feeds:", error);
-        console.log("🔄 Usando pares prioritários como fallback...");
-        const fallbackPairs = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT'];
-        mexcConnector = new mexc_connector_1.MexcConnector('MEXC_FUTURES', handlePriceUpdate, () => {
-            mexcConnector.subscribe(fallbackPairs);
-        });
-        gateIoSpotConnector.connect(fallbackPairs);
-        gateIoFuturesConnector.connect(fallbackPairs);
-        mexcConnector.connect();
-        setInterval(findAndBroadcastArbitrage, 5000);
+        console.error('[Feeds] Erro ao iniciar feeds:', error);
     }
+}
+function findCommonPairs(mexcPairs, gateioSpotPairs, gateioFuturesPairs) {
+    const pairSet = new Set();
+    // Converte todos os pares para o mesmo formato (maiúsculo)
+    const normalizedMexc = new Set(mexcPairs.map(p => p.toUpperCase()));
+    const normalizedGateioSpot = new Set(gateioSpotPairs.map(p => p.toUpperCase()));
+    const normalizedGateioFutures = new Set(gateioFuturesPairs.map(p => p.toUpperCase()));
+    // Encontra pares que existem em todos os exchanges
+    for (const pair of normalizedMexc) {
+        if (normalizedGateioSpot.has(pair) && normalizedGateioFutures.has(pair)) {
+            pairSet.add(pair);
+        }
+    }
+    return Array.from(pairSet);
 }
 //# sourceMappingURL=websocket-server.js.map

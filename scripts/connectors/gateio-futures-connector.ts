@@ -1,6 +1,8 @@
 const WebSocket = require('ws');
 import fetch from 'node-fetch';
 
+const GATEIO_WS_URL = 'wss://fx-ws.gateio.ws/v4/ws/usdt';
+
 export class GateIoFuturesConnector {
     private ws: any = null;
     private readonly identifier: string;
@@ -8,11 +10,13 @@ export class GateIoFuturesConnector {
     private readonly onConnect: Function;
     private isConnected: boolean = false;
     private reconnectAttempts: number = 0;
-    private readonly maxReconnectAttempts: number = 5;
+    private readonly maxReconnectAttempts: number = 10;
     private readonly reconnectDelay: number = 5000;
-    private readonly WS_URL = 'wss://fx-ws.gateio.ws/v4/ws/usdt';
-    private readonly REST_URL = 'https://api.gateio.ws/api/v4';
+    private readonly REST_URL = 'https://api.gateio.ws/api/v4/futures/usdt/contracts';
     private subscribedSymbols: Set<string> = new Set();
+    private heartbeatInterval: NodeJS.Timeout | null = null;
+    private readonly HEARTBEAT_INTERVAL = 20000;
+    private reconnectTimeout: NodeJS.Timeout | null = null;
 
     constructor(identifier: string, onPriceUpdate: Function, onConnect: Function) {
         this.identifier = identifier;
@@ -21,41 +25,136 @@ export class GateIoFuturesConnector {
         console.log(`[${this.identifier}] Conector instanciado.`);
     }
 
+    private startHeartbeat() {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+        }
+
+        this.heartbeatInterval = setInterval(() => {
+            if (this.ws && this.isConnected) {
+                try {
+                    const pingMessage = { "op": "ping" };
+                    this.ws.send(JSON.stringify(pingMessage));
+                    console.log(`[${this.identifier}] Ping enviado`);
+                } catch (error) {
+                    console.error(`[${this.identifier}] Erro ao enviar ping:`, error);
+                    this.handleDisconnect('Erro ao enviar ping');
+                }
+            }
+        }, this.HEARTBEAT_INTERVAL);
+    }
+
+    private stopHeartbeat() {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
+    }
+
+    private async cleanup() {
+        console.log(`[${this.identifier}] Iniciando limpeza da conexão...`);
+        this.stopHeartbeat();
+        
+        if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
+            this.reconnectTimeout = null;
+        }
+        
+        if (this.ws) {
+            try {
+                console.log(`[${this.identifier}] Estado do WebSocket antes da limpeza:`, this.ws.readyState);
+                this.ws.removeAllListeners();
+                if (this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.close();
+                } else {
+                    this.ws.terminate();
+                }
+                this.ws = null;
+                console.log(`[${this.identifier}] WebSocket limpo com sucesso`);
+            } catch (error) {
+                console.error(`[${this.identifier}] Erro ao limpar conexão:`, error);
+            }
+        }
+        
+        this.isConnected = false;
+        console.log(`[${this.identifier}] Limpeza concluída`);
+    }
+
+    private handleDisconnect(reason: string = 'Desconexão') {
+        console.log(`[${this.identifier}] Desconectado: ${reason}`);
+        
+        this.cleanup().then(() => {
+            if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                const delay = Math.min(this.reconnectDelay * Math.pow(1.5, this.reconnectAttempts), 30000);
+                console.log(`[${this.identifier}] Tentando reconectar em ${delay}ms... (Tentativa ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})`);
+                
+                this.reconnectTimeout = setTimeout(() => {
+                    this.connect().catch((error: unknown) => {
+                        console.error(`[${this.identifier}] Erro na tentativa de reconexão:`, error);
+                    });
+                }, delay);
+                
+                this.reconnectAttempts++;
+            } else {
+                console.error(`[${this.identifier}] Número máximo de tentativas de reconexão atingido`);
+            }
+        });
+    }
+
     async connect() {
         try {
+            await this.cleanup();
             console.log(`\n[${this.identifier}] Iniciando conexão WebSocket...`);
-            this.ws = new WebSocket(this.WS_URL);
+            
+            this.ws = new WebSocket(GATEIO_WS_URL, {
+                handshakeTimeout: 30000,
+                timeout: 30000,
+                perMessageDeflate: false,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+            });
 
             this.ws.on('open', () => {
-                console.log(`[${this.identifier}] WebSocket conectado`);
+                console.log(`[${this.identifier}] WebSocket conectado com sucesso`);
                 this.isConnected = true;
                 this.reconnectAttempts = 0;
-                this.resubscribeAll();
+                this.startHeartbeat();
                 this.onConnect();
+                if (this.subscribedSymbols.size > 0) {
+                    this.resubscribeAll();
+                }
             });
 
             this.ws.on('message', (data: any) => {
                 try {
                     const message = JSON.parse(data.toString());
-                    
-                    // Log para debug
-                    console.log(`\n[${this.identifier}] Mensagem recebida:`, message);
+                    console.log(`[${this.identifier}] Mensagem recebida:`, message);
 
-                    // Processa atualizações de ticker
-                    if (message.event === 'update' && message.channel === 'futures.book_ticker') {
-                        const { s: symbol, a: ask, b: bid } = message.result;
-                        const formattedSymbol = symbol.replace('_', '/');
+                    if (message.channel === 'push.ticker') {
+                        const ticker = message.data;
+                        const pair = ticker.symbol.replace('_', '/').toUpperCase();
+                        
+                        const priceData = {
+                            bestAsk: parseFloat(ticker.ask),
+                            bestBid: parseFloat(ticker.bid),
+                        };
 
-                        if (ask && bid) {
-                            this.onPriceUpdate({
-                                type: 'price-update',
-                                symbol: formattedSymbol,
-                                marketType: 'futures',
-                                bestAsk: parseFloat(ask),
-                                bestBid: parseFloat(bid),
-                                identifier: this.identifier
-                            });
+                        if (!priceData.bestAsk || !priceData.bestBid) {
+                            console.log(`[${this.identifier}] Preços inválidos recebidos:`, ticker);
+                            return;
                         }
+
+                        console.log(`[${this.identifier}] Atualização de preço para ${pair}:`, priceData);
+
+                        this.onPriceUpdate({
+                            type: 'price-update',
+                            symbol: pair,
+                            marketType: 'futures',
+                            bestAsk: priceData.bestAsk,
+                            bestBid: priceData.bestBid,
+                            identifier: this.identifier
+                        });
                     }
                 } catch (error) {
                     console.error(`[${this.identifier}] Erro ao processar mensagem:`, error);
@@ -63,32 +162,59 @@ export class GateIoFuturesConnector {
             });
 
             this.ws.on('close', (code: number, reason: string) => {
-                console.log(`[${this.identifier}] WebSocket fechado. Código: ${code}, Razão: ${reason}`);
-                this.isConnected = false;
-
-                if (this.reconnectAttempts < this.maxReconnectAttempts) {
-                    console.log(`[${this.identifier}] Tentando reconectar em ${this.reconnectDelay}ms...`);
-                    setTimeout(() => this.connect(), this.reconnectDelay);
-                    this.reconnectAttempts++;
-                } else {
-                    console.error(`[${this.identifier}] Número máximo de tentativas de reconexão atingido`);
-                }
+                console.log(`[${this.identifier}] WebSocket fechado. Código: ${code}, Razão: ${reason || 'Sem razão especificada'}`);
+                this.handleDisconnect(`Fechado com código ${code}`);
             });
 
             this.ws.on('error', (error: Error) => {
                 console.error(`[${this.identifier}] Erro na conexão WebSocket:`, error);
+                this.handleDisconnect(`Erro: ${error.message}`);
+            });
+
+            this.ws.on('upgrade', (response: any) => {
+                console.log(`[${this.identifier}] Conexão WebSocket atualizada. Status:`, response.statusCode);
             });
 
         } catch (error) {
             console.error(`[${this.identifier}] Erro ao conectar:`, error);
-            throw error;
+            this.handleDisconnect(`Erro na conexão: ${error}`);
         }
+    }
+
+    subscribe(pairs: string[]) {
+        console.log(`[${this.identifier}] Inscrevendo-se em ${pairs.length} pares`);
+        pairs.forEach(pair => this.subscribedSymbols.add(pair));
+
+        if (this.isConnected && this.ws) {
+            const formattedPairs = Array.from(this.subscribedSymbols).map(pair => pair.replace('/', '_'));
+            const subscribeMessage = {
+                "op": "sub.ticker",
+                "param": {
+                    "symbols": formattedPairs
+                }
+            };
+            console.log(`[${this.identifier}] Enviando mensagem de subscrição:`, JSON.stringify(subscribeMessage));
+            this.ws.send(JSON.stringify(subscribeMessage));
+        }
+    }
+
+    private resubscribeAll() {
+        const pairs = Array.from(this.subscribedSymbols);
+        if (pairs.length > 0) {
+            console.log(`[${this.identifier}] Reinscrevendo em ${pairs.length} pares...`);
+            this.subscribe(pairs);
+        }
+    }
+
+    public disconnect() {
+        console.log(`[${this.identifier}] Desconectando...`);
+        this.cleanup();
     }
 
     async getTradablePairs(): Promise<string[]> {
         try {
             console.log(`[${this.identifier}] Buscando pares negociáveis...`);
-            const response = await fetch(`${this.REST_URL}/futures/usdt/contracts`);
+            const response = await fetch(this.REST_URL);
             const data = await response.json();
             
             if (!Array.isArray(data)) {
@@ -105,44 +231,6 @@ export class GateIoFuturesConnector {
         } catch (error) {
             console.error(`[${this.identifier}] Erro ao buscar pares:`, error);
             return [];
-        }
-    }
-
-    subscribe(pairs: string[]) {
-        if (!this.ws || !this.isConnected) {
-            console.error(`[${this.identifier}] WebSocket não está conectado`);
-            return;
-        }
-
-        try {
-            console.log(`\n[${this.identifier}] Inscrevendo-se em ${pairs.length} pares`);
-            
-            pairs.forEach(symbol => {
-                const formattedSymbol = symbol.replace('/', '_');
-                this.subscribedSymbols.add(symbol);
-
-                const subscribeMessage = {
-                    time: Math.floor(Date.now() / 1000),
-                    channel: 'futures.book_ticker',
-                    event: 'subscribe',
-                    payload: [formattedSymbol]
-                };
-
-                this.ws.send(JSON.stringify(subscribeMessage));
-            });
-
-            console.log(`[${this.identifier}] Mensagens de inscrição enviadas`);
-            console.log('Primeiros 5 pares inscritos:', pairs.slice(0, 5));
-        } catch (error) {
-            console.error(`[${this.identifier}] Erro ao se inscrever nos pares:`, error);
-        }
-    }
-
-    private resubscribeAll() {
-        const pairs = Array.from(this.subscribedSymbols);
-        if (pairs.length > 0) {
-            console.log(`[${this.identifier}] Reinscrevendo em ${pairs.length} pares...`);
-            this.subscribe(pairs);
         }
     }
 } 

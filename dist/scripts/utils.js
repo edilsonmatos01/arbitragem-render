@@ -1,33 +1,32 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.calculateSpread = calculateSpread;
-const decimal_js_1 = __importDefault(require("decimal.js"));
-function calculateSpread(sellPrice, buyPrice) {
-    try {
-        const sell = new decimal_js_1.default(sellPrice.toString().trim());
-        const buy = new decimal_js_1.default(buyPrice.toString().trim());
-        if (buy.isZero() || buy.isNegative() || sell.isNegative() ||
-            !buy.isFinite() || !sell.isFinite() ||
-            buy.equals(0) || sell.equals(0)) {
-            return null;
-        }
-        if (sell.equals(buy)) {
-            return null;
-        }
-        const difference = sell.minus(buy);
-        const ratio = difference.dividedBy(buy);
-        const percentageSpread = ratio.times(100);
-        if (percentageSpread.isNegative() || percentageSpread.isZero() || !percentageSpread.isFinite()) {
-            return null;
-        }
-        return percentageSpread.toDecimalPlaces(4, decimal_js_1.default.ROUND_HALF_UP).toString();
+exports.formatSpread = formatSpread;
+exports.isValidSpread = isValidSpread;
+exports.normalizeSymbol = normalizeSymbol;
+exports.denormalizeSymbol = denormalizeSymbol;
+/**
+ * Calcula o spread percentual entre preço de venda e compra
+ * @param sellPrice Preço de venda
+ * @param buyPrice Preço de compra
+ * @returns Spread percentual com 4 casas decimais ou null se inválido
+ */
+function calculateSpread(buyPrice, sellPrice) {
+    if (!buyPrice || !sellPrice || buyPrice <= 0 || sellPrice <= 0) {
+        return 0;
     }
-    catch (error) {
-        console.error('Erro ao calcular spread:', error);
-        return null;
-    }
+    return ((sellPrice - buyPrice) / buyPrice) * 100;
+}
+function formatSpread(spread) {
+    return spread.toFixed(2) + '%';
+}
+function isValidSpread(spread) {
+    return !isNaN(spread) && isFinite(spread) && spread > -100 && spread < 100;
+}
+function normalizeSymbol(symbol) {
+    return symbol.replace('_', '/').toUpperCase();
+}
+function denormalizeSymbol(symbol) {
+    return symbol.replace('/', '_').toLowerCase();
 }
 //# sourceMappingURL=utils.js.map

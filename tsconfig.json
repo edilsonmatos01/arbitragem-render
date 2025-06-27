@@ -1,15 +1,15 @@
 {
   "compilerOptions": {
     "baseUrl": ".",
-    "target": "es2015",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "target": "es2018",
+    "lib": ["es2018", "esnext.asynciterable"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
     "esModuleInterop": true,
-    "module": "esnext",
+    "module": "commonjs",
     "moduleResolution": "node",
     "resolveJsonModule": true,
     "isolatedModules": true,
@@ -29,7 +29,10 @@
     "typeRoots": [
       "./node_modules/@types",
       "./src/types"
-    ]
+    ],
+    "outDir": "dist",
+    "allowSyntheticDefaultImports": true,
+    "sourceMap": true
   },
   "include": [
     "next-env.d.ts",
@@ -41,7 +44,8 @@
     "components/**/*.ts",
     "components/**/*.tsx",
     "scripts/**/*.ts",
-    "src/**/*.ts"
+    "src/**/*.ts",
+    "test-*.ts"
   ],
   "exclude": ["node_modules"]
 }

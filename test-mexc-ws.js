@@ -1,57 +1,38 @@
-const WebSocket = require('ws');
+const { MexcConnector } = require('./scripts/connectors/mexc-connector');
 
-// Configurações
-const WS_URL = 'wss://contract.mexc.com/edge';
-const SYMBOL = 'BTC/USDT';
+// Função para processar atualizações de preço
+const handlePriceUpdate = (data) => {
+    console.log('\n[MEXC] Atualização de preço recebida:');
+    console.log(JSON.stringify(data, null, 2));
+};
 
-// Criar conexão WebSocket
-const ws = new WebSocket(WS_URL);
-
-// Eventos do WebSocket
-ws.on('open', () => {
-    console.log('Conectado ao WebSocket Futures da MEXC');
+// Função de callback para conexão
+const handleConnected = () => {
+    console.log('[MEXC] Conexão estabelecida com sucesso');
     
-    // Enviar mensagem de subscrição
-    const subscribeMessage = {
-        method: 'sub.ticker',
-        param: {
-            symbol: SYMBOL.replace('/', '_')
-        }
-    };
+    // Lista de pares para teste
+    const testPairs = [
+        'BTC/USDT',
+        'ETH/USDT',
+        'SOL/USDT',
+        'XRP/USDT',
+        'BNB/USDT'
+    ];
     
-    console.log('Enviando mensagem de subscrição:', JSON.stringify(subscribeMessage));
-    ws.send(JSON.stringify(subscribeMessage));
+    console.log(`[MEXC] Inscrevendo nos pares: ${testPairs.join(', ')}`);
+    mexcConnector.subscribe(testPairs);
+};
 
-    // Iniciar ping a cada 20 segundos
-    setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ method: "ping" }));
-        }
-    }, 20000);
-});
+// Inicializa o conector MEXC
+console.log('[MEXC] Iniciando teste de conexão WebSocket...');
+const mexcConnector = new MexcConnector('MEXC_SPOT', handlePriceUpdate, handleConnected);
 
-ws.on('message', (data) => {
-    try {
-        const message = JSON.parse(data.toString());
-        if (message.channel === 'push.ticker' && message.data) {
-            const ticker = message.data;
-            console.log('Preços Futures:', {
-                symbol: ticker.symbol,
-                bestAsk: parseFloat(ticker.ask1),
-                bestBid: parseFloat(ticker.bid1)
-            });
-        } else {
-            console.log('Outra mensagem recebida:', message);
-        }
-    } catch (error) {
-        console.error('Erro ao processar mensagem:', error);
-    }
-});
+// Conecta ao WebSocket
+mexcConnector.connect();
 
-ws.on('error', (error) => {
-    console.error('Erro na conexão:', error);
-});
-
-ws.on('close', () => {
-    console.log('Conexão fechada');
+// Mantém o script rodando
+process.on('SIGINT', () => {
+    console.log('\n[MEXC] Encerrando conexão...');
+    mexcConnector.disconnect();
+    process.exit();
 }); 

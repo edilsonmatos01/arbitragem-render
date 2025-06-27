@@ -1,47 +1,28 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "target": "es2020",
     "module": "commonjs",
-    "lib": ["es2020", "esnext.asynciterable"],
-    "skipLibCheck": true,
-    "sourceMap": true,
     "outDir": "dist",
+    "target": "es2018",
+    "lib": ["es2018", "esnext.asynciterable"],
     "moduleResolution": "node",
-    "removeComments": true,
-    "noImplicitAny": true,
-    "strictNullChecks": true,
-    "strictFunctionTypes": true,
-    "noImplicitThis": true,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "allowSyntheticDefaultImports": true,
+    "sourceMap": true,
     "esModuleInterop": true,
-    "emitDecoratorMetadata": true,
-    "experimentalDecorators": true,
-    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
     "noEmit": false,
-    "isolatedModules": false,
-    "jsx": "preserve",
-    "baseUrl": ".",
-    "rootDirs": [".", "src", "scripts"],
-    "paths": {
-      "@/*": ["./*"]
-    },
-    "types": ["node", "express"]
+    "isolatedModules": false
   },
   "include": [
     "websocket-server.ts",
     "src/**/*.ts",
     "scripts/**/*.ts",
-    "scripts/server.ts"
+    "worker/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "**/*.test.ts",
-    "src/app",
-    "app"
+    "**/*.spec.ts"
   ]
 } 

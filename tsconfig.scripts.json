@@ -13,11 +13,12 @@
     "paths": {
       "*": ["node_modules/*"],
       "@/*": ["./*"]
-    }
+    },
+    "allowJs": true,
+    "resolveJsonModule": true
   },
   "include": [
-    "worker/**/*.ts",
-    "src/**/*.ts"
+    "scripts/**/*.ts"
   ],
   "exclude": [
     "node_modules"

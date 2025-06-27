@@ -14,20 +14,23 @@ const prisma = new client_1.PrismaClient();
 const PORT = process.env.PORT || 10000;
 const MIN_PROFIT_PERCENTAGE = 0.1;
 let marketPrices = {};
-let targetPairs = [];
 let clients = [];
+let exchangeConnectors = new Map();
 function handlePriceUpdate(update) {
-    const { identifier, symbol, priceData, marketType, bestAsk, bestBid } = update;
+    const { identifier, symbol, marketType, bestAsk, bestBid } = update;
+    // 1. Atualiza o estado central de preços
     if (!marketPrices[identifier]) {
         marketPrices[identifier] = {};
     }
     marketPrices[identifier][symbol] = { bestAsk, bestBid, timestamp: Date.now() };
+    // 2. Transmite a atualização para todos os clientes
     broadcast({
         type: 'price-update',
         symbol,
         marketType,
         bestAsk,
-        bestBid
+        bestBid,
+        identifier
     });
 }
 function startWebSocketServer(httpServer) {
@@ -48,6 +51,7 @@ function startWebSocketServer(httpServer) {
             console.log(`[WS Server] Cliente desconectado: ${clientIp}. Total: ${clients.length}`);
         });
     });
+    // Intervalo para verificar conexões e mantê-las vivas
     const interval = setInterval(() => {
         wss.clients.forEach(client => {
             const ws = client;
@@ -56,11 +60,17 @@ function startWebSocketServer(httpServer) {
                 return ws.terminate();
             }
             ws.isAlive = false;
-            ws.ping(() => { });
+            ws.ping();
         });
     }, 30000);
     wss.on('close', () => {
         clearInterval(interval);
+        // Limpa todas as conexões de exchange
+        exchangeConnectors.forEach(connector => {
+            var _a;
+            (_a = connector.disconnect) === null || _a === void 0 ? void 0 : _a.call(connector);
+        });
+        exchangeConnectors.clear();
     });
     console.log(`Servidor WebSocket iniciado e anexado ao servidor HTTP.`);
     startFeeds();
@@ -92,7 +102,7 @@ function broadcast(data) {
         }
     });
 }
-function broadcastOpportunity(opportunity) {
+async function broadcastOpportunity(opportunity) {
     console.log(`[DEBUG] Verificando ${opportunity.baseSymbol} | Spread: ${opportunity.profitPercentage.toFixed(2)}%`);
     if (!isFinite(opportunity.profitPercentage) || opportunity.profitPercentage > 100) {
         console.warn(`[FILTRO] Spread >100% IGNORADO para ${opportunity.baseSymbol}: ${opportunity.profitPercentage.toFixed(2)}%`);
@@ -100,6 +110,7 @@ function broadcastOpportunity(opportunity) {
     }
     broadcast({ ...opportunity, type: 'arbitrage' });
     console.log(`[Broadcast] Oportunidade VÁLIDA enviada: ${opportunity.baseSymbol} ${opportunity.profitPercentage.toFixed(2)}%`);
+    await recordSpread(opportunity);
 }
 async function recordSpread(opportunity) {
     if (typeof opportunity.profitPercentage !== 'number' || !isFinite(opportunity.profitPercentage)) {
@@ -121,125 +132,50 @@ async function recordSpread(opportunity) {
         console.error(`[Prisma] Erro ao gravar spread para ${opportunity.baseSymbol}:`, error);
     }
 }
-async function getSpreadStats(opportunity) {
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+async function startFeeds() {
     try {
-        const stats = await prisma.spreadHistory.aggregate({
-            _max: { spread: true },
-            _min: { spread: true },
-            _count: { id: true },
-            where: {
-                symbol: opportunity.baseSymbol,
-                exchangeBuy: opportunity.buyAt.exchange,
-                exchangeSell: opportunity.sellAt.exchange,
-                direction: opportunity.arbitrageType,
-                timestamp: {
-                    gte: twentyFourHoursAgo,
-                },
-            },
-        });
-        return {
-            spMax: stats._max.spread,
-            spMin: stats._min.spread,
-            crosses: stats._count.id,
-        };
+        // Inicializa os conectores
+        const mexcConnector = new mexc_connector_1.MexcConnector('MEXC_FUTURES', handlePriceUpdate, () => console.log('[MEXC] Conexão estabelecida'));
+        const gateioSpotConnector = new gateio_connector_1.GateIoConnector('GATEIO_SPOT', handlePriceUpdate, () => console.log('[GateIO Spot] Conexão estabelecida'));
+        const gateioFuturesConnector = new gateio_connector_1.GateIoConnector('GATEIO_FUTURES', handlePriceUpdate, () => console.log('[GateIO Futures] Conexão estabelecida'));
+        // Armazena os conectores
+        exchangeConnectors.set('MEXC_FUTURES', mexcConnector);
+        exchangeConnectors.set('GATEIO_SPOT', gateioSpotConnector);
+        exchangeConnectors.set('GATEIO_FUTURES', gateioFuturesConnector);
+        // Busca os pares negociáveis de cada exchange
+        const [mexcPairs, gateioSpotPairs, gateioFuturesPairs] = await Promise.all([
+            mexcConnector.getTradablePairs(),
+            gateioSpotConnector.getTradablePairs(),
+            gateioFuturesConnector.getTradablePairs()
+        ]);
+        // Encontra pares comuns entre os exchanges
+        const commonPairs = findCommonPairs(mexcPairs, gateioSpotPairs, gateioFuturesPairs);
+        console.log(`[Pares] ${commonPairs.length} pares comuns encontrados`);
+        // Inicia as conexões
+        mexcConnector.connect();
+        gateioSpotConnector.connect();
+        gateioFuturesConnector.connect();
+        // Inscreve nos pares comuns
+        mexcConnector.subscribe(commonPairs);
+        gateioSpotConnector.subscribe(commonPairs);
+        gateioFuturesConnector.subscribe(commonPairs);
     }
     catch (error) {
-        console.error(`[Prisma] Erro ao buscar estatísticas de spread para ${opportunity.baseSymbol}:`, error);
-        return { spMax: null, spMin: null, crosses: 0 };
+        console.error('[Feeds] Erro ao iniciar feeds:', error);
     }
 }
-function getNormalizedData(symbol) {
-    const match = symbol.match(/^(\d+)(.+)$/);
-    if (match) {
-        const factor = parseInt(match[1], 10);
-        const baseSymbol = match[2];
-        return { baseSymbol, factor };
-    }
-    return { baseSymbol: symbol, factor: 1 };
-}
-async function findAndBroadcastArbitrage() {
-    const exchangeIdentifiers = Object.keys(marketPrices);
-    if (exchangeIdentifiers.length < 2)
-        return;
-    for (const spotId of exchangeIdentifiers.filter(id => !id.toUpperCase().includes('FUTURES'))) {
-        const futuresId = exchangeIdentifiers.find(id => id.toUpperCase().includes('FUTURES'));
-        if (!futuresId)
-            continue;
-        const spotPrices = marketPrices[spotId];
-        const futuresPrices = marketPrices[futuresId];
-        for (const spotSymbol in spotPrices) {
-            const spotData = getNormalizedData(spotSymbol);
-            const futuresSymbol = Object.keys(futuresPrices).find(fs => {
-                const futuresData = getNormalizedData(fs);
-                return futuresData.baseSymbol === spotData.baseSymbol;
-            });
-            if (futuresSymbol) {
-                const futuresData = getNormalizedData(futuresSymbol);
-                const buyPriceSpot = spotPrices[spotSymbol].bestAsk * (futuresData.factor / spotData.factor);
-                const sellPriceFutures = futuresPrices[futuresSymbol].bestBid;
-                const buyPriceFutures = futuresPrices[futuresSymbol].bestAsk;
-                const sellPriceSpot = spotPrices[spotSymbol].bestBid * (futuresData.factor / spotData.factor);
-                if (buyPriceSpot <= 0 || sellPriceFutures <= 0 || buyPriceFutures <= 0 || sellPriceSpot <= 0) {
-                    continue;
-                }
-                const normalizedSpotAsk = spotPrices[spotSymbol].bestAsk * (futuresData.factor / spotData.factor);
-                const normalizedSpotBid = spotPrices[spotSymbol].bestBid * (futuresData.factor / spotData.factor);
-                const normalizedFuturesAsk = futuresPrices[futuresSymbol].bestAsk * (futuresData.factor / spotData.factor);
-                const normalizedFuturesBid = futuresPrices[futuresSymbol].bestBid * (futuresData.factor / spotData.factor);
-                const profitSpotToFutures = ((normalizedFuturesBid - normalizedSpotAsk) / normalizedSpotAsk) * 100;
-                if (profitSpotToFutures >= MIN_PROFIT_PERCENTAGE) {
-                    const opportunity = {
-                        type: 'arbitrage',
-                        baseSymbol: spotData.baseSymbol,
-                        profitPercentage: profitSpotToFutures,
-                        buyAt: { exchange: spotId, price: spotPrices[spotSymbol].bestAsk, marketType: 'spot', originalSymbol: spotSymbol },
-                        sellAt: { exchange: futuresId, price: futuresPrices[futuresSymbol].bestBid, marketType: 'futures', originalSymbol: futuresSymbol },
-                        arbitrageType: 'spot_to_futures_inter',
-                        timestamp: Date.now()
-                    };
-                    await recordSpread(opportunity);
-                    broadcastOpportunity(opportunity);
-                }
-                const profitFuturesToSpot = ((normalizedSpotBid - normalizedFuturesAsk) / normalizedSpotAsk) * 100;
-                if (profitFuturesToSpot >= MIN_PROFIT_PERCENTAGE) {
-                    const opportunity = {
-                        type: 'arbitrage',
-                        baseSymbol: spotData.baseSymbol,
-                        profitPercentage: profitFuturesToSpot,
-                        buyAt: { exchange: futuresId, price: futuresPrices[futuresSymbol].bestAsk, marketType: 'futures', originalSymbol: futuresSymbol },
-                        sellAt: { exchange: spotId, price: spotPrices[spotSymbol].bestBid, marketType: 'spot', originalSymbol: spotSymbol },
-                        arbitrageType: 'futures_to_spot_inter',
-                        timestamp: Date.now()
-                    };
-                    await recordSpread(opportunity);
-                    broadcastOpportunity(opportunity);
-                }
-            }
+function findCommonPairs(mexcPairs, gateioSpotPairs, gateioFuturesPairs) {
+    const pairSet = new Set();
+    // Converte todos os pares para o mesmo formato (maiúsculo)
+    const normalizedMexc = new Set(mexcPairs.map(p => p.toUpperCase()));
+    const normalizedGateioSpot = new Set(gateioSpotPairs.map(p => p.toUpperCase()));
+    const normalizedGateioFutures = new Set(gateioFuturesPairs.map(p => p.toUpperCase()));
+    // Encontra pares que existem em todos os exchanges
+    for (const pair of normalizedMexc) {
+        if (normalizedGateioSpot.has(pair) && normalizedGateioFutures.has(pair)) {
+            pairSet.add(pair);
         }
     }
-}
-async function startFeeds() {
-    console.log("Iniciando feeds de dados...");
-    const gateIoSpotConnector = new gateio_connector_1.GateIoConnector('GATEIO_SPOT', handlePriceUpdate);
-    const gateIoFuturesConnector = new gateio_connector_1.GateIoConnector('GATEIO_FUTURES', handlePriceUpdate);
-    const mexcConnector = new mexc_connector_1.MexcConnector('MEXC_FUTURES', handlePriceUpdate, () => {
-        const mexcPairs = targetPairs.map(p => p.replace('/', '_'));
-        mexcConnector.subscribe(mexcPairs);
-    });
-    try {
-        const spotPairs = await gateIoSpotConnector.getTradablePairs();
-        const futuresPairs = await gateIoFuturesConnector.getTradablePairs();
-        targetPairs = spotPairs.filter(p => futuresPairs.includes(p));
-        console.log(`Encontrados ${targetPairs.length} pares em comum.`);
-        gateIoSpotConnector.connect(targetPairs);
-        gateIoFuturesConnector.connect(targetPairs);
-        mexcConnector.connect();
-        console.log(`Monitorando ${targetPairs.length} pares.`);
-        setInterval(findAndBroadcastArbitrage, 5000);
-    }
-    catch (error) {
-        console.error("Erro fatal ao iniciar os feeds:", error);
-    }
+    return Array.from(pairSet);
 }
 //# sourceMappingURL=websocket-server.js.map

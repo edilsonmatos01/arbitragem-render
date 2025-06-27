@@ -4,207 +4,142 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MexcFuturesConnector = void 0;
-const WebSocket = require('ws');
+const ws_1 = __importDefault(require("ws"));
+const events_1 = require("events");
 const node_fetch_1 = __importDefault(require("node-fetch"));
-class MexcFuturesConnector {
+const GATEIO_WS_URL = 'wss://fx-ws.gateio.ws/v4/ws/usdt';
+class MexcFuturesConnector extends events_1.EventEmitter {
     constructor(identifier, onPriceUpdate, onConnect) {
+        super();
         this.ws = null;
         this.isConnected = false;
+        this.isConnecting = false;
         this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 10;
+        this.maxReconnectAttempts = 5;
         this.reconnectDelay = 5000;
-        this.WS_URL = 'wss://contract.mexc.com/edge';
-        this.REST_URL = 'https://contract.mexc.com/api/v1/contract/detail';
+        this.REST_URL = 'https://api.gateio.ws/api/v4/futures/usdt/contracts';
         this.subscribedSymbols = new Set();
-        this.heartbeatInterval = null;
-        this.HEARTBEAT_INTERVAL = 20000;
-        this.reconnectTimeout = null;
         this.identifier = identifier;
         this.onPriceUpdate = onPriceUpdate;
         this.onConnect = onConnect;
-        console.log(`[${this.identifier}] Conector instanciado.`);
     }
-    startHeartbeat() {
-        if (this.heartbeatInterval) {
-            clearInterval(this.heartbeatInterval);
-        }
-        this.heartbeatInterval = setInterval(() => {
-            if (this.ws && this.isConnected) {
-                try {
-                    const pingMessage = { "op": "ping" };
-                    this.ws.send(JSON.stringify(pingMessage));
-                    console.log(`[${this.identifier}] Ping enviado`);
-                }
-                catch (error) {
-                    console.error(`[${this.identifier}] Erro ao enviar ping:`, error);
-                    this.handleDisconnect('Erro ao enviar ping');
-                }
-            }
-        }, this.HEARTBEAT_INTERVAL);
-    }
-    stopHeartbeat() {
-        if (this.heartbeatInterval) {
-            clearInterval(this.heartbeatInterval);
-            this.heartbeatInterval = null;
-        }
-    }
-    async cleanup() {
-        this.stopHeartbeat();
-        if (this.reconnectTimeout) {
-            clearTimeout(this.reconnectTimeout);
-            this.reconnectTimeout = null;
+    connect() {
+        if (this.isConnecting) {
+            console.log(`[${this.identifier}] Conexão já em andamento.`);
+            return;
         }
         if (this.ws) {
-            try {
-                this.ws.removeAllListeners();
-                if (this.ws.readyState === WebSocket.OPEN) {
-                    this.ws.close();
-                }
-                else {
-                    this.ws.terminate();
-                }
-                this.ws = null;
-            }
-            catch (error) {
-                console.error(`[${this.identifier}] Erro ao limpar conexão:`, error);
-            }
+            this.ws.close();
+            this.ws = null;
         }
-        this.isConnected = false;
-    }
-    handleDisconnect(reason = 'Desconexão') {
-        console.log(`[${this.identifier}] Desconectado: ${reason}`);
-        this.cleanup().then(() => {
-            if (this.reconnectAttempts < this.maxReconnectAttempts) {
-                const delay = Math.min(this.reconnectDelay * Math.pow(1.5, this.reconnectAttempts), 30000);
-                console.log(`[${this.identifier}] Tentando reconectar em ${delay}ms... (Tentativa ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})`);
-                this.reconnectTimeout = setTimeout(() => {
-                    this.connect().catch((error) => {
-                        console.error(`[${this.identifier}] Erro na tentativa de reconexão:`, error);
-                    });
-                }, delay);
-                this.reconnectAttempts++;
-            }
-            else {
-                console.error(`[${this.identifier}] Número máximo de tentativas de reconexão atingido`);
-            }
-        });
-    }
-    async connect() {
+        this.isConnecting = true;
+        console.log(`[${this.identifier}] Conectando...`);
         try {
-            await this.cleanup();
-            console.log(`\n[${this.identifier}] Iniciando conexão WebSocket...`);
-            this.ws = new WebSocket(this.WS_URL, {
-                handshakeTimeout: 10000,
-                timeout: 10000
-            });
+            this.ws = new ws_1.default('wss://contract.mexc.com/edge');
             this.ws.on('open', () => {
-                console.log(`[${this.identifier}] WebSocket conectado`);
+                console.log(`[${this.identifier}] Conexão estabelecida`);
                 this.isConnected = true;
+                this.isConnecting = false;
                 this.reconnectAttempts = 0;
-                this.startHeartbeat();
-                this.resubscribeAll();
                 this.onConnect();
             });
             this.ws.on('message', (data) => {
                 try {
                     const message = JSON.parse(data.toString());
-                    console.log(`\n[${this.identifier}] Mensagem recebida:`, message);
-                    if (message.op === 'pong') {
-                        console.log(`[${this.identifier}] Pong recebido`);
-                        return;
-                    }
                     if (message.channel === 'push.ticker') {
-                        const { symbol, bestAsk, bestBid } = message.data;
-                        if (bestAsk && bestBid) {
-                            this.onPriceUpdate({
-                                type: 'price-update',
-                                symbol: symbol.replace('_', '/'),
-                                marketType: 'futures',
-                                bestAsk: parseFloat(bestAsk),
-                                bestBid: parseFloat(bestBid),
-                                identifier: this.identifier
-                            });
-                        }
+                        const ticker = message.data;
+                        this.onPriceUpdate({
+                            identifier: this.identifier,
+                            symbol: ticker.symbol.replace('_', '/').toUpperCase(),
+                            marketType: 'futures',
+                            bestAsk: parseFloat(ticker.ask),
+                            bestBid: parseFloat(ticker.bid)
+                        });
                     }
                 }
                 catch (error) {
                     console.error(`[${this.identifier}] Erro ao processar mensagem:`, error);
                 }
             });
-            this.ws.on('close', (code, reason) => {
-                console.log(`[${this.identifier}] WebSocket fechado. Código: ${code}, Razão: ${reason}`);
+            this.ws.on('close', () => {
+                console.log(`[${this.identifier}] Conexão fechada`);
                 this.handleDisconnect();
             });
             this.ws.on('error', (error) => {
-                console.error(`[${this.identifier}] Erro na conexão WebSocket:`, error);
+                console.error(`[${this.identifier}] Erro na conexão:`, error);
                 this.handleDisconnect();
             });
+            // Inicia heartbeat
+            this.startHeartbeat();
         }
         catch (error) {
-            console.error(`[${this.identifier}] Erro ao conectar:`, error);
+            console.error(`[${this.identifier}] Erro ao criar WebSocket:`, error);
             this.handleDisconnect();
         }
+    }
+    startHeartbeat() {
+        if (!this.ws)
+            return;
+        setInterval(() => {
+            var _a;
+            if (this.isConnected && ((_a = this.ws) === null || _a === void 0 ? void 0 : _a.readyState) === ws_1.default.OPEN) {
+                this.ws.ping();
+            }
+        }, 20000);
+    }
+    handleDisconnect() {
+        this.isConnected = false;
+        this.isConnecting = false;
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+            this.reconnectAttempts++;
+            const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
+            console.log(`[${this.identifier}] Tentando reconectar em ${delay}ms...`);
+            setTimeout(() => this.connect(), delay);
+        }
+        else {
+            console.error(`[${this.identifier}] Máximo de tentativas de reconexão atingido`);
+        }
+    }
+    subscribe(symbols) {
+        if (!this.ws || this.ws.readyState !== ws_1.default.OPEN) {
+            console.log(`[${this.identifier}] WebSocket não está pronto para subscrição`);
+            return;
+        }
+        symbols.forEach(symbol => {
+            var _a;
+            const formattedSymbol = symbol.replace('/', '').toLowerCase();
+            const msg = { method: 'sub.ticker', param: { symbol: formattedSymbol } };
+            (_a = this.ws) === null || _a === void 0 ? void 0 : _a.send(JSON.stringify(msg));
+        });
+    }
+    disconnect() {
+        console.log(`[${this.identifier}] Desconectando...`);
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
+        }
+        this.isConnected = false;
+        this.isConnecting = false;
     }
     async getTradablePairs() {
         try {
             console.log(`[${this.identifier}] Buscando pares negociáveis...`);
             const response = await (0, node_fetch_1.default)(this.REST_URL);
             const data = await response.json();
-            console.log(`[${this.identifier}] Resposta da API:`, JSON.stringify(data).slice(0, 200) + '...');
             if (!Array.isArray(data)) {
-                console.error(`[${this.identifier}] Resposta inválida:`, data);
-                return [];
+                throw new Error('Formato de resposta inválido');
             }
             const pairs = data
-                .filter((contract) => {
-                return contract.state === 'ENABLED' &&
-                    contract.symbol.endsWith('_USDT') &&
-                    contract.symbol.includes('_') &&
-                    contract.symbol.split('_').length === 2;
-            })
-                .map((contract) => contract.symbol.replace('_', '/'));
+                .filter((contract) => contract.in_delisting === false)
+                .map((contract) => contract.name.replace('_', '/'));
             console.log(`[${this.identifier}] ${pairs.length} pares encontrados`);
-            if (pairs.length > 0) {
-                console.log('Primeiros 5 pares:', pairs.slice(0, 5));
-            }
+            console.log('Primeiros 5 pares:', pairs.slice(0, 5));
             return pairs;
         }
         catch (error) {
             console.error(`[${this.identifier}] Erro ao buscar pares:`, error);
             return [];
         }
-    }
-    subscribe(pairs) {
-        if (!this.ws || !this.isConnected) {
-            console.error(`[${this.identifier}] WebSocket não está conectado`);
-            return;
-        }
-        try {
-            console.log(`\n[${this.identifier}] Inscrevendo-se em ${pairs.length} pares`);
-            const formattedPairs = pairs.map(pair => pair.replace('/', '_'));
-            const subscribeMessage = {
-                "op": "sub.ticker",
-                "symbol": formattedPairs
-            };
-            this.ws.send(JSON.stringify(subscribeMessage));
-            pairs.forEach(symbol => this.subscribedSymbols.add(symbol));
-            console.log(`[${this.identifier}] Mensagem de inscrição enviada`);
-            console.log('Primeiros 5 pares inscritos:', formattedPairs.slice(0, 5));
-        }
-        catch (error) {
-            console.error(`[${this.identifier}] Erro ao se inscrever nos pares:`, error);
-        }
-    }
-    resubscribeAll() {
-        const symbols = Array.from(this.subscribedSymbols);
-        if (symbols.length > 0) {
-            console.log(`[${this.identifier}] Reinscrevendo em ${symbols.length} pares...`);
-            this.subscribe(symbols);
-        }
-    }
-    disconnect() {
-        console.log(`[${this.identifier}] Desconectando...`);
-        this.cleanup();
     }
 }
 exports.MexcFuturesConnector = MexcFuturesConnector;

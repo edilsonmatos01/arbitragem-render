@@ -1,57 +1,54 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.startContinuousMonitoring = startContinuousMonitoring;
 const client_1 = require("@prisma/client");
 const gateio_connector_1 = require("./connectors/gateio-connector");
 const mexc_connector_1 = require("./connectors/mexc-connector");
 const gateio_futures_connector_1 = require("./connectors/gateio-futures-connector");
 const mexc_futures_connector_1 = require("./connectors/mexc-futures-connector");
 const utils_1 = require("./utils");
-const cron = __importStar(require("node-cron"));
+// Inicializa o cliente Prisma
 const prisma = new client_1.PrismaClient();
+// Variáveis globais
+let targetPairs = [];
+let isShuttingDown = false;
+let isCronRunning = false;
+// Função para processar atualizações de preço
 const handlePriceUpdate = (data) => {
     console.log(`Atualização de preço para ${data.symbol}`);
 };
+// Função de callback para conexão
 const handleConnected = () => {
     console.log('Conexão estabelecida com sucesso');
 };
+// Inicializa os conectores
 const gateioSpot = new gateio_connector_1.GateIoConnector('GATEIO_SPOT', handlePriceUpdate);
 const mexcSpot = new mexc_connector_1.MexcConnector('MEXC_SPOT', handlePriceUpdate, handleConnected);
 const gateioFutures = new gateio_futures_connector_1.GateIoFuturesConnector('GATEIO_FUTURES', handlePriceUpdate, handleConnected);
 const mexcFutures = new mexc_futures_connector_1.MexcFuturesConnector('MEXC_FUTURES', handlePriceUpdate, handleConnected);
-let isCronRunning = false;
+async function findCommonPairs() {
+    try {
+        console.log('Buscando pares negociáveis em todas as exchanges...');
+        // Obtém lista de pares de cada exchange
+        const [gateioSpotPairs, mexcSpotPairs, gateioFuturesPairs, mexcFuturesPairs] = await Promise.all([
+            gateioSpot.getTradablePairs(),
+            mexcSpot.getTradablePairs(),
+            gateioFutures.getTradablePairs(),
+            mexcFutures.getTradablePairs()
+        ]);
+        // Encontra pares em comum
+        const commonPairs = gateioSpotPairs.filter(pair => mexcSpotPairs.includes(pair) &&
+            gateioFuturesPairs.includes(pair) &&
+            mexcFuturesPairs.includes(pair));
+        console.log(`Encontrados ${commonPairs.length} pares em comum`);
+        console.log('Primeiros 5 pares:', commonPairs.slice(0, 5));
+        return commonPairs;
+    }
+    catch (error) {
+        console.error('Erro ao buscar pares negociáveis:', error);
+        return [];
+    }
+}
 async function monitorAndStore() {
     if (isCronRunning) {
         console.log('Monitoramento já está em execução, ignorando esta chamada');
@@ -60,30 +57,38 @@ async function monitorAndStore() {
     try {
         isCronRunning = true;
         console.log(`[${new Date().toISOString()}] Iniciando monitoramento...`);
-        const symbols = await prisma.$queryRaw `
-      SELECT "baseSymbol", "gateioSymbol", "mexcSymbol", "gateioFuturesSymbol", "mexcFuturesSymbol"
-      FROM "TradableSymbol"
-      WHERE "isActive" = true
-    `;
-        for (const symbol of symbols) {
+        // Atualiza a lista de pares em comum
+        targetPairs = await findCommonPairs();
+        // Inscreve nos pares em todas as exchanges
+        gateioSpot.connect(targetPairs);
+        mexcSpot.subscribe(targetPairs);
+        gateioFutures.subscribe(targetPairs);
+        mexcFutures.subscribe(targetPairs);
+        for (const symbol of targetPairs) {
+            if (isShuttingDown)
+                break;
             try {
+                // Coleta preços spot e futures
                 const [gateioSpotPrices, mexcSpotPrices, gateioFuturesPrices, mexcFuturesPrices] = await Promise.all([
                     gateioSpot.getTradablePairs(),
                     mexcSpot.getTradablePairs(),
                     gateioFutures.getTradablePairs(),
                     mexcFutures.getTradablePairs()
                 ]);
-                const gateioSpotPrice = gateioSpotPrices.find((p) => p === symbol.gateioSymbol);
-                const mexcSpotPrice = mexcSpotPrices.find((p) => p === symbol.mexcSymbol);
-                const gateioFuturesPrice = gateioFuturesPrices.find((p) => p === symbol.gateioFuturesSymbol);
-                const mexcFuturesPrice = mexcFuturesPrices.find((p) => p === symbol.mexcFuturesSymbol);
+                // Filtra os preços para o símbolo atual
+                const gateioSpotPrice = gateioSpotPrices.find((p) => p === symbol);
+                const mexcSpotPrice = mexcSpotPrices.find((p) => p === symbol);
+                const gateioFuturesPrice = gateioFuturesPrices.find((p) => p === symbol);
+                const mexcFuturesPrice = mexcFuturesPrices.find((p) => p === symbol);
                 if (!gateioSpotPrice || !mexcSpotPrice || !gateioFuturesPrice || !mexcFuturesPrice) {
-                    console.warn(`[AVISO] Preços incompletos para ${symbol.baseSymbol}`);
+                    console.warn(`[AVISO] Preços incompletos para ${symbol}`);
                     continue;
                 }
-                const gateioSpotToMexcFutures = (0, utils_1.calculateSpread)(gateioSpotPrice, mexcFuturesPrice);
-                const mexcSpotToGateioFutures = (0, utils_1.calculateSpread)(mexcSpotPrice, gateioFuturesPrice);
+                // Calcula spreads
+                const gateioSpotToMexcFutures = (0, utils_1.calculateSpread)(Number(gateioSpotPrice), Number(mexcFuturesPrice));
+                const mexcSpotToGateioFutures = (0, utils_1.calculateSpread)(Number(mexcSpotPrice), Number(gateioFuturesPrice));
                 const timestamp = new Date();
+                // Salva os dados em uma transação
                 await prisma.$transaction([
                     prisma.$executeRaw `
             INSERT INTO "PriceHistory" (
@@ -102,7 +107,7 @@ async function monitorAndStore() {
               "mexcSpotToGateioFuturesSpread"
             ) VALUES (
               gen_random_uuid(),
-              ${symbol.baseSymbol},
+              ${symbol},
               ${timestamp},
               ${Number(gateioSpotPrice)},
               ${Number(gateioSpotPrice)},
@@ -127,7 +132,7 @@ async function monitorAndStore() {
               "timestamp"
             ) VALUES (
               gen_random_uuid(),
-              ${symbol.baseSymbol},
+              ${symbol},
               'GATEIO',
               'MEXC',
               'spot-to-future',
@@ -146,7 +151,7 @@ async function monitorAndStore() {
               "timestamp"
             ) VALUES (
               gen_random_uuid(),
-              ${symbol.baseSymbol},
+              ${symbol},
               'MEXC',
               'GATEIO',
               'spot-to-future',
@@ -155,10 +160,10 @@ async function monitorAndStore() {
             )
           `
                 ]);
-                console.log(`[MONITOR] Dados salvos para ${symbol.baseSymbol}`);
+                console.log(`[MONITOR] Dados salvos para ${symbol}`);
             }
             catch (symbolError) {
-                console.error(`[ERRO] Falha ao processar ${symbol.baseSymbol}:`, symbolError);
+                console.error(`[ERRO] Falha ao processar ${symbol}:`, symbolError);
                 continue;
             }
         }
@@ -168,24 +173,42 @@ async function monitorAndStore() {
     }
     finally {
         isCronRunning = false;
-        await prisma.$disconnect();
     }
 }
-cron.schedule('*/30 * * * *', () => {
-    monitorAndStore().catch(error => {
-        console.error('[ERRO] Falha ao executar monitoramento:', error);
-    });
-});
-monitorAndStore().catch(error => {
-    console.error('[ERRO] Falha ao executar monitoramento inicial:', error);
-});
+// Função principal que mantém o monitoramento rodando
+async function startContinuousMonitoring() {
+    console.log('Iniciando monitoramento contínuo...');
+    // Conecta aos WebSockets
+    gateioSpot.connect([]);
+    mexcSpot.connect();
+    gateioFutures.connect();
+    mexcFutures.connect();
+    // Aguarda um momento para as conexões se estabelecerem
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    // Obtém os pares e faz a subscrição
+    const pairs = await findCommonPairs();
+    if (pairs.length > 0) {
+        gateioSpot.connect(pairs);
+        mexcSpot.subscribe(pairs);
+        gateioFutures.subscribe(pairs);
+        mexcFutures.subscribe(pairs);
+    }
+    while (!isShuttingDown) {
+        await monitorAndStore();
+        // Aguarda 5 minutos antes da próxima execução
+        await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
+    }
+}
+// Tratamento de encerramento gracioso
 process.on('SIGTERM', async () => {
-    console.log('Encerrando monitoramento...');
+    console.log('Recebido sinal SIGTERM, encerrando graciosamente...');
+    isShuttingDown = true;
     await prisma.$disconnect();
     process.exit(0);
 });
 process.on('SIGINT', async () => {
-    console.log('Encerrando monitoramento...');
+    console.log('Recebido sinal SIGINT, encerrando graciosamente...');
+    isShuttingDown = true;
     await prisma.$disconnect();
     process.exit(0);
 });
