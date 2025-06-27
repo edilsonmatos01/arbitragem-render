@@ -11,7 +11,7 @@ const prisma = new PrismaClient();
 const PORT = parseInt(process.env.PORT || '8080', 10);
 console.log(`[CONFIG] Iniciando servidor na porta ${PORT}`);
 
-const MIN_PROFIT_PERCENTAGE = 0.1;
+const MIN_PROFIT_PERCENTAGE = 0.05; // Reduzido para 0.05% para detectar mais oportunidades
 
 let marketPrices: MarketPrices = {};
 let targetPairs: string[] = [
@@ -27,10 +27,17 @@ let clients: CustomWebSocket[] = [];
 function handlePriceUpdate(update: PriceUpdate) {
     const { identifier, symbol, marketType, bestAsk, bestBid } = update;
 
+    console.log(`[PRICE UPDATE] ${identifier.toUpperCase()}: ${symbol} - Ask: ${bestAsk}, Bid: ${bestBid}`);
+
     if (!marketPrices[identifier]) {
         marketPrices[identifier] = {};
+        console.log(`[MARKET PRICES] Criada nova exchange: ${identifier}`);
     }
     marketPrices[identifier][symbol] = { bestAsk, bestBid, timestamp: Date.now() };
+    
+    // Log do estado atual dos dados
+    const totalSymbols = Object.keys(marketPrices[identifier]).length;
+    console.log(`[MARKET PRICES] ${identifier}: ${totalSymbols} símbolos ativos`);
     
     broadcast({
         type: 'price-update',
@@ -216,7 +223,14 @@ async function findAndBroadcastArbitrage() {
         const gateioData = marketPrices['gateio']?.[symbol];
         const mexcData = marketPrices['mexc']?.[symbol];
 
-        if (!gateioData || !mexcData) continue;
+        if (!gateioData || !mexcData) {
+            // Debug: verificar quais dados estão disponíveis
+            console.log(`[DEBUG] Dados ausentes para ${symbol}:`);
+            console.log(`  GateIO: ${gateioData ? 'OK' : 'AUSENTE'}`);
+            console.log(`  MEXC: ${mexcData ? 'AUSENTE' : 'OK'}`);
+            console.log(`  Exchanges disponíveis:`, Object.keys(marketPrices));
+            continue;
+        }
 
         if (!isFinite(gateioData.bestAsk) || !isFinite(gateioData.bestBid) ||
             !isFinite(mexcData.bestAsk) || !isFinite(mexcData.bestBid)) {

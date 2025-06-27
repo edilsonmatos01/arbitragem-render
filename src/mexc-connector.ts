@@ -220,20 +220,7 @@ export class MexcConnector implements ExchangeConnector {
                             bestBid
                         };
 
-                        const spreadPercent = ((bestBid - bestAsk) / bestAsk) * 100;
-                        if (this.relevantPairs.includes(formattedSymbol) && Math.abs(spreadPercent) > 0.1) {
-                            const spreadColor = spreadPercent > 0.5 ? '\x1b[32m' : '\x1b[36m';
-                            const resetColor = '\x1b[0m';
-                            console.log(`
-${spreadColor}┌──────────────────────────────────────────────
-│ 📊 MEXC Atualização - ${new Date().toLocaleTimeString('pt-BR')}
-│ 🔸 Par: ${update.symbol}
-│ 📉 Compra (Ask): ${bestAsk.toFixed(8)} USDT
-│ 📈 Venda (Bid): ${bestBid.toFixed(8)} USDT
-│ 📊 Spread: ${spreadPercent.toFixed(4)}%
-└──────────────────────────────────────────────${resetColor}`);
-                        }
-                        
+                        console.log(`[MEXC] Enviando update para ${formattedSymbol}: Ask ${bestAsk}, Bid ${bestBid}`);
                         this.priceUpdateCallback(update);
                     }
                 }

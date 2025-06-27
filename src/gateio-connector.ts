@@ -141,8 +141,9 @@ export class GateioConnector implements ExchangeConnector {
             
             if (message.channel === 'futures.tickers' && message.result) {
                 const ticker = message.result;
-                const bestAsk = parseFloat(ticker.last);
-                const bestBid = parseFloat(ticker.last);
+                // Usar ask e bid reais ao invés do last price
+                const bestAsk = parseFloat(ticker.ask) || parseFloat(ticker.last);
+                const bestBid = parseFloat(ticker.bid) || parseFloat(ticker.last);
                 
                 if (bestAsk && bestBid && this.priceUpdateCallback) {
                     const update: PriceUpdate = {
@@ -154,6 +155,7 @@ export class GateioConnector implements ExchangeConnector {
                         bestBid
                     };
                     
+                    console.log(`[GATEIO] Enviando update para ${ticker.contract}: Ask ${bestAsk}, Bid ${bestBid}`);
                     this.priceUpdateCallback(update);
                 }
             }
