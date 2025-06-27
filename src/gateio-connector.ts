@@ -23,8 +23,10 @@ export class GateioConnector implements ExchangeConnector {
 
     async connect(): Promise<void> {
         try {
+            console.log('[GATEIO CONNECT] Iniciando conexão...');
             this.symbols = await this.getSymbols();
-            console.log('Conectando ao WebSocket do Gate.io...');
+            console.log(`[GATEIO CONNECT] ${this.symbols.length} símbolos obtidos`);
+            console.log('[GATEIO CONNECT] Conectando ao WebSocket do Gate.io...');
             
             this.ws = new WebSocket(this.wsUrl, {
                 handshakeTimeout: 30000,
@@ -35,8 +37,10 @@ export class GateioConnector implements ExchangeConnector {
             }) as CustomWebSocket;
 
             this.ws.on('open', () => {
-                console.log('Conexão estabelecida com Gate.io!');
+                console.log('[GATEIO CONNECT] ✅ Conexão estabelecida com Gate.io!');
+                console.log('[GATEIO CONNECT] Configurando heartbeat...');
                 this.setupHeartbeat();
+                console.log('[GATEIO CONNECT] Iniciando subscrições...');
                 this.subscribeToSymbols();
             });
 
@@ -149,67 +153,39 @@ export class GateioConnector implements ExchangeConnector {
         try {
             const message = JSON.parse(data.toString());
             
-            // Log TODAS as mensagens para debug completo
-            console.log('[GATEIO DEBUG] ===== MENSAGEM RECEBIDA =====');
-            console.log('[GATEIO DEBUG] Tipo:', typeof message);
-            console.log('[GATEIO DEBUG] Conteúdo completo:', JSON.stringify(message, null, 2));
-            console.log('[GATEIO DEBUG] Propriedades:', Object.keys(message));
+            // Log simplificado para não sobrecarregar
+            console.log(`[GATEIO MSG] Recebida:`, Object.keys(message).join(','));
             
             // Verifica se é resposta de subscrição
             if (message.event) {
-                console.log(`[GATEIO DEBUG] EVENTO: ${message.event}`);
-                if (message.result) {
-                    console.log(`[GATEIO DEBUG] RESULTADO: ${message.result}`);
-                }
-                if (message.error) {
-                    console.log(`[GATEIO DEBUG] ERRO: ${JSON.stringify(message.error)}`);
-                }
+                console.log(`[GATEIO EVENT] ${message.event}: ${message.result || message.error || 'sem resultado'}`);
             }
             
             // Verifica diferentes tipos de resposta de dados
-            if (message.channel === 'futures.tickers') {
-                console.log('[GATEIO DEBUG] TICKER CHANNEL DETECTADO!');
+            if (message.channel === 'futures.tickers' && message.result) {
+                const ticker = message.result;
+                const bestAsk = parseFloat(ticker.ask) || parseFloat(ticker.last);
+                const bestBid = parseFloat(ticker.bid) || parseFloat(ticker.last);
                 
-                if (message.result) {
-                    const ticker = message.result;
-                    console.log('[GATEIO DEBUG] Ticker dados:', JSON.stringify(ticker, null, 2));
+                if (bestAsk && bestBid && this.priceUpdateCallback) {
+                    const update: PriceUpdate = {
+                        identifier: 'gateio',
+                        symbol: ticker.contract,
+                        type: 'futures',
+                        marketType: 'futures',
+                        bestAsk,
+                        bestBid
+                    };
                     
-                    // Usar ask e bid reais ao invés do last price
-                    const bestAsk = parseFloat(ticker.ask) || parseFloat(ticker.last);
-                    const bestBid = parseFloat(ticker.bid) || parseFloat(ticker.last);
-                    
-                    console.log(`[GATEIO DEBUG] Preços extraídos - Ask: ${bestAsk}, Bid: ${bestBid}`);
-                    
-                    if (bestAsk && bestBid && this.priceUpdateCallback) {
-                        const update: PriceUpdate = {
-                            identifier: 'gateio',
-                            symbol: ticker.contract,
-                            type: 'futures',
-                            marketType: 'futures',
-                            bestAsk,
-                            bestBid
-                        };
-                        
-                        console.log(`[GATEIO] ✅ Enviando update para ${ticker.contract}: Ask ${bestAsk}, Bid ${bestBid}`);
-                        this.priceUpdateCallback(update);
-                    } else {
-                        console.log(`[GATEIO DEBUG] ❌ Dados inválidos ou callback ausente:`, {
-                            bestAsk,
-                            bestBid,
-                            hasCallback: !!this.priceUpdateCallback
-                        });
-                    }
+                    console.log(`[GATEIO PRICE] ${ticker.contract}: ${bestAsk}/${bestBid}`);
+                    this.priceUpdateCallback(update);
+                } else {
+                    console.log(`[GATEIO SKIP] ${ticker.contract}: dados inválidos`);
                 }
             }
             
-            // Log para outros tipos de mensagem
-            if (!message.channel && !message.event) {
-                console.log('[GATEIO DEBUG] MENSAGEM DESCONHECIDA - Estrutura:', Object.keys(message));
-            }
-            
         } catch (error) {
-            console.error('[GATEIO DEBUG] ERRO ao processar mensagem:', error);
-            console.error('[GATEIO DEBUG] Dados brutos:', data.toString());
+            console.error('[GATEIO ERROR]:', error instanceof Error ? error.message : String(error));
         }
     }
 
