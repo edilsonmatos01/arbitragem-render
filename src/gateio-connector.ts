@@ -173,4 +173,3 @@ export class GateioConnector implements ExchangeConnector {
         this.priceUpdateCallback = callback;
     }
 } 
-} 
