@@ -275,20 +275,37 @@ async function findAndBroadcastArbitrage() {
 }
 
 async function startFeeds() {
+    console.log('[Feeds] Iniciando conexões com as exchanges...');
     const gateio = new GateioConnector();
     const mexc = new MexcConnector();
 
-    gateio.onPriceUpdate(handlePriceUpdate);
-    mexc.onPriceUpdate(handlePriceUpdate);
+    gateio.onPriceUpdate((update) => {
+        console.log('[GateIO] Atualização de preço recebida:', update);
+        handlePriceUpdate(update);
+    });
+    
+    mexc.onPriceUpdate((update) => {
+        console.log('[MEXC] Atualização de preço recebida:', update);
+        handlePriceUpdate(update);
+    });
 
     try {
+        console.log('[GateIO] Tentando conectar...');
         await gateio.connect();
-        await mexc.connect();
+        console.log('[GateIO] Conexão estabelecida com sucesso!');
 
+        console.log('[MEXC] Tentando conectar...');
+        await mexc.connect();
+        console.log('[MEXC] Conexão estabelecida com sucesso!');
+
+        console.log('[Feeds] Iniciando monitoramento de arbitragem...');
         setInterval(findAndBroadcastArbitrage, 1000);
 
     } catch (error) {
-        console.error('Erro ao iniciar os feeds:', error);
+        console.error('[Feeds] Erro ao iniciar os feeds:', error);
+        if (error instanceof Error) {
+            console.error('[Feeds] Stack trace:', error.stack);
+        }
         process.exit(1);
     }
 }

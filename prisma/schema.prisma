@@ -5,7 +5,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = "postgresql://arbitragem_banco_zs65_user:dxfWUaMDvmzlZRFYqWH7ieF8H9CteSaI@dpg-d1ere9ripnbc73e945a0-a.oregon-postgres.render.com/arbitragem_banco_zs65"
+  url      = env("DATABASE_URL")
 }
 
 model SpreadHistory {
