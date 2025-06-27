@@ -191,17 +191,28 @@ export class MexcConnector implements ExchangeConnector {
         try {
             const message = JSON.parse(data.toString());
             
+            // Log de debug para entender as mensagens
+            console.log(`[MEXC DEBUG] Mensagem recebida:`, Object.keys(message).join(','));
+            
             // Responde ao ping do servidor
             if (message.method === "ping") {
                 const pongMsg = {
                     "method": "pong"
                 };
                 this.ws?.send(JSON.stringify(pongMsg));
+                console.log(`[MEXC] Respondeu ping do servidor`);
+                return;
+            }
+
+            // Log de confirmação de subscrições
+            if (message.id && message.result) {
+                console.log(`[MEXC] Subscrição confirmada - ID: ${message.id}, Result: ${message.result}`);
                 return;
             }
 
             // Processa mensagens de profundidade do livro de ordens
             if (message.channel === "push.depth" && message.data) {
+                console.log(`[MEXC] Dados de profundidade recebidos para símbolo:`, message.symbol);
                 const depth = message.data;
                 if (depth.asks && depth.asks.length > 0 && depth.bids && depth.bids.length > 0) {
                     const bestAsk = parseFloat(depth.asks[0][0]);
@@ -220,13 +231,19 @@ export class MexcConnector implements ExchangeConnector {
                             bestBid
                         };
 
-                        console.log(`[MEXC] Enviando update para ${formattedSymbol}: Ask ${bestAsk}, Bid ${bestBid}`);
+                        console.log(`[MEXC PRICE] ${formattedSymbol}: Ask=${bestAsk}, Bid=${bestBid}`);
                         this.priceUpdateCallback(update);
                     }
+                } else {
+                    console.log(`[MEXC] Dados de profundidade inválidos:`, depth);
                 }
+            } else {
+                // Log de outros tipos de mensagem
+                console.log(`[MEXC] Mensagem não processada:`, JSON.stringify(message).substring(0, 100));
             }
         } catch (error) {
-            console.error('\x1b[31mErro ao processar mensagem MEXC:', error, '\x1b[0m');
+            console.error('[MEXC ERROR] Erro ao processar mensagem:', error);
+            console.error('[MEXC ERROR] Dados brutos:', data.toString().substring(0, 200));
         }
     }
 

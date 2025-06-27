@@ -180,18 +180,24 @@ export class GateioConnector implements ExchangeConnector {
         try {
             const message = JSON.parse(data.toString());
             
+            // Log de debug para entender as mensagens
+            console.log(`[GATEIO DEBUG] Mensagem recebida:`, Object.keys(message).join(','));
+            
             // Log apenas eventos importantes
             if (message.event) {
-                console.log(`[GATEIO EVENT] ${message.event}: ${message.result || message.error || 'ok'}`);
+                console.log(`[GATEIO EVENT] ${message.event}: ${JSON.stringify(message.result || message.error || 'ok').substring(0, 100)}`);
                 return;
             }
             
             // Processar dados de ticker SPOT
             if (message.channel === 'spot.tickers' && message.result) {
+                console.log(`[GATEIO] Dados de ticker recebidos:`, JSON.stringify(message.result).substring(0, 200));
                 const ticker = message.result;
                 const symbol = ticker.currency_pair;
                 const bestAsk = parseFloat(ticker.lowest_ask);
                 const bestBid = parseFloat(ticker.highest_bid);
+                
+                console.log(`[GATEIO] Processando ${symbol}: Ask=${bestAsk}, Bid=${bestBid}`);
                 
                 if (bestAsk && bestBid && bestAsk > 0 && bestBid > 0 && this.priceUpdateCallback) {
                     const update: PriceUpdate = {
@@ -208,10 +214,17 @@ export class GateioConnector implements ExchangeConnector {
                 } else {
                     console.log(`[GATEIO SKIP] ${symbol}: Ask=${bestAsk}, Bid=${bestBid} (inválido)`);
                 }
+            } else if (message.channel && message.result) {
+                // Log de outros canais
+                console.log(`[GATEIO] Canal ${message.channel}:`, JSON.stringify(message.result).substring(0, 100));
+            } else {
+                // Log de mensagens não processadas
+                console.log(`[GATEIO] Mensagem não processada:`, JSON.stringify(message).substring(0, 100));
             }
             
         } catch (error) {
-            console.error('[GATEIO MSG ERROR]:', error instanceof Error ? error.message : String(error));
+            console.error('[GATEIO ERROR] Erro ao processar mensagem:', error);
+            console.error('[GATEIO ERROR] Dados brutos:', data.toString().substring(0, 200));
         }
     }
 
