@@ -83,4 +83,11 @@ export interface PriceUpdate {
 export interface WebSocketMessage {
     type: string;
     data: any;
+}
+
+export interface WebSocketServer {
+    wss: WebSocket.Server;
+    clients: Set<WebSocket>;
+    start(): void;
+    stop(): void;
 } 

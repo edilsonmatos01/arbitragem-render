@@ -16,8 +16,6 @@ export class MexcConnector implements ExchangeConnector {
             console.log('Conectando ao WebSocket da MEXC...');
             
             this.ws = new WebSocket(this.wsUrl, {
-                handshakeTimeout: 30000,
-                timeout: 30000,
                 perMessageDeflate: false,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -54,8 +52,7 @@ export class MexcConnector implements ExchangeConnector {
             const response = await fetch(this.restUrl, {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-                },
-                timeout: 15000
+                }
             });
 
             if (!response.ok) {

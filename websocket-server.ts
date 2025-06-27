@@ -1,8 +1,8 @@
 require('dotenv').config();
 
-import WebSocket from 'ws';
-import { createServer, IncomingMessage, Server } from 'http';
-import { GateIoConnector } from './src/gateio-connector';
+import { WebSocket, WebSocketServer as WSServer } from 'ws';
+import { createServer, IncomingMessage, Server as HttpServer } from 'http';
+import { GateioConnector } from './src/gateio-connector';
 import { MexcConnector } from './src/mexc-connector';
 import { MarketPrices, ArbitrageOpportunity, CustomWebSocket, PriceUpdate } from './src/types';
 import { PrismaClient } from '@prisma/client';
@@ -13,18 +13,18 @@ const MIN_PROFIT_PERCENTAGE = 0.1;
 
 let marketPrices: MarketPrices = {};
 let clients: CustomWebSocket[] = [];
-let exchangeConnectors: Map<string, GateIoConnector | MexcConnector> = new Map();
+let exchangeConnectors: Map<string, GateioConnector | MexcConnector> = new Map();
 
 export class WebSocketServer {
-    private wss: WebSocket.Server;
+    private wss: WSServer;
     private mexcConnector: MexcConnector;
-    private gateioConnector: GateIoConnector;
+    private gateioConnector: GateioConnector;
     private clients: Set<WebSocket> = new Set();
 
     constructor(port: number) {
-        this.wss = new WebSocket.Server({ port });
+        this.wss = new WSServer({ port });
         this.mexcConnector = new MexcConnector();
-        this.gateioConnector = new GateIoConnector();
+        this.gateioConnector = new GateioConnector();
 
         this.setupWebSocketServer();
         this.setupExchangeConnectors();
@@ -111,8 +111,8 @@ function handlePriceUpdate(update: PriceUpdate) {
     });
 }
 
-export function startWebSocketServer(httpServer: Server) {
-    const wss = new WebSocket.Server({ server: httpServer });
+export function startWebSocketServer(httpServer: HttpServer) {
+    const wss = new WSServer({ server: httpServer });
 
     wss.on('connection', (ws: CustomWebSocket, req: IncomingMessage) => {
         ws.isAlive = true;
@@ -238,13 +238,13 @@ async function startFeeds() {
             () => console.log('[MEXC] Conexão estabelecida')
         );
         
-        const gateioSpotConnector = new GateIoConnector(
+        const gateioSpotConnector = new GateioConnector(
             'GATEIO_SPOT',
             handlePriceUpdate,
             () => console.log('[GateIO Spot] Conexão estabelecida')
         );
 
-        const gateioFuturesConnector = new GateIoConnector(
+        const gateioFuturesConnector = new GateioConnector(
             'GATEIO_FUTURES',
             handlePriceUpdate,
             () => console.log('[GateIO Futures] Conexão estabelecida')
@@ -298,3 +298,7 @@ function findCommonPairs(mexcPairs: string[], gateioSpotPairs: string[], gateioF
 
     return Array.from(pairSet);
 }
+
+// Inicializa o servidor na porta 8080
+const server = new WebSocketServer(8080);
+server.start();
