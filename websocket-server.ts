@@ -340,12 +340,12 @@ async function findAndBroadcastArbitrage() {
                 profitPercentage: spotToFuturesProfit,
                 arbitrageType: 'spot_to_futures',
                 buyAt: {
-                    exchange: 'gateio',
+                    exchange: 'Gate.io (Spot)',
                     price: gateioData.bestAsk,
                     marketType: 'spot'
                 },
                 sellAt: {
-                    exchange: 'mexc',
+                    exchange: 'MEXC (Futures)',
                     price: mexcData.bestBid,
                     marketType: 'futures'
                 },

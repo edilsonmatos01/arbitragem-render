@@ -23,7 +23,7 @@ services:
       fromDatabase:
         name: arbitragem-db
         property: connectionString
-    - key: NEXT_PUBLIC_WS_URL
+    - key: NEXT_PUBLIC_WEBSOCKET_URL
       value: wss://arbitragem-worker.onrender.com
     - key: PORT
       value: 10000
