@@ -226,7 +226,7 @@ function getNormalizedData(symbol: string): { baseSymbol: string, factor: number
 }
 
 async function findAndBroadcastArbitrage() {
-    // Estratégia: Comprar na Gate.io Spot e Vender na MEXC Futures
+    // Estratégia: SEMPRE Comprar no SPOT e Vender no FUTURES
     
     if (Object.keys(marketPrices).length === 0) {
         console.log(`[ARBITRAGE] Aguardando dados de mercado...`);
@@ -237,8 +237,8 @@ async function findAndBroadcastArbitrage() {
     const mexcSymbols = Object.keys(marketPrices['mexc'] || {});
     
     console.log(`[ARBITRAGE] Status das exchanges:`);
-    console.log(`  Gate.io: ${gateioSymbols.length} símbolos`);
-    console.log(`  MEXC: ${mexcSymbols.length} símbolos`);
+    console.log(`  Gate.io (SPOT): ${gateioSymbols.length} símbolos`);
+    console.log(`  MEXC (FUTURES): ${mexcSymbols.length} símbolos`);
     
     // Verificar se ambas as exchanges estão funcionando
     if (gateioSymbols.length === 0 && mexcSymbols.length === 0) {
@@ -286,7 +286,7 @@ async function findAndBroadcastArbitrage() {
         return;
     }
     
-    // ARBITRAGEM PRINCIPAL: Gate.io Spot -> MEXC Futures
+    // ARBITRAGEM PRINCIPAL: SEMPRE COMPRAR SPOT e VENDER FUTURES
     let opportunitiesFound = 0;
     
     // Criar lista dinâmica de símbolos comuns entre as duas exchanges
@@ -301,13 +301,13 @@ async function findAndBroadcastArbitrage() {
     
     // Analisar TODOS os símbolos comuns
     for (const symbol of commonSymbols) {
-        const gateioData = marketPrices['gateio']?.[symbol];
-        const mexcData = marketPrices['mexc']?.[symbol];
+        const gateioData = marketPrices['gateio']?.[symbol];  // SPOT
+        const mexcData = marketPrices['mexc']?.[symbol];      // FUTURES
 
         if (!gateioData || !mexcData) {
             // Log detalhado apenas para símbolos prioritários
             if (priorityPairs.includes(symbol)) {
-                console.log(`[DEBUG] ${symbol}: Gate.io=${gateioData ? 'OK' : 'AUSENTE'}, MEXC=${mexcData ? 'OK' : 'AUSENTE'}`);
+                console.log(`[DEBUG] ${symbol}: Gate.io SPOT=${gateioData ? 'OK' : 'AUSENTE'}, MEXC FUTURES=${mexcData ? 'OK' : 'AUSENTE'}`);
             }
             continue;
         }
@@ -320,19 +320,25 @@ async function findAndBroadcastArbitrage() {
             continue;
         }
 
-        // Estratégia principal: Comprar Gate.io Spot -> Vender MEXC Futures
-        const gateioToMexcProfit = ((mexcData.bestBid - gateioData.bestAsk) / gateioData.bestAsk) * 100;
-        
-        // Estratégia reversa: Comprar MEXC Futures -> Vender Gate.io Spot
-        const mexcToGateioProfit = ((gateioData.bestBid - mexcData.bestAsk) / mexcData.bestAsk) * 100;
+        // ESTRATÉGIA ÚNICA: COMPRAR no SPOT (Gate.io) e VENDER no FUTURES (MEXC)
+        // Lucro = (Preço de Venda FUTURES - Preço de Compra SPOT) / Preço de Compra SPOT
+        const spotToFuturesProfit = ((mexcData.bestBid - gateioData.bestAsk) / gateioData.bestAsk) * 100;
 
-        // Oportunidade principal: Gate.io Spot -> MEXC Futures
-        if (gateioToMexcProfit > MIN_PROFIT_PERCENTAGE) {
+        // Log detalhado para símbolos prioritários
+        if (priorityPairs.includes(symbol)) {
+            console.log(`[CALC] ${symbol}:`);
+            console.log(`  COMPRA SPOT (Gate.io): ${gateioData.bestAsk.toFixed(8)} USDT`);
+            console.log(`  VENDA FUTURES (MEXC): ${mexcData.bestBid.toFixed(8)} USDT`);
+            console.log(`  LUCRO: ${spotToFuturesProfit.toFixed(4)}%`);
+        }
+
+        // Detectar oportunidade se lucro > threshold
+        if (spotToFuturesProfit > MIN_PROFIT_PERCENTAGE) {
             const opportunity: ArbitrageOpportunity = {
                 type: 'arbitrage',
                 baseSymbol: symbol,
-                profitPercentage: gateioToMexcProfit,
-                arbitrageType: 'gateio_spot_to_mexc_futures',
+                profitPercentage: spotToFuturesProfit,
+                arbitrageType: 'spot_to_futures',
                 buyAt: {
                     exchange: 'gateio',
                     price: gateioData.bestAsk,
@@ -350,43 +356,19 @@ async function findAndBroadcastArbitrage() {
             await recordSpread(opportunity);
             opportunitiesFound++;
         }
-
-        // Oportunidade reversa: MEXC Futures -> Gate.io Spot
-        if (mexcToGateioProfit > MIN_PROFIT_PERCENTAGE) {
-            const opportunity: ArbitrageOpportunity = {
-                type: 'arbitrage',
-                baseSymbol: symbol,
-                profitPercentage: mexcToGateioProfit,
-                arbitrageType: 'mexc_futures_to_gateio_spot',
-                buyAt: {
-                    exchange: 'mexc',
-                    price: mexcData.bestAsk,
-                    marketType: 'futures'
-                },
-                sellAt: {
-                    exchange: 'gateio',
-                    price: gateioData.bestBid,
-                    marketType: 'spot'
-                },
-                timestamp: Date.now()
-            };
-            
-            broadcastOpportunity(opportunity);
-            await recordSpread(opportunity);
-            opportunitiesFound++;
-        }
     }
     
     if (opportunitiesFound === 0) {
-        console.log(`[ARBITRAGE] Nenhuma oportunidade encontrada nos ${commonSymbols.length} pares analisados`);
+        console.log(`[ARBITRAGE] Nenhuma oportunidade SPOT→FUTURES encontrada nos ${commonSymbols.length} pares analisados`);
     } else {
-        console.log(`[ARBITRAGE] ✅ ${opportunitiesFound} oportunidades detectadas em ${commonSymbols.length} pares!`);
+        console.log(`[ARBITRAGE] ✅ ${opportunitiesFound} oportunidades SPOT→FUTURES detectadas em ${commonSymbols.length} pares!`);
     }
 }
 
 async function startFeeds() {
     console.log('[Feeds] ===== INICIANDO SISTEMA DE ARBITRAGEM =====');
-    console.log('[Feeds] Estratégia: Gate.io Spot <-> MEXC Futures');
+    console.log('[Feeds] Estratégia: COMPRAR no SPOT → VENDER no FUTURES');
+    console.log('[Feeds] COMPRA: Gate.io (SPOT) | VENDA: MEXC (FUTURES)');
     
     try {
         // Inicializar ambas as exchanges em paralelo
