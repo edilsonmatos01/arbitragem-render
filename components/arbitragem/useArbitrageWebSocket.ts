@@ -20,14 +20,7 @@ interface ArbitrageOpportunity {
     fundingRate?: string;
     originalSymbol?: string; 
   };
-  arbitrageType: 
-    | 'spot_spot_inter_exchange'
-    | 'spot_futures_inter_exchange'
-    | 'futures_spot_inter_exchange'
-    | 'spot_spot_intra_exchange'
-    | 'spot_futures_intra_exchange'
-    | 'futures_spot_intra_exchange';
-    // Considere adicionar 'futures_futures_inter_exchange' se precisar distingui-lo
+  arbitrageType: string; // Mudado para string genérico para aceitar 'spot_to_futures'
   timestamp: number;
   maxSpread24h?: number;
 }
@@ -54,6 +47,9 @@ export function useArbitrageWebSocket() {
     // A URL agora é lida da variável de ambiente, que é definida no processo de build.
     const wsURL = process.env.NEXT_PUBLIC_WEBSOCKET_URL;
 
+    console.log('[WS Hook] Variável de ambiente NEXT_PUBLIC_WEBSOCKET_URL:', wsURL);
+    console.log('[WS Hook] NODE_ENV:', process.env.NODE_ENV);
+
     if (!wsURL) {
       console.error("A variável de ambiente NEXT_PUBLIC_WEBSOCKET_URL não está definida!");
       // Em desenvolvimento, podemos ter um fallback para a configuração antiga
@@ -61,11 +57,14 @@ export function useArbitrageWebSocket() {
         if (typeof window === 'undefined') return '';
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.host;
-        return `${protocol}//${host}`;
+        const fallbackURL = `${protocol}//${host}`;
+        console.log('[WS Hook] Usando URL de fallback para desenvolvimento:', fallbackURL);
+        return fallbackURL;
       }
       return '';
     }
 
+    console.log('[WS Hook] Usando URL da variável de ambiente:', wsURL);
     return wsURL;
   };
 
@@ -92,19 +91,29 @@ export function useArbitrageWebSocket() {
       try {
         const message = JSON.parse(event.data);
         console.log('[DEBUG] Mensagem WebSocket recebida:', message);
+        console.log('[DEBUG] Tipo da mensagem:', message.type);
         
         if (message.type === 'arbitrage') {
-          console.log('[DEBUG] Oportunidade de arbitragem recebida:', message);
+          console.log('[DEBUG] ✅ Oportunidade de arbitragem recebida:', message);
+          console.log('[DEBUG] baseSymbol:', message.baseSymbol);
+          console.log('[DEBUG] profitPercentage:', message.profitPercentage);
+          console.log('[DEBUG] arbitrageType:', message.arbitrageType);
+          console.log('[DEBUG] buyAt:', message.buyAt);
+          console.log('[DEBUG] sellAt:', message.sellAt);
+          
           setOpportunities((prev) => {
+            console.log('[DEBUG] Adicionando oportunidade ao estado. Estado anterior:', prev.length);
             // Remove oportunidades antigas do mesmo par
             const filtered = prev.filter(p => 
               p.baseSymbol !== message.baseSymbol || 
               p.arbitrageType !== message.arbitrageType
             );
-            return [message, ...filtered].slice(0, 99);
+            const newState = [message, ...filtered].slice(0, 99);
+            console.log('[DEBUG] Novo estado de oportunidades:', newState.length);
+            return newState;
           });
         }
-        if (message.type === 'price-update') {
+        else if (message.type === 'price-update') {
           const { symbol, marketType, bestAsk, bestBid } = message;
           console.log(`[DEBUG] Atualização de preço recebida para ${symbol} (${marketType}):`, { bestAsk, bestBid });
           setLivePrices(prev => ({
@@ -114,6 +123,9 @@ export function useArbitrageWebSocket() {
               [marketType]: { bestAsk, bestBid }
             }
           }));
+        }
+        else {
+          console.log('[DEBUG] ⚠️ Tipo de mensagem não reconhecido:', message.type);
         }
       } catch (error) {
         console.error('[WS Hook] Erro ao processar mensagem do WebSocket:', error);
