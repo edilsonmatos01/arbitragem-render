@@ -29,11 +29,11 @@ interface WebSocketMessage {
   payload?: string[];
 }
 
-// Configurações
-const MONITORING_INTERVAL = 5 * 60 * 1000; // 5 minutos
+// Configurações (otimizado para economia)
+const MONITORING_INTERVAL = 30 * 60 * 1000; // 30 minutos (otimizado)
 const RECONNECT_INTERVAL = 5000; // 5 segundos
 const DB_RETRY_INTERVAL = 30000; // 30 segundos
-const SUBSCRIPTION_INTERVAL = 60000; // 1 minuto
+const SUBSCRIPTION_INTERVAL = 5 * 60 * 1000; // 5 minutos (otimizado)
 let isWorkerRunning = false;
 let isShuttingDown = false;
 let prisma: PrismaClient | null = null;

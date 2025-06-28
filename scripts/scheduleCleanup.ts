@@ -47,8 +47,8 @@ async function cleanup() {
     }
 }
 
-// Agendar limpeza para rodar todos os dias às 00:00
-cron.schedule('0 0 * * *', async () => {
+// Agendar limpeza para rodar toda semana aos domingos às 00:00 (otimizado para economia)
+cron.schedule('0 0 * * 0', async () => {
     try {
         await cleanup();
     } catch (error) {
@@ -62,7 +62,7 @@ cleanup()
         console.error('Erro na limpeza inicial:', error);
     });
 
-console.log('Script de limpeza agendada iniciado. Rodará todos os dias às 00:00.');
+console.log('Script de limpeza agendada iniciado. Rodará toda semana aos domingos às 00:00.');
 
 // Manter o processo rodando
 process.on('SIGINT', async () => {

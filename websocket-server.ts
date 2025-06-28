@@ -415,12 +415,12 @@ async function startFeeds() {
         // Monitorar oportunidades a cada 3 segundos
         setInterval(findAndBroadcastArbitrage, 3000);
         
-        // Status report a cada 30 segundos
+        // Status report a cada 30 minutos (otimizado para economia)
         setInterval(() => {
             const gateioCount = Object.keys(marketPrices['gateio'] || {}).length;
             const mexcCount = Object.keys(marketPrices['mexc'] || {}).length;
             console.log(`[STATUS] Gate.io: ${gateioCount} símbolos | MEXC: ${mexcCount} símbolos`);
-        }, 30000);
+        }, 30 * 60 * 1000); // 30 minutos
 
     } catch (error) {
         console.error('[Feeds] ===== ERRO CRÍTICO =====');

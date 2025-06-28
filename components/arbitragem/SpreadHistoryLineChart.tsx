@@ -84,8 +84,8 @@ export default function SpreadHistoryLineChart({ symbol, isOpen, onClose }: Spre
     // Atualiza imediatamente
     fetchData();
 
-    // Configura atualizações a cada minuto
-    const interval = setInterval(fetchData, 60 * 1000);
+    // Configura atualizações a cada 30 minutos (otimizado para economia)
+    const interval = setInterval(fetchData, 30 * 60 * 1000);
 
     return () => {
       clearInterval(interval);
