@@ -156,35 +156,29 @@ export class MexcConnector implements ExchangeConnector {
             return;
         }
 
-        this.symbols.forEach(symbol => {
-            const formattedSymbol = symbol.toLowerCase().replace('_', '');
+        console.log(`[MEXC SUB] Iniciando subscrições para ${this.symbols.length} símbolos`);
+
+        this.symbols.forEach((symbol, index) => {
+            // Usar o símbolo EXATO da API (não converter formato)
             const msg = {
-                "method": "sub.deal",
+                "method": "sub.ticker",
                 "param": {
-                    "symbol": formattedSymbol
-                },
-                "id": Date.now()
+                    "symbol": symbol  // Usar símbolo exato da API
+                }
             };
             
             try {
-                console.log('Enviando subscrição MEXC:', JSON.stringify(msg));
+                // Log apenas os primeiros 5 e últimos 5 para não sobrecarregar
+                if (index < 5 || index >= this.symbols.length - 5) {
+                    console.log(`[MEXC SUB] (${index + 1}/${this.symbols.length}) ${symbol}:`, JSON.stringify(msg));
+                }
                 this.ws?.send(JSON.stringify(msg));
-
-                // Também assina o ticker
-                const tickerMsg = {
-                    "method": "sub.depth",
-                    "param": {
-                        "symbol": formattedSymbol,
-                        "level": 20
-                    },
-                    "id": Date.now() + 1
-                };
-                console.log('Enviando subscrição de profundidade MEXC:', JSON.stringify(tickerMsg));
-                this.ws?.send(JSON.stringify(tickerMsg));
             } catch (error) {
                 console.error('Erro ao enviar subscrição para MEXC:', error);
             }
         });
+
+        console.log(`[MEXC SUB] ✅ Todas as ${this.symbols.length} subscrições enviadas!`);
     }
 
     private handleMessage(data: WebSocket.Data) {
@@ -210,36 +204,38 @@ export class MexcConnector implements ExchangeConnector {
                 return;
             }
 
-            // Processa mensagens de profundidade do livro de ordens
-            if (message.channel === "push.depth" && message.data) {
-                console.log(`[MEXC] Dados de profundidade recebidos para símbolo:`, message.symbol);
-                const depth = message.data;
-                if (depth.asks && depth.asks.length > 0 && depth.bids && depth.bids.length > 0) {
-                    const bestAsk = parseFloat(depth.asks[0][0]);
-                    const bestBid = parseFloat(depth.bids[0][0]);
+            // Processa mensagens de ticker (formato correto)
+            if (message.channel === "push.ticker" && message.data) {
+                console.log(`[MEXC] Dados de ticker recebidos para símbolo:`, message.data.symbol);
+                const ticker = message.data;
+                const bestAsk = parseFloat(ticker.ask1);
+                const bestBid = parseFloat(ticker.bid1);
 
-                    if (bestAsk && bestBid && this.priceUpdateCallback) {
-                        const symbol = message.symbol.toUpperCase();
-                        const formattedSymbol = symbol.slice(0, -4) + '_' + symbol.slice(-4);
-                        
-                        const update: PriceUpdate = {
-                            identifier: 'mexc',
-                            symbol: formattedSymbol,
-                            type: 'futures',
-                            marketType: 'futures',
-                            bestAsk,
-                            bestBid
-                        };
+                if (bestAsk && bestBid && this.priceUpdateCallback) {
+                    // Converter formato do símbolo: BTC_USDT -> BTC_USDT (manter formato padrão)
+                    const symbol = ticker.symbol;
+                    
+                    const update: PriceUpdate = {
+                        identifier: 'mexc',
+                        symbol: symbol,
+                        type: 'futures',
+                        marketType: 'futures',
+                        bestAsk,
+                        bestBid
+                    };
 
-                        console.log(`[MEXC PRICE] ${formattedSymbol}: Ask=${bestAsk}, Bid=${bestBid}`);
-                        this.priceUpdateCallback(update);
-                    }
+                    console.log(`[MEXC PRICE] ${symbol}: Ask=${bestAsk}, Bid=${bestBid}`);
+                    this.priceUpdateCallback(update);
                 } else {
-                    console.log(`[MEXC] Dados de profundidade inválidos:`, depth);
+                    console.log(`[MEXC] Dados de ticker inválidos - Ask: ${bestAsk}, Bid: ${bestBid}`);
                 }
             } else {
-                // Log de outros tipos de mensagem
-                console.log(`[MEXC] Mensagem não processada:`, JSON.stringify(message).substring(0, 100));
+                // Log de outros tipos de mensagem (apenas primeiras ocorrências)
+                if (message.channel && message.channel.startsWith('rs.error')) {
+                    console.log(`[MEXC ERROR] ${message.data}`);
+                } else {
+                    console.log(`[MEXC] Mensagem não processada:`, JSON.stringify(message).substring(0, 100));
+                }
             }
         } catch (error) {
             console.error('[MEXC ERROR] Erro ao processar mensagem:', error);
