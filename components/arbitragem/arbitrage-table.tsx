@@ -161,7 +161,7 @@ export default function ArbitrageTable() {
   const [amount, setAmount] = useState(100);
   const [spotExchange, setSpotExchange] = useState('gateio');
   const [futuresExchange, setFuturesExchange] = useState('mexc');
-  const [isPaused, setIsPaused] = useState(true);
+  const [isPaused, setIsPaused] = useState(false); // Inicia com busca ativa
 
   // Novo estado para o ranking dinâmico
   const [rankedOpportunities, setRankedOpportunities] = useState<Opportunity[]>([]);
@@ -220,7 +220,12 @@ export default function ArbitrageTable() {
 
   // Lógica de Ranking Dinâmico
   useEffect(() => {
-    if (isPaused) return;
+    console.log('[DEBUG] useEffect executado - isPaused:', isPaused, 'opportunitiesRaw.length:', opportunitiesRaw.length);
+    
+    if (isPaused) {
+      console.log('[DEBUG] ⏸️ Busca pausada - não processando oportunidades');
+      return;
+    }
 
     console.log('[DEBUG] Processando oportunidades recebidas:', opportunitiesRaw);
 
@@ -250,12 +255,20 @@ export default function ArbitrageTable() {
           vendaExchange: opp.sellAt.exchange,
           vendaPreco: opp.sellAt.price,
           spread: spread,
-          tipo: opp.arbitrageType.includes('inter') ? 'inter' : 'intra',
+          tipo: 'inter', // Como estamos lidando com arbitragem entre exchanges (Gate.io e MEXC)
           directionApi: opp.arbitrageType.includes('spot_to_futures') ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT',
           maxSpread24h: null
         };
 
-        console.log('[DEBUG] Nova oportunidade processada:', newOpp);
+        console.log('[DEBUG] ✅ Nova oportunidade processada:', {
+          symbol: newOpp.symbol,
+          tipo: newOpp.tipo,
+          directionApi: newOpp.directionApi,
+          compraExchange: newOpp.compraExchange,
+          vendaExchange: newOpp.vendaExchange,
+          spread: newOpp.spread,
+          arbitrageTypeOriginal: opp.arbitrageType
+        });
         return newOpp;
       })
       .filter((o): o is Opportunity => o !== null);
@@ -298,14 +311,17 @@ export default function ArbitrageTable() {
           let passesExchangeFilter = true;
 
           // Verifica se a operação é compra em spot e venda em futures
-          const isSpotBuyFuturesSell = o.compraExchange.toLowerCase().includes('spot') && 
-                                     o.vendaExchange.toLowerCase().includes('futures');
+          // Aceita qualquer combinação de Gate.io (Spot) comprando e MEXC (Futures) vendendo
+          const isSpotBuyFuturesSell = (o.compraExchange.toLowerCase().includes('spot') || 
+                                       o.compraExchange.toLowerCase().includes('gate.io')) && 
+                                      (o.vendaExchange.toLowerCase().includes('futures') ||
+                                       o.vendaExchange.toLowerCase().includes('mexc'));
           passesExchangeFilter = isSpotBuyFuturesSell;
 
           const passes = passesSpreadFilter && passesDirectionFilter && passesTypeFilter && passesExchangeFilter;
           
           if (!passes) {
-            console.log(`[DEBUG] Oportunidade filtrada - ${o.symbol}:`, {
+            console.log(`[DEBUG] ❌ Oportunidade filtrada - ${o.symbol}:`, {
               spread: passesSpreadFilter,
               direction: passesDirectionFilter,
               type: passesTypeFilter,
@@ -313,7 +329,18 @@ export default function ArbitrageTable() {
               isSpotBuyFuturesSell,
               compraExchange: o.compraExchange,
               vendaExchange: o.vendaExchange,
-              spreadValue: o.spread
+              spreadValue: o.spread,
+              minSpreadRequired: minSpread,
+              directionRequired: direction,
+              arbitrageTypeRequired: arbitrageType
+            });
+          } else {
+            console.log(`[DEBUG] ✅ Oportunidade passou pelos filtros - ${o.symbol}:`, {
+              spread: o.spread,
+              tipo: o.tipo,
+              direction: o.directionApi,
+              compraExchange: o.compraExchange,
+              vendaExchange: o.vendaExchange
             });
           }
 
