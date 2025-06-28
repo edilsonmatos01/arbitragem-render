@@ -105,7 +105,7 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
       setError(null);
       
       console.log(`[PriceChart] Buscando dados históricos para ${symbol}...`);
-      const response = await fetch(`/api/price-comparison?symbol=${encodeURIComponent(symbol)}`);
+      const response = await fetch(`/api/price-comparison/${encodeURIComponent(symbol)}`);
       
       if (!response.ok) {
         throw new Error(`Erro HTTP ${response.status}: ${response.statusText}`);

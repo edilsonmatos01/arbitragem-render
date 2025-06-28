@@ -46,7 +46,7 @@ export async function GET(
 
     console.log(`Buscando dados para ${symbol} de ${start.toISOString()} até ${now.toISOString()}`);
 
-    // Busca os dados do banco
+    // Busca os dados do banco da SpreadHistory
     const priceHistory = await prisma.spreadHistory.findMany({
       where: {
         symbol: symbol,
@@ -55,8 +55,8 @@ export async function GET(
           lte: now
         },
         // Garante que só pegamos registros com preços válidos
-        spotPrice: { not: null },
-        futuresPrice: { not: null }
+        spotPrice: { gt: 0 },
+        futuresPrice: { gt: 0 }
       },
       select: {
         timestamp: true,
