@@ -39,9 +39,7 @@ const UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutos para atualizações WebSocke
 
 
 function formatDateTime(timestamp: string) {
-  const [date, time] = timestamp.split(' - ');
-  const [day, month] = date.split('/');
-  return `${day}/${month} ${time}`;
+  return timestamp; // Retorna o timestamp completo no formato "DD/MM - HH:mm"
 }
 
 // Componente de Tooltip customizado
@@ -329,7 +327,7 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
             textAnchor="end"
             height={60}
             interval={Math.max(0, Math.floor(data.length / 8))}
-            tickFormatter={formatDateTime}
+            tickFormatter={(value) => value} // Usa o timestamp original sem modificação
           />
           <YAxis
             stroke="#9CA3AF"
