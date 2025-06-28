@@ -114,8 +114,11 @@ function initializeStandaloneServer() {
 
     startWebSocketServer(httpServer);
 
-    httpServer.listen(PORT, () => {
-        console.log(`[Servidor Standalone] Servidor HTTP e WebSocket escutando na porta ${PORT}`);
+    // Escutar em 0.0.0.0 para aceitar conexões externas
+    httpServer.listen(PORT, '0.0.0.0', () => {
+        console.log(`[Servidor Standalone] Servidor HTTP e WebSocket escutando na porta ${PORT} em todas as interfaces`);
+        console.log(`[Servidor Standalone] Health check disponível em: http://0.0.0.0:${PORT}/health`);
+        console.log(`[Servidor Standalone] WebSocket disponível em: ws://0.0.0.0:${PORT}`);
     });
 }
 
