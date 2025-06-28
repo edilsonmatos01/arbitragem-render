@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   LineChart,
   Line,
@@ -11,6 +11,7 @@ import {
   Legend,
   ResponsiveContainer
 } from 'recharts';
+import { useArbitrageWebSocket } from './useArbitrageWebSocket';
 
 interface PriceComparisonChartProps {
   symbol: string;
@@ -32,16 +33,10 @@ interface CustomTooltipProps {
   label?: string;
 }
 
-  const UPDATE_INTERVAL_MS = 30 * 60 * 1000; // 30 minutos (otimizado para economia)
+const PRICE_HISTORY_LIMIT = 48; // 24 horas com intervalos de 30 minutos
+const PRICE_UPDATE_INTERVAL = 30 * 60 * 1000; // 30 minutos
 
-function formatBrasiliaTime(date: Date): string {
-  return new Date(date).toLocaleString('pt-BR', {
-    timeZone: 'America/Sao_Paulo',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  });
-}
+
 
 function formatDateTime(timestamp: string) {
   const [date, time] = timestamp.split(' - ');
@@ -75,46 +70,140 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const priceHistoryRef = useRef<PriceData[]>([]);
+  
+  // Hook para dados WebSocket em tempo real
+  const { livePrices } = useArbitrageWebSocket();
 
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`/api/price-comparison?symbol=${encodeURIComponent(symbol)}`);
+  // Função para formatar timestamp para exibição
+  const formatTimestamp = (date: Date): string => {
+    return date.toLocaleString('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }).replace(', ', ' - ');
+  };
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Erro: ${response.status}`);
-      }
+  // Função para arredondar para intervalos de 30 minutos
+  const roundToNearestInterval = (date: Date): Date => {
+    const minutes = date.getMinutes();
+    const roundedMinutes = Math.floor(minutes / 30) * 30;
+    const newDate = new Date(date);
+    newDate.setMinutes(roundedMinutes);
+    newDate.setSeconds(0);
+    newDate.setMilliseconds(0);
+    return newDate;
+  };
 
-      const result = await response.json();
-      if (!Array.isArray(result.data)) throw new Error('Formato de dados inválido');
-
-      const validData = result.data.filter((d: PriceData) => d.gateio_price && d.mexc_price && d.gateio_price > 0 && d.mexc_price > 0);
-
-      if (validData.length === 0) throw new Error('Sem dados válidos para exibir');
-
-      setData(validData);
-      setError(null);
-      setLastUpdate(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar dados');
-      setData([]);
-    } finally {
-      setLoading(false);
+  // Atualiza dados baseado nos preços WebSocket
+  const updatePriceHistory = useCallback(() => {
+    if (!livePrices[symbol]) {
+      console.log(`[PriceChart] Aguardando dados WebSocket para ${symbol}`);
+      return;
     }
-  }, [symbol]);
 
+    const gateioData = livePrices[symbol]['spot']; // Gate.io Spot
+    const mexcData = livePrices[symbol]['futures']; // MEXC Futures
+
+    if (!gateioData || !mexcData) {
+      console.log(`[PriceChart] Dados incompletos para ${symbol}:`, {
+        gateio: !!gateioData,
+        mexc: !!mexcData
+      });
+      return;
+    }
+
+    const now = new Date();
+    const roundedTime = roundToNearestInterval(now);
+    const timestamp = formatTimestamp(roundedTime);
+
+    // Calcula preço médio (bid + ask) / 2
+    const gateioPrice = (gateioData.bestAsk + gateioData.bestBid) / 2;
+    const mexcPrice = (mexcData.bestAsk + mexcData.bestBid) / 2;
+
+    const newDataPoint: PriceData = {
+      timestamp,
+      gateio_price: gateioPrice,
+      mexc_price: mexcPrice
+    };
+
+    setData(prevData => {
+      // Remove pontos com o mesmo timestamp para evitar duplicatas
+      const filteredData = prevData.filter(d => d.timestamp !== timestamp);
+      
+      // Adiciona novo ponto e mantém apenas os últimos 48 pontos (24h)
+      const updatedData = [...filteredData, newDataPoint]
+        .sort((a, b) => {
+          const [dateA, timeA] = a.timestamp.split(' - ');
+          const [dateB, timeB] = b.timestamp.split(' - ');
+          const [dayA, monthA] = dateA.split('/').map(Number);
+          const [dayB, monthB] = dateB.split('/').map(Number);
+          const [hourA, minuteA] = timeA.split(':').map(Number);
+          const [hourB, minuteB] = timeB.split(':').map(Number);
+          
+          if (monthA !== monthB) return monthA - monthB;
+          if (dayA !== dayB) return dayA - dayB;
+          if (hourA !== hourB) return hourA - hourB;
+          return minuteA - minuteB;
+        })
+        .slice(-PRICE_HISTORY_LIMIT);
+
+      return updatedData;
+    });
+
+    setLastUpdate(now);
+    setLoading(false);
+    setError(null);
+
+    console.log(`[PriceChart] Dados atualizados para ${symbol}:`, {
+      timestamp,
+      gateio_price: gateioPrice.toFixed(8),
+      mexc_price: mexcPrice.toFixed(8)
+    });
+  }, [symbol, livePrices]);
+
+  // Atualiza dados quando recebe novos preços WebSocket
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, UPDATE_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+    updatePriceHistory();
+  }, [updatePriceHistory]);
 
-  if (loading || error || data.length === 0) {
+  // Atualiza dados em intervalos regulares
+  useEffect(() => {
+    const interval = setInterval(updatePriceHistory, PRICE_UPDATE_INTERVAL);
+    return () => clearInterval(interval);
+  }, [updatePriceHistory]);
+
+  if (loading && data.length === 0) {
     return (
       <div className="flex items-center justify-center h-[400px] bg-gray-900 rounded-lg border border-gray-800">
         <div className="text-center text-gray-400">
-          {loading ? 'Carregando...' : error || 'Sem dados disponíveis.'}
+          <div className="mb-2">🔄 Conectando ao WebSocket...</div>
+          <div className="text-sm">Aguardando dados em tempo real para {symbol}</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-[400px] bg-gray-900 rounded-lg border border-gray-800">
+        <div className="text-center text-red-400">
+          <div className="mb-2">⚠️ {error}</div>
+          <div className="text-sm text-gray-400">Verifique a conexão WebSocket</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (data.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-[400px] bg-gray-900 rounded-lg border border-gray-800">
+        <div className="text-center text-gray-400">
+          <div className="mb-2">📊 Coletando dados...</div>
+          <div className="text-sm">Dados serão exibidos conforme chegam via WebSocket</div>
         </div>
       </div>
     );
@@ -128,11 +217,22 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
   return (
     <div className="w-full h-[400px] bg-gray-900 rounded-lg border border-gray-800 p-4">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold text-white">Comparativo de Preços - {symbol}</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-white">Preços em Tempo Real - {symbol}</h3>
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+            <span className="text-xs text-green-400">WebSocket</span>
+          </div>
+        </div>
         {lastUpdate && (
-          <span className="text-sm text-gray-400">
-            Atualizado: {lastUpdate.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
-          </span>
+          <div className="text-right">
+            <div className="text-sm text-gray-400">
+              Atualizado: {lastUpdate.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
+            </div>
+            <div className="text-xs text-gray-500">
+              {data.length} pontos coletados
+            </div>
+          </div>
         )}
       </div>
       <ResponsiveContainer width="100%" height="100%">
@@ -156,8 +256,26 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
           />
           <Tooltip content={<CustomTooltip />} />
           <Legend verticalAlign="top" height={36} wrapperStyle={{ paddingTop: '10px', fontSize: '12px' }} />
-          <Line type="monotone" dataKey="gateio_price" name="Gate.io (spot)" stroke="#86EFAC" dot={{ r: 2 }} strokeWidth={2} connectNulls isAnimationActive={false} />
-          <Line type="monotone" dataKey="mexc_price" name="MEXC (futures)" stroke="#60A5FA" dot={{ r: 2 }} strokeWidth={2} connectNulls isAnimationActive={false} />
+          <Line 
+            type="monotone" 
+            dataKey="gateio_price" 
+            name="Gate.io (Spot)" 
+            stroke="#86EFAC" 
+            dot={{ r: 2 }} 
+            strokeWidth={2} 
+            connectNulls 
+            isAnimationActive={false} 
+          />
+          <Line 
+            type="monotone" 
+            dataKey="mexc_price" 
+            name="MEXC (Futures)" 
+            stroke="#60A5FA" 
+            dot={{ r: 2 }} 
+            strokeWidth={2} 
+            connectNulls 
+            isAnimationActive={false} 
+          />
         </LineChart>
       </ResponsiveContainer>
     </div>
