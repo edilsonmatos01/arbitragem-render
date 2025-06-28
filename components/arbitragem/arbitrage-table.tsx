@@ -1,17 +1,19 @@
 "use client";
 import { useCallback, useState, useEffect, useRef, useMemo } from "react";
-import { Play, RefreshCw, AlertTriangle, CheckCircle2, Clock } from 'lucide-react'; // Ícones
+import { Play, RefreshCw, AlertTriangle, CheckCircle2, Clock, Plus, Trash2 } from 'lucide-react'; // Ícones
 import { useArbitrageWebSocket } from './useArbitrageWebSocket';
 import MaxSpreadCell from './MaxSpreadCell'; // Importar o novo componente
 import React from 'react';
 import Decimal from 'decimal.js';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const EXCHANGES = [
   { value: "gateio", label: "Gate.io" },
   { value: "mexc", label: "MEXC" },
 ];
 
-const PAIRS = [
+// Lista de pares será carregada dinamicamente
+const DEFAULT_PAIRS = [
   "BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "XRP/USDT", "ADA/USDT", "AVAX/USDT", "DOT/USDT", "TRX/USDT", "LTC/USDT",
   "MATIC/USDT", "LINK/USDT", "ATOM/USDT", "NEAR/USDT", "FIL/USDT", "AAVE/USDT", "UNI/USDT", "FTM/USDT", "INJ/USDT", "RNDR/USDT",
   "ARB/USDT", "OP/USDT", "SUI/USDT", "LDO/USDT", "DYDX/USDT", "GRT/USDT", "1INCH/USDT",
@@ -94,7 +96,7 @@ function getTrackerParams(opportunity: Opportunity): {
 const POLLING_INTERVAL_MS = 5000; // Intervalo de polling: 5 segundos
 
 // ✅ 6. A renderização deve ser otimizada com React.memo
-const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSpreadDisplayClass, calcularLucro, handleExecuteArbitrage }: any) => {
+const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSpreadDisplayClass, calcularLucro }: any) => {
     
     // ✅ 4. Na renderização de cada linha da tabela, ao exibir os preços:
     const getLivePrice = (originalPrice: number, marketTypeStr: string, side: 'buy' | 'sell') => {
@@ -141,18 +143,23 @@ const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSp
             <td className="py-4 px-6 whitespace-nowrap text-sm">
               <MaxSpreadCell symbol={opportunity.symbol} />
             </td>
-            <td className="py-4 px-6 whitespace-nowrap text-center text-sm">
-              <button 
-                onClick={() => handleExecuteArbitrage(opportunity as Opportunity)}
-                className="flex items-center justify-center bg-custom-cyan hover:bg-custom-cyan/90 text-black font-bold py-2 px-3 rounded-md transition-colors text-sm"
-              >
-                <Play className="h-4 w-4" />
-              </button>
-            </td>
+
         </tr>
     );
 });
 OpportunityRow.displayName = 'OpportunityRow';
+
+// Nova interface para posições
+interface Position {
+  id: string;
+  symbol: string;
+  quantity: number;
+  spotEntry: number;
+  futuresEntry: number;
+  spotExchange: string;
+  futuresExchange: string;
+  createdAt: Date | string; // Pode vir como string do banco de dados
+}
 
 export default function ArbitrageTable() {
   const [arbitrageType, setArbitrageType] = useState<'intra'|'inter'>('inter');
@@ -166,6 +173,50 @@ export default function ArbitrageTable() {
   // Novo estado para o ranking dinâmico
   const [rankedOpportunities, setRankedOpportunities] = useState<Opportunity[]>([]);
   
+  // Estados para posições com persistência no banco de dados
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [isLoadingPositions, setIsLoadingPositions] = useState(false);
+
+  // Carregar posições do banco de dados na inicialização
+  useEffect(() => {
+    const loadPositions = async () => {
+      setIsLoadingPositions(true);
+      try {
+        const response = await fetch('/api/positions');
+        if (response.ok) {
+          const savedPositions = await response.json();
+          setPositions(savedPositions);
+        } else {
+          console.error('Erro ao carregar posições do banco de dados');
+          // Fallback para localStorage se a API falhar
+          const localPositions = localStorage.getItem('arbitrage-positions');
+          if (localPositions) {
+            const parsedPositions = JSON.parse(localPositions);
+            setPositions(parsedPositions);
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao carregar posições:', error);
+        // Fallback para localStorage se a API falhar
+        const localPositions = localStorage.getItem('arbitrage-positions');
+        if (localPositions) {
+          try {
+            const parsedPositions = JSON.parse(localPositions);
+            setPositions(parsedPositions);
+          } catch (parseError) {
+            console.error('Erro ao parsear posições do localStorage:', parseError);
+          }
+        }
+      } finally {
+        setIsLoadingPositions(false);
+      }
+    };
+
+    loadPositions();
+  }, []);
+  
+
+  
   // 1. Obter livePrices do hook
   const { opportunities: opportunitiesRaw, livePrices } = useArbitrageWebSocket();
   const [isLoading, setIsLoading] = useState(false);
@@ -176,11 +227,7 @@ export default function ArbitrageTable() {
     return ((spreadValue / 100) * amount).toFixed(2);
   }
   
-  const handleExecuteArbitrage = (opportunity: Opportunity) => {
-    setSuccessMessage(`Sucesso! Arbitragem para ${opportunity.symbol} (Spread: ${Math.abs(opportunity.spread).toFixed(4)}%) executada.`);
-    console.log("Executar arbitragem:", opportunity);
-    setTimeout(() => setSuccessMessage(null), 5000);
-  };
+
 
   const directionOptions = [
     { value: 'ALL', label: 'Todas as Direções' },
@@ -363,6 +410,129 @@ export default function ArbitrageTable() {
     amount,
   ]);
 
+
+
+  // Função para remover posição
+  const handleRemovePosition = async (positionId: string) => {
+    try {
+      const response = await fetch(`/api/positions?id=${positionId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        setPositions(prev => prev.filter(p => p.id !== positionId));
+        setSuccessMessage('Posição removida com sucesso!');
+      } else {
+        // Fallback para remoção local
+        setPositions(prev => prev.filter(p => p.id !== positionId));
+        const updatedPositions = positions.filter(p => p.id !== positionId);
+        localStorage.setItem('arbitrage-positions', JSON.stringify(updatedPositions));
+        setSuccessMessage('Posição removida localmente!');
+      }
+    } catch (error) {
+      console.error('Erro ao remover posição:', error);
+      // Fallback para remoção local
+      setPositions(prev => prev.filter(p => p.id !== positionId));
+      const updatedPositions = positions.filter(p => p.id !== positionId);
+      localStorage.setItem('arbitrage-positions', JSON.stringify(updatedPositions));
+      setSuccessMessage('Posição removida localmente!');
+    } finally {
+      setTimeout(() => setSuccessMessage(null), 3000);
+    }
+  };
+
+  // Função para finalizar posição
+  const handleFinalizePosition = async (positionId: string) => {
+    const position = positions.find(p => p.id === positionId);
+    if (position) {
+      await handleRemovePosition(positionId);
+      setSuccessMessage(`Posição ${position.symbol} finalizada com sucesso!`);
+      setTimeout(() => setSuccessMessage(null), 5000);
+    }
+  };
+
+
+
+  // Função para calcular PnL
+  // Função para normalizar o símbolo (pode haver diferenças de formato)
+  const normalizeSymbol = (symbol: string) => {
+    // Remove espaços e converte para o formato padrão
+    return symbol.replace(/\s+/g, '').toUpperCase();
+  };
+
+  // Função auxiliar para obter preços em tempo real - usando a mesma lógica da tabela
+  const getLivePriceForPosition = (position: Position, marketType: 'spot' | 'futures', side: 'buy' | 'sell' = 'buy') => {
+    const symbol = position.symbol;
+    
+    // Tenta diferentes formatos do símbolo
+    const possibleSymbols = [
+      symbol,                                    // BTC/USDT
+      symbol.replace('/', '_'),                  // BTC_USDT
+      symbol.replace('/', ''),                   // BTCUSDT
+      normalizeSymbol(symbol),                   // BTC/USDT normalizado
+      normalizeSymbol(symbol.replace('/', '_')), // BTC_USDT normalizado
+    ];
+
+    let liveData = null;
+    let foundSymbol = '';
+
+    // Procura pelos diferentes formatos
+    for (const testSymbol of possibleSymbols) {
+      if (livePrices[testSymbol]) {
+        liveData = livePrices[testSymbol];
+        foundSymbol = testSymbol;
+        break;
+      }
+    }
+    
+    if (!liveData) {
+      return marketType === 'spot' ? position.spotEntry : position.futuresEntry;
+    }
+
+    if (liveData[marketType]) {
+      const price = side === 'buy' ? liveData[marketType].bestAsk : liveData[marketType].bestBid;
+      return price || (marketType === 'spot' ? position.spotEntry : position.futuresEntry);
+    }
+    return marketType === 'spot' ? position.spotEntry : position.futuresEntry;
+  };
+
+  // Função para obter preço atual de spot (para exibição)
+  const getCurrentSpotPrice = (position: Position) => {
+    // Para spot, queremos o preço médio (ou bestBid para mostrar preço de venda)
+    return getLivePriceForPosition(position, 'spot', 'sell');
+  };
+
+  // Função para obter preço atual de futures (para exibição)
+  const getCurrentFuturesPrice = (position: Position) => {
+    // Para futures, queremos o preço médio (ou bestAsk para mostrar preço de compra para fechar short)
+    return getLivePriceForPosition(position, 'futures', 'buy');
+  };
+
+  const calculatePnL = (position: Position) => {
+    const currentSpotPrice = getCurrentSpotPrice(position);
+    const currentFuturesPrice = getCurrentFuturesPrice(position);
+
+    // Implementação das fórmulas específicas solicitadas:
+    // pnlSpot = ((precoAtualSpot - precoEntradaSpot) / precoEntradaSpot) * 100
+    // pnlFutures = ((precoEntradaFutures - precoAtualFutures) / precoEntradaFutures) * 100
+    // pnlPercent = pnlSpot + pnlFutures
+    
+    const pnlSpot = position.spotEntry > 0 ? ((currentSpotPrice - position.spotEntry) / position.spotEntry) * 100 : 0;
+    const pnlFutures = position.futuresEntry > 0 ? ((position.futuresEntry - currentFuturesPrice) / position.futuresEntry) * 100 : 0;
+    const pnlPercent = pnlSpot + pnlFutures;
+
+    // Calcular PnL total em valor absoluto para exibição
+    const spotPnL = (currentSpotPrice - position.spotEntry) * position.quantity;
+    const futuresPnL = (position.futuresEntry - currentFuturesPrice) * position.quantity;
+    const totalPnL = spotPnL + futuresPnL;
+
+
+
+    return { totalPnL, pnlPercent, currentSpotPrice, currentFuturesPrice };
+  };
+
+
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -449,6 +619,8 @@ export default function ArbitrageTable() {
 
       <div className="bg-dark-card p-4 rounded-lg shadow">
         <h2 className="text-xl font-semibold text-white mb-4">Oportunidades Encontradas</h2>
+        
+
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-700">
             <thead className="bg-gray-800">
@@ -458,14 +630,13 @@ export default function ArbitrageTable() {
                 <th className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Venda</th>
                 <th className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Spread %</th>
                 <th className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Spread Máximo (24h)</th>
-                <th className="py-3 px-6 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
               {isLoading ? (
-                <tr><td colSpan={8} className="text-center py-8"><RefreshCw className="h-6 w-6 animate-spin inline-block mr-2" />Carregando oportunidades...</td></tr>
+                <tr><td colSpan={5} className="text-center py-8"><RefreshCw className="h-6 w-6 animate-spin inline-block mr-2" />Carregando oportunidades...</td></tr>
               ) : rankedOpportunities.length === 0 && !error ? (
-                <tr><td colSpan={8} className="text-center text-gray-400 py-8">Nenhuma oportunidade encontrada para os filtros selecionados.</td></tr>
+                <tr><td colSpan={5} className="text-center text-gray-400 py-8">Nenhuma oportunidade encontrada para os filtros selecionados.</td></tr>
               ) : (
                 rankedOpportunities.map((opportunity) => (
                   <OpportunityRow 
@@ -475,7 +646,6 @@ export default function ArbitrageTable() {
                     formatPrice={formatPrice}
                     getSpreadDisplayClass={getSpreadDisplayClass}
                     calcularLucro={calcularLucro}
-                    handleExecuteArbitrage={handleExecuteArbitrage}
                   />
                 ))
               )}
@@ -483,6 +653,122 @@ export default function ArbitrageTable() {
           </table>
         </div>
       </div>
+
+
+
+      {/* Seção de Posições Abertas */}
+      {(positions.length > 0 || isLoadingPositions) && (
+        <div className="bg-dark-card p-6 rounded-lg shadow">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-semibold text-white">Posições Abertas</h2>
+          </div>
+
+          {isLoadingPositions ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="h-6 w-6 animate-spin mr-2" />
+              <span className="text-gray-400">Carregando posições...</span>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {positions.map((position) => {
+              const { totalPnL, pnlPercent, currentSpotPrice, currentFuturesPrice } = calculatePnL(position);
+              const entrySpread = ((position.futuresEntry - position.spotEntry) / position.spotEntry) * 100;
+              const currentSpread = ((currentFuturesPrice - currentSpotPrice) / currentSpotPrice) * 100;
+
+              // Função para mapear exchange para nome de exibição
+              const getExchangeDisplayName = (exchange: string, marketType: 'spot' | 'futures') => {
+                const exchangeMap: { [key: string]: string } = {
+                  'gateio': 'Gate.io',
+                  'mexc': 'MEXC'
+                };
+                const baseName = exchangeMap[exchange] || exchange;
+                return `${baseName} (${marketType})`;
+              };
+
+              return (
+                <div key={position.id} className="bg-gray-800 p-4 rounded-lg border border-gray-700 relative">
+                  {/* Header com símbolo e botão de lixeira */}
+                  <div className="flex justify-between items-center mb-3">
+                    <div className="text-left">
+                      <h3 className="text-lg font-bold text-white">{position.symbol}</h3>
+                      <p className="text-xs text-gray-400">Spot vs Futures</p>
+                    </div>
+                    <button
+                      onClick={() => handleRemovePosition(position.id)}
+                      className="text-red-400 hover:text-red-300 transition-colors"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {/* Quantidade-Aporte - alinhado à direita */}
+                  <div className="text-right mb-3">
+                    <p className="text-xs text-custom-cyan font-medium">Quantidade-Aporte</p>
+                    <p className="text-sm font-bold text-custom-cyan">{position.quantity.toFixed(3)} {position.symbol.split('/')[0]}</p>
+                  </div>
+
+                  {/* Preços de Entrada - alinhados à esquerda */}
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    <div className="text-left">
+                      <p className="text-xs text-gray-400">{getExchangeDisplayName(position.spotExchange, 'spot')}</p>
+                      <p className="text-xs font-bold text-white">{formatPrice(position.spotEntry)}</p>
+                    </div>
+                    <div className="text-left">
+                      <p className="text-xs text-gray-400">{getExchangeDisplayName(position.futuresExchange, 'futures')}</p>
+                      <p className="text-xs font-bold text-white">{formatPrice(position.futuresEntry)}</p>
+                    </div>
+                    <div className="text-left">
+                      <p className="text-xs text-gray-400">Spread</p>
+                      <p className={`text-xs font-bold ${entrySpread >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {entrySpread.toFixed(2)}%
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Preços Atuais - alinhados à esquerda */}
+                  <div className="grid grid-cols-2 gap-2 mb-3 py-2 border-t border-gray-600">
+                    <div className="text-left">
+                      <p className="text-xs text-gray-400">Preço atual-Spot</p>
+                      <p className="text-xs font-bold text-white">{formatPrice(currentSpotPrice)}</p>
+                    </div>
+                    <div className="text-left">
+                      <p className="text-xs text-gray-400">Preço atual-Futures</p>
+                      <p className="text-xs font-bold text-white">{formatPrice(currentFuturesPrice)}</p>
+                    </div>
+                  </div>
+
+                  {/* PnL - alinhados à esquerda */}
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    <div className="text-left">
+                      <p className="text-xs text-gray-400">TotalPnL</p>
+                      <p className={`text-sm font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="text-left">
+                      <p className="text-xs text-gray-400">pnlPercent</p>
+                      <p className={`text-sm font-bold ${pnlPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Botão Finalizar */}
+                  <div className="pt-2 border-t border-gray-600">
+                    <button
+                      onClick={() => handleFinalizePosition(position.id)}
+                      className="w-full py-2 bg-custom-cyan hover:bg-custom-cyan/90 text-black font-bold rounded-md transition-colors text-sm"
+                    >
+                      Finalizar Posição
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 } 

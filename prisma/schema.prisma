@@ -53,3 +53,17 @@ model TradableSymbol {
 
   @@index([baseSymbol])
 }
+
+model Position {
+  id              String   @id @default(cuid())
+  symbol          String
+  quantity        Float
+  spotEntry       Float
+  futuresEntry    Float
+  spotExchange    String
+  futuresExchange String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([symbol])
+}
