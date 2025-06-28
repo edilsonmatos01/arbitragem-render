@@ -326,8 +326,14 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
             angle={-45}
             textAnchor="end"
             height={60}
-            interval={Math.max(0, Math.floor(data.length / 8))}
-            tickFormatter={(value) => value} // Usa o timestamp original sem modificação
+            interval={Math.max(0, Math.floor(data.length / 12))} // Mostra aproximadamente 12 marcações
+            tickFormatter={(value) => {
+              // Extrai apenas o horário do timestamp "DD/MM - HH:mm"
+              if (typeof value === 'string' && value.includes(' - ')) {
+                return value.split(' - ')[1]; // Retorna apenas "HH:mm"
+              }
+              return value;
+            }}
           />
           <YAxis
             stroke="#9CA3AF"
