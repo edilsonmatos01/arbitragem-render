@@ -10,7 +10,7 @@ class MexcConnector {
     constructor() {
         this.ws = null;
         this.priceUpdateCallback = null;
-        this.wsUrl = 'wss://contract.mexc.com/ws';
+        this.wsUrl = 'wss://contract.mexc.com/edge';
         this.restUrl = 'https://contract.mexc.com/api/v1/contract/detail';
         this.symbols = [];
         this.pingInterval = null;
@@ -138,34 +138,26 @@ class MexcConnector {
             this.connect();
             return;
         }
-        this.symbols.forEach(symbol => {
-            var _a, _b;
-            const formattedSymbol = symbol.toLowerCase().replace('_', '');
+        console.log(`[MEXC SUB] Iniciando subscrições para ${this.symbols.length} símbolos`);
+        this.symbols.forEach((symbol, index) => {
+            var _a;
             const msg = {
-                "method": "sub.deal",
+                "method": "sub.ticker",
                 "param": {
-                    "symbol": formattedSymbol
-                },
-                "id": Date.now()
+                    "symbol": symbol
+                }
             };
             try {
-                console.log('Enviando subscrição MEXC:', JSON.stringify(msg));
+                if (index < 5 || index >= this.symbols.length - 5) {
+                    console.log(`[MEXC SUB] (${index + 1}/${this.symbols.length}) ${symbol}:`, JSON.stringify(msg));
+                }
                 (_a = this.ws) === null || _a === void 0 ? void 0 : _a.send(JSON.stringify(msg));
-                const tickerMsg = {
-                    "method": "sub.depth",
-                    "param": {
-                        "symbol": formattedSymbol,
-                        "level": 20
-                    },
-                    "id": Date.now() + 1
-                };
-                console.log('Enviando subscrição de profundidade MEXC:', JSON.stringify(tickerMsg));
-                (_b = this.ws) === null || _b === void 0 ? void 0 : _b.send(JSON.stringify(tickerMsg));
             }
             catch (error) {
                 console.error('Erro ao enviar subscrição para MEXC:', error);
             }
         });
+        console.log(`[MEXC SUB] ✅ Todas as ${this.symbols.length} subscrições enviadas!`);
     }
     handleMessage(data) {
         var _a;
@@ -176,44 +168,51 @@ class MexcConnector {
                     "method": "pong"
                 };
                 (_a = this.ws) === null || _a === void 0 ? void 0 : _a.send(JSON.stringify(pongMsg));
+                console.log(`[MEXC] Respondeu ping do servidor`);
                 return;
             }
-            if (message.channel === "push.depth" && message.data) {
-                const depth = message.data;
-                if (depth.asks && depth.asks.length > 0 && depth.bids && depth.bids.length > 0) {
-                    const bestAsk = parseFloat(depth.asks[0][0]);
-                    const bestBid = parseFloat(depth.bids[0][0]);
-                    if (bestAsk && bestBid && this.priceUpdateCallback) {
-                        const symbol = message.symbol.toUpperCase();
-                        const formattedSymbol = symbol.slice(0, -4) + '_' + symbol.slice(-4);
-                        const update = {
-                            identifier: 'mexc',
-                            symbol: formattedSymbol,
-                            type: 'futures',
-                            marketType: 'futures',
-                            bestAsk,
-                            bestBid
-                        };
-                        const spreadPercent = ((bestBid - bestAsk) / bestAsk) * 100;
-                        if (this.relevantPairs.includes(formattedSymbol) && Math.abs(spreadPercent) > 0.1) {
-                            const spreadColor = spreadPercent > 0.5 ? '\x1b[32m' : '\x1b[36m';
-                            const resetColor = '\x1b[0m';
-                            console.log(`
-${spreadColor}┌──────────────────────────────────────────────
-│ 📊 MEXC Atualização - ${new Date().toLocaleTimeString('pt-BR')}
-│ 🔸 Par: ${update.symbol}
-│ 📉 Compra (Ask): ${bestAsk.toFixed(8)} USDT
-│ 📈 Venda (Bid): ${bestBid.toFixed(8)} USDT
-│ 📊 Spread: ${spreadPercent.toFixed(4)}%
-└──────────────────────────────────────────────${resetColor}`);
-                        }
-                        this.priceUpdateCallback(update);
+            if (message.id && message.result) {
+                console.log(`[MEXC] Subscrição confirmada - ID: ${message.id}, Result: ${message.result}`);
+                return;
+            }
+            if (message.channel === "push.ticker" && message.data) {
+                const ticker = message.data;
+                const bestAsk = parseFloat(ticker.ask1);
+                const bestBid = parseFloat(ticker.bid1);
+                if (bestAsk && bestBid && this.priceUpdateCallback) {
+                    const symbol = ticker.symbol;
+                    const update = {
+                        identifier: 'mexc',
+                        symbol: symbol,
+                        type: 'futures',
+                        marketType: 'futures',
+                        bestAsk,
+                        bestBid
+                    };
+                    if (this.relevantPairs.includes(symbol)) {
+                        console.log(`[MEXC PRICE] ${symbol}: Ask=${bestAsk}, Bid=${bestBid}`);
                     }
+                    this.priceUpdateCallback(update);
+                }
+                else {
+                    console.log(`[MEXC] Dados de ticker inválidos - Symbol: ${ticker.symbol}, Ask: ${bestAsk}, Bid: ${bestBid}`);
+                }
+            }
+            else {
+                if (message.channel && message.channel.startsWith('rs.error')) {
+                    console.log(`[MEXC ERROR] ${message.data}`);
+                }
+                else if (message.error) {
+                    console.log(`[MEXC ERROR] Erro recebido:`, JSON.stringify(message.error));
+                }
+                else {
+                    console.log(`[MEXC DEBUG] Mensagem não processada - Channel: ${message.channel || 'N/A'}, Method: ${message.method || 'N/A'}`);
                 }
             }
         }
         catch (error) {
-            console.error('\x1b[31mErro ao processar mensagem MEXC:', error, '\x1b[0m');
+            console.error('[MEXC ERROR] Erro ao processar mensagem:', error);
+            console.error('[MEXC ERROR] Dados brutos:', data.toString().substring(0, 200));
         }
     }
     disconnect() {
