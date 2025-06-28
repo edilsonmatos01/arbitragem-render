@@ -98,10 +98,34 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
     return newDate;
   };
 
-  // Atualiza dados baseado nos preços WebSocket
+  // Carrega dados históricos da API e depois atualiza com WebSocket
+  const loadInitialData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/price-comparison?symbol=${encodeURIComponent(symbol)}`);
+      
+      if (!response.ok) {
+        throw new Error('Falha ao carregar dados históricos');
+      }
+
+      const result = await response.json();
+      if (Array.isArray(result) && result.length > 0) {
+        setData(result);
+        console.log(`[PriceChart] Dados históricos carregados: ${result.length} pontos`);
+      }
+      
+      setLoading(false);
+      setError(null);
+    } catch (err) {
+      console.error('[PriceChart] Erro ao carregar dados históricos:', err);
+      setError(err instanceof Error ? err.message : 'Erro ao carregar dados');
+      setLoading(false);
+    }
+  }, [symbol]);
+
+  // Atualiza dados baseado nos preços WebSocket (adiciona novos pontos)
   const updatePriceHistory = useCallback(() => {
     if (!livePrices[symbol]) {
-      console.log(`[PriceChart] Aguardando dados WebSocket para ${symbol}`);
       return;
     }
 
@@ -109,10 +133,6 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
     const mexcData = livePrices[symbol]['futures']; // MEXC Futures
 
     if (!gateioData || !mexcData) {
-      console.log(`[PriceChart] Dados incompletos para ${symbol}:`, {
-        gateio: !!gateioData,
-        mexc: !!mexcData
-      });
       return;
     }
 
@@ -155,15 +175,19 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
     });
 
     setLastUpdate(now);
-    setLoading(false);
-    setError(null);
 
-    console.log(`[PriceChart] Dados atualizados para ${symbol}:`, {
+    console.log(`[PriceChart] Novo ponto adicionado para ${symbol}:`, {
       timestamp,
       gateio_price: gateioPrice.toFixed(8),
       mexc_price: mexcPrice.toFixed(8)
     });
   }, [symbol, livePrices]);
+
+  // Carrega dados históricos ao inicializar
+  useEffect(() => {
+    console.log(`[PriceChart] Iniciando monitoramento para ${symbol}`);
+    loadInitialData();
+  }, [symbol, loadInitialData]);
 
   // Atualiza dados quando recebe novos preços WebSocket
   useEffect(() => {
