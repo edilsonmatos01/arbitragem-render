@@ -185,9 +185,6 @@ export class MexcConnector implements ExchangeConnector {
         try {
             const message = JSON.parse(data.toString());
             
-            // Log de debug para entender as mensagens
-            console.log(`[MEXC DEBUG] Mensagem recebida:`, Object.keys(message).join(','));
-            
             // Responde ao ping do servidor
             if (message.method === "ping") {
                 const pongMsg = {
@@ -206,7 +203,6 @@ export class MexcConnector implements ExchangeConnector {
 
             // Processa mensagens de ticker (formato correto)
             if (message.channel === "push.ticker" && message.data) {
-                console.log(`[MEXC] Dados de ticker recebidos para símbolo:`, message.data.symbol);
                 const ticker = message.data;
                 const bestAsk = parseFloat(ticker.ask1);
                 const bestBid = parseFloat(ticker.bid1);
@@ -224,17 +220,23 @@ export class MexcConnector implements ExchangeConnector {
                         bestBid
                     };
 
-                    console.log(`[MEXC PRICE] ${symbol}: Ask=${bestAsk}, Bid=${bestBid}`);
+                    // Log apenas para pares prioritários para reduzir verbosidade
+                    if (this.relevantPairs.includes(symbol)) {
+                        console.log(`[MEXC PRICE] ${symbol}: Ask=${bestAsk}, Bid=${bestBid}`);
+                    }
                     this.priceUpdateCallback(update);
                 } else {
-                    console.log(`[MEXC] Dados de ticker inválidos - Ask: ${bestAsk}, Bid: ${bestBid}`);
+                    console.log(`[MEXC] Dados de ticker inválidos - Symbol: ${ticker.symbol}, Ask: ${bestAsk}, Bid: ${bestBid}`);
                 }
             } else {
-                // Log de outros tipos de mensagem (apenas primeiras ocorrências)
+                // Log de outros tipos de mensagem (apenas erros importantes)
                 if (message.channel && message.channel.startsWith('rs.error')) {
                     console.log(`[MEXC ERROR] ${message.data}`);
+                } else if (message.error) {
+                    console.log(`[MEXC ERROR] Erro recebido:`, JSON.stringify(message.error));
                 } else {
-                    console.log(`[MEXC] Mensagem não processada:`, JSON.stringify(message).substring(0, 100));
+                    // Log detalhado apenas para debug quando necessário
+                    console.log(`[MEXC DEBUG] Mensagem não processada - Channel: ${message.channel || 'N/A'}, Method: ${message.method || 'N/A'}`);
                 }
             }
         } catch (error) {

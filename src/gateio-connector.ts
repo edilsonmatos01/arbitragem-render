@@ -180,46 +180,47 @@ export class GateioConnector implements ExchangeConnector {
         try {
             const message = JSON.parse(data.toString());
             
-            // Log de debug para entender as mensagens
-            console.log(`[GATEIO DEBUG] Mensagem recebida:`, Object.keys(message).join(','));
-            
-            // Log apenas eventos importantes
+            // Log apenas eventos importantes de subscrição
             if (message.event) {
-                console.log(`[GATEIO EVENT] ${message.event}: ${JSON.stringify(message.result || message.error || 'ok').substring(0, 100)}`);
+                if (message.event === 'subscribe') {
+                    console.log(`[GATEIO EVENT] Subscrição confirmada para canal: ${message.channel}`);
+                } else if (message.event === 'update' && message.result) {
+                    // Processar dados de ticker SPOT
+                    if (message.channel === 'spot.tickers') {
+                        const ticker = message.result;
+                        const symbol = ticker.currency_pair;
+                        const bestAsk = parseFloat(ticker.lowest_ask);
+                        const bestBid = parseFloat(ticker.highest_bid);
+                        
+                        if (bestAsk && bestBid && bestAsk > 0 && bestBid > 0 && this.priceUpdateCallback) {
+                            const update: PriceUpdate = {
+                                identifier: 'gateio',
+                                symbol: symbol,
+                                type: 'spot',
+                                marketType: 'spot',
+                                bestAsk,
+                                bestBid
+                            };
+                            
+                            // Log apenas para pares prioritários para reduzir verbosidade
+                            const priorityPairs = ['BTC_USDT', 'ETH_USDT', 'SOL_USDT', 'XRP_USDT', 'BNB_USDT'];
+                            if (priorityPairs.includes(symbol)) {
+                                console.log(`[GATEIO PRICE] ${symbol}: Ask=${bestAsk}, Bid=${bestBid}`);
+                            }
+                            this.priceUpdateCallback(update);
+                        } else {
+                            console.log(`[GATEIO SKIP] ${symbol}: Ask=${bestAsk}, Bid=${bestBid} (dados inválidos)`);
+                        }
+                    }
+                } else if (message.error) {
+                    console.log(`[GATEIO ERROR] ${message.event}: ${JSON.stringify(message.error)}`);
+                }
                 return;
             }
             
-            // Processar dados de ticker SPOT
-            if (message.channel === 'spot.tickers' && message.result) {
-                console.log(`[GATEIO] Dados de ticker recebidos:`, JSON.stringify(message.result).substring(0, 200));
-                const ticker = message.result;
-                const symbol = ticker.currency_pair;
-                const bestAsk = parseFloat(ticker.lowest_ask);
-                const bestBid = parseFloat(ticker.highest_bid);
-                
-                console.log(`[GATEIO] Processando ${symbol}: Ask=${bestAsk}, Bid=${bestBid}`);
-                
-                if (bestAsk && bestBid && bestAsk > 0 && bestBid > 0 && this.priceUpdateCallback) {
-                    const update: PriceUpdate = {
-                        identifier: 'gateio',
-                        symbol: symbol,
-                        type: 'spot',
-                        marketType: 'spot',
-                        bestAsk,
-                        bestBid
-                    };
-                    
-                    console.log(`[GATEIO PRICE] ${symbol}: Ask=${bestAsk}, Bid=${bestBid}`);
-                    this.priceUpdateCallback(update);
-                } else {
-                    console.log(`[GATEIO SKIP] ${symbol}: Ask=${bestAsk}, Bid=${bestBid} (inválido)`);
-                }
-            } else if (message.channel && message.result) {
-                // Log de outros canais
-                console.log(`[GATEIO] Canal ${message.channel}:`, JSON.stringify(message.result).substring(0, 100));
-            } else {
-                // Log de mensagens não processadas
-                console.log(`[GATEIO] Mensagem não processada:`, JSON.stringify(message).substring(0, 100));
+            // Log de mensagens não processadas (apenas estrutura para debug)
+            if (message.channel && !message.event) {
+                console.log(`[GATEIO DEBUG] Canal ${message.channel} - Tipo: ${typeof message.result}`);
             }
             
         } catch (error) {

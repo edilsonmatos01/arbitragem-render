@@ -28,7 +28,11 @@ let clients: CustomWebSocket[] = [];
 function handlePriceUpdate(update: PriceUpdate) {
     const { identifier, symbol, marketType, bestAsk, bestBid } = update;
 
-    console.log(`[PRICE UPDATE] ${identifier.toUpperCase()}: ${symbol} - Ask: ${bestAsk}, Bid: ${bestBid}`);
+    // Log apenas para pares prioritários para reduzir verbosidade
+    const priorityPairs = ['BTC_USDT', 'ETH_USDT', 'SOL_USDT', 'XRP_USDT', 'BNB_USDT'];
+    if (priorityPairs.includes(symbol)) {
+        console.log(`[PRICE UPDATE] ${identifier.toUpperCase()}: ${symbol} - Ask: ${bestAsk}, Bid: ${bestBid}`);
+    }
 
     if (!marketPrices[identifier]) {
         marketPrices[identifier] = {};
@@ -36,9 +40,11 @@ function handlePriceUpdate(update: PriceUpdate) {
     }
     marketPrices[identifier][symbol] = { bestAsk, bestBid, timestamp: Date.now() };
     
-    // Log do estado atual dos dados
+    // Log do estado atual dos dados apenas a cada 100 atualizações para reduzir verbosidade
     const totalSymbols = Object.keys(marketPrices[identifier]).length;
-    console.log(`[MARKET PRICES] ${identifier}: ${totalSymbols} símbolos ativos`);
+    if (totalSymbols % 100 === 0 || totalSymbols <= 10) {
+        console.log(`[MARKET PRICES] ${identifier}: ${totalSymbols} símbolos ativos`);
+    }
     
     broadcast({
         type: 'price-update',
