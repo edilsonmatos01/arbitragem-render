@@ -53,14 +53,17 @@ function formatDateTime(timestamp: string) {
 // Componente de Tooltip customizado
 const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
   if (active && payload && payload.length > 0) {
+    const gateio = payload.find(p => p.dataKey === 'gateio_price');
+    const mexc = payload.find(p => p.dataKey === 'mexc_price');
+
     return (
       <div className="p-3 bg-gray-800 border border-gray-700 rounded-md shadow-lg">
         <p className="text-white font-semibold mb-2">{`Data: ${formatDateTime(label || '')}`}</p>
         <p className="text-green-400">
-          {`Gate.io (spot): $${payload[0]?.value?.toLocaleString('pt-BR', { minimumFractionDigits: 8 }) || 'N/D'}`}
+          {`Gate.io (spot): $${gateio?.value?.toLocaleString('pt-BR', { minimumFractionDigits: 8 }) || 'N/D'}`}
         </p>
         <p className="text-blue-400">
-          {`MEXC (futures): $${payload[1]?.value?.toLocaleString('pt-BR', { minimumFractionDigits: 8 }) || 'N/D'}`}
+          {`MEXC (futures): $${mexc?.value?.toLocaleString('pt-BR', { minimumFractionDigits: 8 }) || 'N/D'}`}
         </p>
       </div>
     );
@@ -77,49 +80,25 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      console.log(`Buscando dados para ${symbol}...`);
       const response = await fetch(`/api/price-comparison?symbol=${encodeURIComponent(symbol)}`);
-      
+
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || `Falha ao carregar dados: ${response.status}`);
+        throw new Error(errorData.error || `Erro: ${response.status}`);
       }
 
       const result = await response.json();
-      console.log(`Dados recebidos para ${symbol}:`, {
-        totalPoints: result.data.length,
-        firstPoint: result.data[0],
-        lastPoint: result.data[result.data.length - 1]
-      });
+      if (!Array.isArray(result.data)) throw new Error('Formato de dados inválido');
 
-      if (!Array.isArray(result.data)) {
-        throw new Error('Formato de dados inválido');
-      }
+      const validData = result.data.filter((d: PriceData) => d.gateio_price && d.mexc_price && d.gateio_price > 0 && d.mexc_price > 0);
 
-      if (result.data.length === 0) {
-        throw new Error(result.message || 'Nenhum dado encontrado para o período');
-      }
-
-      // Filtra pontos inválidos
-      const validData = result.data.filter((point: PriceData) => 
-        point.gateio_price !== null && 
-        point.mexc_price !== null && 
-        !isNaN(point.gateio_price) && 
-        !isNaN(point.mexc_price) &&
-        point.gateio_price > 0 &&
-        point.mexc_price > 0
-      );
-
-      if (validData.length === 0) {
-        throw new Error('Nenhum dado válido encontrado para o período');
-      }
+      if (validData.length === 0) throw new Error('Sem dados válidos para exibir');
 
       setData(validData);
       setError(null);
       setLastUpdate(new Date());
     } catch (err) {
-      console.error('Erro ao buscar dados de preços:', err);
-      setError(err instanceof Error ? err.message : 'Falha ao carregar dados de preços');
+      setError(err instanceof Error ? err.message : 'Erro ao carregar dados');
       setData([]);
     } finally {
       setLoading(false);
@@ -132,66 +111,28 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  if (loading) {
+  if (loading || error || data.length === 0) {
     return (
       <div className="flex items-center justify-center h-[400px] bg-gray-900 rounded-lg border border-gray-800">
-        <div className="text-gray-400">Carregando dados de comparação...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[400px] bg-gray-900 rounded-lg border border-gray-800 p-4">
-        <div className="text-red-400 mb-2">⚠️ {error}</div>
-        <div className="text-gray-500 text-sm text-center">
-          Dados de comparação serão exibidos quando houver registros suficientes
-        </div>
-        <button
-          onClick={() => fetchData()}
-          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-        >
-          Tentar novamente
-        </button>
-      </div>
-    );
-  }
-
-  if (data.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-[400px] bg-gray-900 rounded-lg border border-gray-800">
-        <div className="text-center">
-          <div className="text-gray-400 mb-2">📊 Sem dados disponíveis</div>
-          <div className="text-gray-500 text-sm">
-            Aguarde a coleta de dados de preços para visualizar a comparação
-          </div>
+        <div className="text-center text-gray-400">
+          {loading ? 'Carregando...' : error || 'Sem dados disponíveis.'}
         </div>
       </div>
     );
   }
 
-  // Encontra os valores mínimo e máximo para ajustar a escala do eixo Y
-  const allPrices = data.flatMap(d => [d.gateio_price, d.mexc_price].filter(p => p !== null) as number[]);
+  const allPrices = data.flatMap(d => [d.gateio_price, d.mexc_price] as number[]);
   const minPrice = Math.min(...allPrices);
   const maxPrice = Math.max(...allPrices);
-  const padding = (maxPrice - minPrice) * 0.1; // 10% de padding
+  const padding = (maxPrice - minPrice) * 0.1;
 
   return (
     <div className="w-full h-[400px] bg-gray-900 rounded-lg border border-gray-800 p-4">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold text-white">
-          Comparativo de Preços - {symbol}
-        </h3>
+        <h3 className="text-lg font-semibold text-white">Comparativo de Preços - {symbol}</h3>
         {lastUpdate && (
           <span className="text-sm text-gray-400">
-            Atualizado: {formatDateTime(lastUpdate.toLocaleString('pt-BR', {
-              timeZone: 'America/Sao_Paulo',
-              day: '2-digit',
-              month: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: false
-            }).replace(', ', ' - '))}
+            Atualizado: {lastUpdate.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
           </span>
         )}
       </div>
@@ -205,49 +146,19 @@ export default function PriceComparisonChart({ symbol }: PriceComparisonChartPro
             angle={-45}
             textAnchor="end"
             height={60}
-            interval={Math.max(0, Math.floor(data.length / 8))} // Mostra no máximo 8 labels
+            interval={Math.max(0, Math.floor(data.length / 8))}
             tickFormatter={formatDateTime}
-            padding={{ left: 10, right: 10 }}
           />
           <YAxis
             stroke="#9CA3AF"
             tick={{ fill: '#9CA3AF', fontSize: 11 }}
-            tickFormatter={(value) => `$${value.toLocaleString('pt-BR', { minimumFractionDigits: 8 })}`}
+            tickFormatter={(value) => `$${value.toFixed(6)}`}
             domain={[minPrice - padding, maxPrice + padding]}
-            scale="linear"
-            padding={{ top: 10, bottom: 10 }}
           />
           <Tooltip content={<CustomTooltip />} />
-          <Legend
-            verticalAlign="top"
-            height={36}
-            wrapperStyle={{
-              paddingTop: '10px',
-              fontSize: '12px'
-            }}
-          />
-          <Line
-            type="monotone"
-            dataKey="gateio_price"
-            name="Gate.io (spot)"
-            stroke="#86EFAC"
-            dot={{ r: 2 }}
-            strokeWidth={2}
-            activeDot={{ r: 6 }}
-            connectNulls={true}
-            isAnimationActive={false}
-          />
-          <Line
-            type="monotone"
-            dataKey="mexc_price"
-            name="MEXC (futures)"
-            stroke="#60A5FA"
-            dot={{ r: 2 }}
-            strokeWidth={2}
-            activeDot={{ r: 6 }}
-            connectNulls={true}
-            isAnimationActive={false}
-          />
+          <Legend verticalAlign="top" height={36} wrapperStyle={{ paddingTop: '10px', fontSize: '12px' }} />
+          <Line type="monotone" dataKey="gateio_price" name="Gate.io (spot)" stroke="#86EFAC" dot={{ r: 2 }} strokeWidth={2} connectNulls isAnimationActive={false} />
+          <Line type="monotone" dataKey="mexc_price" name="MEXC (futures)" stroke="#60A5FA" dot={{ r: 2 }} strokeWidth={2} connectNulls isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>
