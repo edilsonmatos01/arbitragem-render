@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Configuração de hostname para evitar erro 502
+  experimental: {
+    serverComponentsExternalPackages: ['ws', 'ccxt']
+  },
+  
   images: {
     remotePatterns: [
       {
@@ -29,6 +34,22 @@ const nextConfig: NextConfig = {
       }
     ],
   },
+  
+  // Configuração de servidor para evitar erro 502
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'X-Frame-Options',
+            value: 'DENY',
+          },
+        ],
+      },
+    ];
+  },
+  
   /* config options here */
 };
 

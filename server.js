@@ -1,29 +1,36 @@
 const { createServer } = require('http');
 const { parse } = require('url');
 const next = require('next');
-require('dotenv').config();
 
 const dev = process.env.NODE_ENV !== 'production';
-const app = next({ dev });
-const handle = app.getRequestHandler();
+const hostname = process.env.HOSTNAME || '0.0.0.0';
+const port = parseInt(process.env.PORT || '10000', 10);
 
-// Importa e inicia o servidor WebSocket como um módulo.
-// Precisamos garantir que o websocket-server.ts exporte uma função de inicialização
-// e não inicie um servidor por conta própria.
-const { startWebSocketServer } = require('./dist/websocket-server');
+// Quando estiver em produção, use o build standalone
+if (!dev) {
+    const standaloneServer = require('./.next/standalone/server.js');
+    console.log(`> Usando servidor standalone na porta ${port}`);
+} else {
+    const app = next({ dev, hostname, port });
+    const handle = app.getRequestHandler();
 
-app.prepare().then(() => {
-  const httpServer = createServer((req, res) => {
-    const parsedUrl = parse(req.url, true);
-    handle(req, res, parsedUrl);
-  });
-
-  // Inicia o servidor WebSocket, anexando-o ao servidor HTTP principal.
-  startWebSocketServer(httpServer);
-
-  const port = process.env.PORT || 3000;
-  httpServer.listen(port, (err) => {
-    if (err) throw err;
-    console.log(`> Ready on http://localhost:${port}`);
-  });
-}); 
+    app.prepare().then(() => {
+        createServer(async (req, res) => {
+            try {
+                const parsedUrl = parse(req.url, true);
+                await handle(req, res, parsedUrl);
+            } catch (err) {
+                console.error('Error occurred handling', req.url, err);
+                res.statusCode = 500;
+                res.end('internal server error');
+            }
+        })
+        .once('error', (err) => {
+            console.error(err);
+            process.exit(1);
+        })
+        .listen(port, hostname, () => {
+            console.log(`> Ready on http://${hostname}:${port}`);
+        });
+    });
+} 

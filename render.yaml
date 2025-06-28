@@ -17,7 +17,7 @@ services:
   env: node
   plan: free
   buildCommand: npm install && npm run build
-  startCommand: node .next/standalone/server.js
+  startCommand: npm start
   envVars:
     - key: DATABASE_URL
       fromDatabase:
@@ -27,6 +27,8 @@ services:
       value: wss://arbitragem-worker.onrender.com
     - key: PORT
       value: 10000
+    - key: HOSTNAME
+      value: 0.0.0.0
 
 - type: worker
   name: arbitragem-worker
@@ -43,5 +45,7 @@ services:
       value: 8080
     - key: NODE_ENV
       value: production
+    - key: HOSTNAME
+      value: 0.0.0.0
 
 version: "1"
