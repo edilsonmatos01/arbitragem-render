@@ -96,7 +96,7 @@ function getTrackerParams(opportunity: Opportunity): {
 const POLLING_INTERVAL_MS = 5000; // Intervalo de polling: 5 segundos
 
 // ✅ 6. A renderização deve ser otimizada com React.memo
-const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSpreadDisplayClass, calcularLucro }: any) => {
+const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSpreadDisplayClass, calcularLucro, handleCadastrarPosicao }: any) => {
     
     // ✅ 4. Na renderização de cada linha da tabela, ao exibir os preços:
     const getLivePrice = (originalPrice: number, marketTypeStr: string, side: 'buy' | 'sell') => {
@@ -143,6 +143,15 @@ const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSp
             <td className="py-4 px-6 whitespace-nowrap text-sm">
               <MaxSpreadCell symbol={opportunity.symbol} />
             </td>
+            <td className="py-4 px-6 whitespace-nowrap text-center text-sm">
+              <button 
+                onClick={() => handleCadastrarPosicao(opportunity)}
+                className="flex items-center justify-center bg-custom-cyan hover:bg-custom-cyan/90 text-black font-bold py-2 px-3 rounded-md transition-colors text-sm gap-1"
+              >
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">Cadastrar</span>
+              </button>
+            </td>
 
         </tr>
     );
@@ -176,6 +185,17 @@ export default function ArbitrageTable() {
   // Estados para posições com persistência no banco de dados
   const [positions, setPositions] = useState<Position[]>([]);
   const [isLoadingPositions, setIsLoadingPositions] = useState(false);
+  
+  // Estados para o modal de cadastro de posição
+  const [isPositionModalOpen, setIsPositionModalOpen] = useState(false);
+  const [newPosition, setNewPosition] = useState({
+    symbol: '',
+    quantity: 0,
+    spotEntry: 0,
+    futuresEntry: 0,
+    spotExchange: 'gateio',
+    futuresExchange: 'mexc'
+  });
 
   // Carregar posições do banco de dados na inicialização
   useEffect(() => {
@@ -451,6 +471,76 @@ export default function ArbitrageTable() {
     }
   };
 
+  // Função para abrir o modal de cadastro com dados da oportunidade
+  const handleCadastrarPosicao = (opportunity: Opportunity) => {
+    // Determinar exchanges baseado no tipo de oportunidade
+    const spotExchange = opportunity.compraExchange.toLowerCase().includes('gate') ? 'gateio' : 'mexc';
+    const futuresExchange = opportunity.vendaExchange.toLowerCase().includes('mexc') ? 'mexc' : 'gateio';
+    
+    setNewPosition({
+      symbol: opportunity.symbol,
+      quantity: 0,
+      spotEntry: opportunity.compraPreco,
+      futuresEntry: opportunity.vendaPreco,
+      spotExchange: spotExchange,
+      futuresExchange: futuresExchange
+    });
+    setIsPositionModalOpen(true);
+  };
+
+  // Função para adicionar nova posição
+  const handleAddPosition = async () => {
+    if (!newPosition.symbol || newPosition.spotEntry <= 0 || newPosition.futuresEntry <= 0 || newPosition.quantity <= 0) {
+      setError('Por favor, preencha todos os campos obrigatórios');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const positionData = {
+        symbol: newPosition.symbol,
+        quantity: newPosition.quantity,
+        spotEntry: newPosition.spotEntry,
+        futuresEntry: newPosition.futuresEntry,
+        spotExchange: newPosition.spotExchange,
+        futuresExchange: newPosition.futuresExchange
+      };
+
+      const response = await fetch('/api/positions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(positionData),
+      });
+
+      if (response.ok) {
+        const newPositionFromServer = await response.json();
+        setPositions(prev => [...prev, newPositionFromServer]);
+        setSuccessMessage('Posição cadastrada com sucesso!');
+        setIsPositionModalOpen(false);
+        
+        // Reset form
+        setNewPosition({
+          symbol: '',
+          quantity: 0,
+          spotEntry: 0,
+          futuresEntry: 0,
+          spotExchange: 'gateio',
+          futuresExchange: 'mexc'
+        });
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || 'Erro ao cadastrar posição');
+      }
+    } catch (error) {
+      console.error('Erro ao cadastrar posição:', error);
+      setError('Erro ao cadastrar posição');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
 
 
   // Função para calcular PnL
@@ -630,13 +720,14 @@ export default function ArbitrageTable() {
                 <th className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Venda</th>
                 <th className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Spread %</th>
                 <th className="py-3 px-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Spread Máximo (24h)</th>
+                <th className="py-3 px-6 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
               {isLoading ? (
-                <tr><td colSpan={5} className="text-center py-8"><RefreshCw className="h-6 w-6 animate-spin inline-block mr-2" />Carregando oportunidades...</td></tr>
+                <tr><td colSpan={6} className="text-center py-8"><RefreshCw className="h-6 w-6 animate-spin inline-block mr-2" />Carregando oportunidades...</td></tr>
               ) : rankedOpportunities.length === 0 && !error ? (
-                <tr><td colSpan={5} className="text-center text-gray-400 py-8">Nenhuma oportunidade encontrada para os filtros selecionados.</td></tr>
+                <tr><td colSpan={6} className="text-center text-gray-400 py-8">Nenhuma oportunidade encontrada para os filtros selecionados.</td></tr>
               ) : (
                 rankedOpportunities.map((opportunity) => (
                   <OpportunityRow 
@@ -646,6 +737,7 @@ export default function ArbitrageTable() {
                     formatPrice={formatPrice}
                     getSpreadDisplayClass={getSpreadDisplayClass}
                     calcularLucro={calcularLucro}
+                    handleCadastrarPosicao={handleCadastrarPosicao}
                   />
                 ))
               )}
@@ -769,6 +861,136 @@ export default function ArbitrageTable() {
           )}
         </div>
       )}
+
+      {/* Modal de Cadastro de Posição */}
+      <Dialog open={isPositionModalOpen} onOpenChange={setIsPositionModalOpen}>
+        <DialogContent className="max-w-2xl bg-gray-900 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white">Cadastro de Posição</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6">
+            {/* Posição Spot */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-white">Posição Spot</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Exchange</label>
+                  <select
+                    value={newPosition.spotExchange}
+                    onChange={(e) => setNewPosition(prev => ({ ...prev, spotExchange: e.target.value }))}
+                    className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan"
+                  >
+                    {EXCHANGES.map(ex => (
+                      <option key={ex.value} value={ex.value}>{ex.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Símbolo</label>
+                  <input
+                    type="text"
+                    value={newPosition.symbol}
+                    onChange={(e) => setNewPosition(prev => ({ ...prev, symbol: e.target.value }))}
+                    className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan"
+                    placeholder="Ex: BTC/USDT"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Preço de Entrada</label>
+                  <input
+                    type="number"
+                    step="0.00000001"
+                    min="0"
+                    value={newPosition.spotEntry}
+                    onChange={(e) => setNewPosition(prev => ({ ...prev, spotEntry: Number(e.target.value) }))}
+                    className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan"
+                    placeholder="Preço de entrada spot"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Quantidade</label>
+                  <input
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    value={newPosition.quantity}
+                    onChange={(e) => setNewPosition(prev => ({ ...prev, quantity: Number(e.target.value) }))}
+                    className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan"
+                    placeholder="Quantidade a operar"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Posição Futures */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-white">Posição Futures</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Exchange</label>
+                  <select
+                    value={newPosition.futuresExchange}
+                    onChange={(e) => setNewPosition(prev => ({ ...prev, futuresExchange: e.target.value }))}
+                    className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan"
+                  >
+                    {EXCHANGES.map(ex => (
+                      <option key={ex.value} value={ex.value}>{ex.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Símbolo</label>
+                  <input
+                    type="text"
+                    value={newPosition.symbol}
+                    disabled
+                    className="w-full bg-gray-600 border-gray-600 text-gray-400 rounded-md p-2 cursor-not-allowed"
+                    placeholder="Mesmo símbolo do spot"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Preço de Entrada</label>
+                  <input
+                    type="number"
+                    step="0.00000001"
+                    min="0"
+                    value={newPosition.futuresEntry}
+                    onChange={(e) => setNewPosition(prev => ({ ...prev, futuresEntry: Number(e.target.value) }))}
+                    className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan"
+                    placeholder="Preço de entrada futures"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Quantidade</label>
+                  <input
+                    type="number"
+                    value={newPosition.quantity}
+                    disabled
+                    className="w-full bg-gray-600 border-gray-600 text-gray-400 rounded-md p-2 cursor-not-allowed"
+                    placeholder="Mesma quantidade do spot"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4">
+              <button
+                onClick={() => setIsPositionModalOpen(false)}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-md transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleAddPosition}
+                disabled={isLoading}
+                className="px-4 py-2 bg-custom-cyan hover:bg-custom-cyan/90 text-black font-bold rounded-md transition-colors disabled:opacity-50"
+              >
+                {isLoading ? 'Cadastrando...' : 'Cadastrar Posição'}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 
