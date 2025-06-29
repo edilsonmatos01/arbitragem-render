@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
-import { X } from 'lucide-react';
 
 interface Position {
   id: string;
@@ -35,22 +34,25 @@ export default function FinalizePositionModal({
   currentFuturesPrice,
   onFinalize
 }: FinalizePositionModalProps) {
-  const [spotExitPrice, setSpotExitPrice] = useState(0);
-  const [futuresExitPrice, setFuturesExitPrice] = useState(0);
+  const [spotExitPrice, setSpotExitPrice] = useState('');
+  const [futuresExitPrice, setFuturesExitPrice] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Atualiza os preços quando o modal abre
+  // Limpa os campos quando o modal abre
   useEffect(() => {
     if (isOpen && position) {
-      setSpotExitPrice(currentSpotPrice);
-      setFuturesExitPrice(currentFuturesPrice);
+      setSpotExitPrice('');
+      setFuturesExitPrice('');
       setError(null);
     }
-  }, [isOpen, position, currentSpotPrice, currentFuturesPrice]);
+  }, [isOpen, position]);
 
   const calculatePnL = () => {
-    if (!position || spotExitPrice <= 0 || futuresExitPrice <= 0) {
+    const spotExit = parseFloat(spotExitPrice);
+    const futuresExit = parseFloat(futuresExitPrice);
+    
+    if (!position || !spotExitPrice || !futuresExitPrice || spotExit <= 0 || futuresExit <= 0) {
       return { spotPnL: 0, futuresPnL: 0, totalPnL: 0, percentPnL: 0 };
     }
 
@@ -58,18 +60,18 @@ export default function FinalizePositionModal({
     // PnL = (Preço de Saída - Preço de Entrada) × Quantidade
     
     // PnL Spot: venda do ativo comprado
-    const spotPnL = (spotExitPrice - position.spotEntry) * position.quantity;
+    const spotPnL = (spotExit - position.spotEntry) * position.quantity;
     
     // PnL Futures: recompra do ativo vendido (posição short)
-    const futuresPnL = (position.futuresEntry - futuresExitPrice) * position.quantity;
+    const futuresPnL = (position.futuresEntry - futuresExit) * position.quantity;
     
     // PnL Total
     const totalPnL = spotPnL + futuresPnL;
 
-    // Cálculo do PnL percentual para referência
-    const spotPnLPercent = position.spotEntry > 0 ? ((spotExitPrice - position.spotEntry) / position.spotEntry) * 100 : 0;
-    const futuresPnLPercent = position.futuresEntry > 0 ? ((position.futuresEntry - futuresExitPrice) / position.futuresEntry) * 100 : 0;
-    const percentPnL = spotPnLPercent + futuresPnLPercent;
+    // ✅ Fórmula atualizada para Percentual Total:
+    // Percentual = (Lucro Total / Spot Entry × Quantidade) × 100
+    const investedOnlyInSpot = position.spotEntry * position.quantity;
+    const percentPnL = investedOnlyInSpot > 0 ? (totalPnL / investedOnlyInSpot) * 100 : 0;
 
     return { spotPnL, futuresPnL, totalPnL, percentPnL };
   };
@@ -77,9 +79,12 @@ export default function FinalizePositionModal({
   const handleSubmit = async () => {
     if (!position) return;
 
+    const spotExit = parseFloat(spotExitPrice);
+    const futuresExit = parseFloat(futuresExitPrice);
+
     // Validações
-    if (spotExitPrice <= 0 || futuresExitPrice <= 0) {
-      setError('Por favor, preencha todos os preços de saída');
+    if (!spotExitPrice || !futuresExitPrice || spotExit <= 0 || futuresExit <= 0) {
+      setError('Por favor, preencha todos os preços de saída com valores válidos');
       return;
     }
 
@@ -88,8 +93,8 @@ export default function FinalizePositionModal({
 
     try {
       await onFinalize({
-        spotExitPrice,
-        futuresExitPrice
+        spotExitPrice: spotExit,
+        futuresExitPrice: futuresExit
       });
       onClose();
     } catch (error) {
@@ -102,8 +107,8 @@ export default function FinalizePositionModal({
 
   const handleClose = () => {
     if (!isSubmitting) {
-      setSpotExitPrice(0);
-      setFuturesExitPrice(0);
+      setSpotExitPrice('');
+      setFuturesExitPrice('');
       setError(null);
       onClose();
     }
@@ -117,16 +122,7 @@ export default function FinalizePositionModal({
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-2xl bg-gray-900 text-white">
         <DialogHeader>
-          <div className="flex justify-between items-center">
-            <DialogTitle className="text-white">Finalizar Posição - {position.symbol}</DialogTitle>
-            <button
-              onClick={handleClose}
-              disabled={isSubmitting}
-              className="text-gray-400 hover:text-white transition-colors disabled:opacity-50"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
+          <DialogTitle className="text-white">Finalizar Posição - {position.symbol}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6">
@@ -159,11 +155,11 @@ export default function FinalizePositionModal({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-sm text-gray-400">Spot (Entrada)</p>
-                <p className="text-white font-medium">${position.spotEntry.toFixed(4)}</p>
+                <p className="text-white font-medium">${position.spotEntry}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-400">Futures (Entrada)</p>
-                <p className="text-white font-medium">${position.futuresEntry.toFixed(4)}</p>
+                <p className="text-white font-medium">${position.futuresEntry}</p>
               </div>
             </div>
           </div>
@@ -182,7 +178,7 @@ export default function FinalizePositionModal({
                   type="number"
                   step="0.0001"
                   value={spotExitPrice}
-                  onChange={(e) => setSpotExitPrice(Number(e.target.value))}
+                  onChange={(e) => setSpotExitPrice(e.target.value)}
                   className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan"
                   placeholder={`Atual: $${currentSpotPrice.toFixed(4)}`}
                   required
@@ -199,7 +195,7 @@ export default function FinalizePositionModal({
                   type="number"
                   step="0.0001"
                   value={futuresExitPrice}
-                  onChange={(e) => setFuturesExitPrice(Number(e.target.value))}
+                  onChange={(e) => setFuturesExitPrice(e.target.value)}
                   className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan"
                   placeholder={`Atual: $${currentFuturesPrice.toFixed(4)}`}
                   required
@@ -209,52 +205,38 @@ export default function FinalizePositionModal({
                 </p>
               </div>
             </div>
+
+            {/* PnL em tempo real - aparece assim que preencher um dos campos */}
+            {(spotExitPrice || futuresExitPrice) && (
+              <div className="mt-4 p-3 bg-gray-700/50 rounded-lg">
+                <h4 className="text-sm font-medium text-gray-300 mb-2">Resultado Parcial:</h4>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-gray-400">Spot PnL:</p>
+                    <p className={`font-medium ${spotPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {spotPnL >= 0 ? '+' : ''}${spotPnL.toFixed(2)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400">Futures PnL:</p>
+                    <p className={`font-medium ${futuresPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {futuresPnL >= 0 ? '+' : ''}${futuresPnL.toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+                {parseFloat(spotExitPrice) > 0 && parseFloat(futuresExitPrice) > 0 && (
+                  <div className="mt-2 pt-2 border-t border-gray-600">
+                    <p className="text-gray-400 text-sm">Total PnL:</p>
+                    <p className={`text-lg font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)} ({percentPnL >= 0 ? '+' : ''}{percentPnL.toFixed(2)}%)
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Previsão de Resultado */}
-          {spotExitPrice > 0 && futuresExitPrice > 0 && (
-            <div className="bg-gray-800 p-4 rounded-lg">
-              <h3 className="text-lg font-semibold text-white mb-3">Previsão de Resultado</h3>
-              
-              {/* Fórmula explicativa */}
-              <div className="mb-4 p-3 bg-gray-700 rounded-lg">
-                <p className="text-xs text-gray-300 mb-1">
-                  ✅ <strong>Fórmula:</strong> PnL = (Preço de Saída - Preço de Entrada) × Quantidade
-                </p>
-                <div className="text-xs text-gray-400 space-y-1">
-                  <p>• Spot: ({spotExitPrice.toFixed(4)} - {position.spotEntry.toFixed(4)}) × {position.quantity.toFixed(4)} = ${spotPnL.toFixed(2)}</p>
-                  <p>• Futures: ({position.futuresEntry.toFixed(4)} - {futuresExitPrice.toFixed(4)}) × {position.quantity.toFixed(4)} = ${futuresPnL.toFixed(2)}</p>
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-400">PnL Spot (Venda)</p>
-                  <p className={`font-medium ${spotPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {spotPnL >= 0 ? '+' : ''}${spotPnL.toFixed(2)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-400">PnL Futures (Recompra)</p>
-                  <p className={`font-medium ${futuresPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {futuresPnL >= 0 ? '+' : ''}${futuresPnL.toFixed(2)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-400">Lucro/Prejuízo Total</p>
-                  <p className={`text-lg font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-400">Percentual Total</p>
-                  <p className={`text-lg font-bold ${percentPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {percentPnL >= 0 ? '+' : ''}{percentPnL.toFixed(2)}%
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Erro */}
           {error && (
@@ -274,7 +256,7 @@ export default function FinalizePositionModal({
             </button>
             <button
               onClick={handleSubmit}
-              disabled={isSubmitting || spotExitPrice <= 0 || futuresExitPrice <= 0}
+              disabled={isSubmitting || !spotExitPrice || !futuresExitPrice || parseFloat(spotExitPrice) <= 0 || parseFloat(futuresExitPrice) <= 0}
               className="px-6 py-2 bg-custom-cyan hover:bg-custom-cyan/90 text-black font-bold rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? 'Finalizando...' : 'Finalizar Posição'}

@@ -849,29 +849,30 @@ export default function ArbitrageTable() {
               <span className="text-gray-400">Carregando posições...</span>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             {positions.map((position) => {
               const { totalPnL, pnlPercent, currentSpotPrice, currentFuturesPrice } = calculatePnL(position);
               const entrySpread = ((position.futuresEntry - position.spotEntry) / position.spotEntry) * 100;
               const currentSpread = ((currentFuturesPrice - currentSpotPrice) / currentSpotPrice) * 100;
 
-              // Função para mapear exchange para nome de exibição
-              const getExchangeDisplayName = (exchange: string, marketType: 'spot' | 'futures') => {
-                const exchangeMap: { [key: string]: string } = {
-                  'gateio': 'Gate.io',
-                  'mexc': 'MEXC'
+                              // Função para mapear exchange para nome de exibição
+                const getExchangeDisplayName = (exchange: string) => {
+                  const exchangeMap: { [key: string]: string } = {
+                    'gateio': 'Gate.io',
+                    'mexc': 'MEXC'
+                  };
+                  return exchangeMap[exchange] || exchange;
                 };
-                const baseName = exchangeMap[exchange] || exchange;
-                return `${baseName} (${marketType})`;
-              };
 
-              return (
+                return (
                 <div key={position.id} className="bg-gray-800 p-4 rounded-lg border border-gray-700 relative">
-                  {/* Header com símbolo e botão de lixeira */}
-                  <div className="flex justify-between items-center mb-3">
-                    <div className="text-left">
+                  {/* Header com símbolo, quantidade e botão de lixeira */}
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
                       <h3 className="text-lg font-bold text-white">{position.symbol}</h3>
-                      <p className="text-xs text-gray-400">Spot vs Futures</p>
+                      <p className="text-sm text-custom-cyan font-medium">
+                        {position.quantity.toFixed(3)} {position.symbol.split('/')[0]}
+                      </p>
                     </div>
                     <button
                       onClick={() => handleRemovePosition(position.id)}
@@ -881,67 +882,61 @@ export default function ArbitrageTable() {
                     </button>
                   </div>
 
-                  {/* Quantidade-Aporte - alinhado à direita */}
-                  <div className="text-right mb-3">
-                    <p className="text-xs text-custom-cyan font-medium">Quantidade-Aporte</p>
-                    <p className="text-sm font-bold text-custom-cyan">{position.quantity.toFixed(3)} {position.symbol.split('/')[0]}</p>
+                  {/* Estratégia - Spot vs Futures */}
+                  <div className="grid grid-cols-2 gap-3 mb-3 text-xs">
+                    <div className="bg-gray-700/50 p-2 rounded">
+                      <p className="text-gray-400 mb-1">SPOT ({getExchangeDisplayName(position.spotExchange)})</p>
+                      <p className="text-white font-medium">Entrada: {formatPrice(position.spotEntry)}</p>
+                      <p className="text-gray-300">Atual: {formatPrice(currentSpotPrice)}</p>
+                    </div>
+                    <div className="bg-gray-700/50 p-2 rounded">
+                      <p className="text-gray-400 mb-1">FUTURES ({getExchangeDisplayName(position.futuresExchange)})</p>
+                      <p className="text-white font-medium">Entrada: {formatPrice(position.futuresEntry)}</p>
+                      <p className="text-gray-300">Atual: {formatPrice(currentFuturesPrice)}</p>
+                    </div>
                   </div>
 
-                  {/* Preços de Entrada - alinhados à esquerda */}
-                  <div className="grid grid-cols-3 gap-2 mb-3">
-                    <div className="text-left">
-                      <p className="text-xs text-gray-400">{getExchangeDisplayName(position.spotExchange, 'spot')}</p>
-                      <p className="text-xs font-bold text-white">{formatPrice(position.spotEntry)}</p>
-                    </div>
-                    <div className="text-left">
-                      <p className="text-xs text-gray-400">{getExchangeDisplayName(position.futuresExchange, 'futures')}</p>
-                      <p className="text-xs font-bold text-white">{formatPrice(position.futuresEntry)}</p>
-                    </div>
-                    <div className="text-left">
-                      <p className="text-xs text-gray-400">Spread</p>
-                      <p className={`text-xs font-bold ${entrySpread >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {/* Spread e Performance */}
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div className="text-center">
+                      <p className="text-xs text-gray-400 mb-1">Spread Entrada</p>
+                      <p className={`text-sm font-bold ${entrySpread >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {entrySpread.toFixed(2)}%
                       </p>
                     </div>
-                  </div>
-
-                  {/* Preços Atuais - alinhados à esquerda */}
-                  <div className="grid grid-cols-2 gap-2 mb-3 py-2 border-t border-gray-600">
-                    <div className="text-left">
-                      <p className="text-xs text-gray-400">Preço atual-Spot</p>
-                      <p className="text-xs font-bold text-white">{formatPrice(currentSpotPrice)}</p>
-                    </div>
-                    <div className="text-left">
-                      <p className="text-xs text-gray-400">Preço atual-Futures</p>
-                      <p className="text-xs font-bold text-white">{formatPrice(currentFuturesPrice)}</p>
+                    <div className="text-center">
+                      <p className="text-xs text-gray-400 mb-1">Spread Atual</p>
+                      <p className={`text-sm font-bold ${currentSpread >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {currentSpread.toFixed(2)}%
+                      </p>
                     </div>
                   </div>
 
-                  {/* PnL - alinhados à esquerda */}
-                  <div className="grid grid-cols-2 gap-2 mb-3">
-                    <div className="text-left">
-                      <p className="text-xs text-gray-400">TotalPnL</p>
-                      <p className={`text-sm font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="text-left">
-                      <p className="text-xs text-gray-400">pnlPercent</p>
-                      <p className={`text-sm font-bold ${pnlPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%
-                      </p>
+                  {/* PnL Destacado */}
+                  <div className="bg-gray-700/30 p-3 rounded mb-3">
+                    <div className="grid grid-cols-2 gap-3 text-center">
+                      <div>
+                        <p className="text-xs text-gray-400 mb-1">P&L Total</p>
+                        <p className={`text-lg font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400 mb-1">P&L %</p>
+                        <p className={`text-lg font-bold ${pnlPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%
+                        </p>
+                      </div>
                     </div>
                   </div>
 
                   {/* Botão Finalizar */}
-                  <div className="pt-2 border-t border-gray-600">
-                    <button
-                      onClick={() => handleFinalizePosition(position.id)}
-                      className="w-full py-2 bg-custom-cyan hover:bg-custom-cyan/90 text-black font-bold rounded-md transition-colors text-sm"
-                    >
-                      Finalizar Posição
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => handleFinalizePosition(position.id)}
+                    className="w-full py-2 bg-custom-cyan hover:bg-custom-cyan/90 text-black font-bold rounded transition-colors text-sm"
+                  >
+                    Finalizar Posição
+                  </button>
                 </div>
               );
             })}

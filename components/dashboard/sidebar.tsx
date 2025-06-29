@@ -36,7 +36,7 @@ export default function Sidebar({ user, navItems }: SidebarProps) {
         <ProfileImageUpload
           currentImage={currentImage}
           onImageChange={handleImageChange}
-          userName="EDILSON.M"
+          userName="Arbitrack"
         />
       </div>
       <nav className="flex-1">
@@ -63,10 +63,10 @@ export default function Sidebar({ user, navItems }: SidebarProps) {
           })}
         </ul>
       </nav>
-      <UserNav
-        userName="EDILSON.M"
-        userImage="/images/avatar.png.png"
-      />
+              <UserNav 
+          userName="Arbitrack"
+          userImage="/images/avatar.png.png"
+        />
       {/* Pode adicionar um rodapé à sidebar aqui, se necessário */}
     </aside>
   );
