@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { X } from 'lucide-react';
 
@@ -41,13 +41,13 @@ export default function FinalizePositionModal({
   const [error, setError] = useState<string | null>(null);
 
   // Atualiza os preços quando o modal abre
-  useState(() => {
+  useEffect(() => {
     if (isOpen && position) {
       setSpotExitPrice(currentSpotPrice);
       setFuturesExitPrice(currentFuturesPrice);
       setError(null);
     }
-  });
+  }, [isOpen, position, currentSpotPrice, currentFuturesPrice]);
 
   const calculatePnL = () => {
     if (!position || spotExitPrice <= 0 || futuresExitPrice <= 0) {
