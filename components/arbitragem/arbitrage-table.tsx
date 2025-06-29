@@ -6,6 +6,7 @@ import MaxSpreadCell from './MaxSpreadCell'; // Importar o novo componente
 import React from 'react';
 import Decimal from 'decimal.js';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import FinalizePositionModal from './FinalizePositionModal';
 
 const EXCHANGES = [
   { value: "gateio", label: "Gate.io" },
@@ -461,13 +462,72 @@ export default function ArbitrageTable() {
     }
   };
 
-  // Função para finalizar posição
+  // Estados para o modal de finalização
+  const [isFinalizationModalOpen, setIsFinalizationModalOpen] = useState(false);
+  const [positionToFinalize, setPositionToFinalize] = useState<Position | null>(null);
+
+  // Função para abrir modal de finalização
   const handleFinalizePosition = async (positionId: string) => {
     const position = positions.find(p => p.id === positionId);
     if (position) {
-      await handleRemovePosition(positionId);
-      setSuccessMessage(`Posição ${position.symbol} finalizada com sucesso!`);
+      setPositionToFinalize(position);
+      setIsFinalizationModalOpen(true);
+    }
+  };
+
+  // Função para processar a finalização com dados do modal
+  const handleFinalizationSubmit = async (exitData: { spotExitPrice: number; futuresExitPrice: number }) => {
+    if (!positionToFinalize) return;
+
+    try {
+      // Calcular PnL
+      const spotPnL = (exitData.spotExitPrice - positionToFinalize.spotEntry) * positionToFinalize.quantity;
+      const futuresPnL = (positionToFinalize.futuresEntry - exitData.futuresExitPrice) * positionToFinalize.quantity;
+      const totalPnL = spotPnL + futuresPnL;
+
+      const spotPnLPercent = ((exitData.spotExitPrice - positionToFinalize.spotEntry) / positionToFinalize.spotEntry) * 100;
+      const futuresPnLPercent = ((positionToFinalize.futuresEntry - exitData.futuresExitPrice) / positionToFinalize.futuresEntry) * 100;
+      const percentPnL = spotPnLPercent + futuresPnLPercent;
+
+      // Salvar no histórico
+      const historyData = {
+        symbol: positionToFinalize.symbol,
+        quantity: positionToFinalize.quantity,
+        spotEntryPrice: positionToFinalize.spotEntry,
+        futuresEntryPrice: positionToFinalize.futuresEntry,
+        spotExitPrice: exitData.spotExitPrice,
+        futuresExitPrice: exitData.futuresExitPrice,
+        spotExchange: positionToFinalize.spotExchange,
+        futuresExchange: positionToFinalize.futuresExchange,
+        profitLossUsd: totalPnL,
+        profitLossPercent: percentPnL,
+        createdAt: positionToFinalize.createdAt
+      };
+
+      // Tentar salvar no banco
+      try {
+        await fetch('/api/operation-history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(historyData)
+        });
+      } catch (error) {
+        console.error('Erro ao salvar no histórico:', error);
+        // Continua mesmo se falhar o histórico
+      }
+
+      // Remover posição
+      await handleRemovePosition(positionToFinalize.id);
+      
+      setSuccessMessage(`Posição ${positionToFinalize.symbol} finalizada com sucesso! Lucro/Prejuízo: ${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)}`);
       setTimeout(() => setSuccessMessage(null), 5000);
+
+      // Fechar modal
+      setIsFinalizationModalOpen(false);
+      setPositionToFinalize(null);
+    } catch (error) {
+      console.error('Erro ao finalizar posição:', error);
+      throw error; // Propaga o erro para o modal
     }
   };
 
@@ -991,6 +1051,19 @@ export default function ArbitrageTable() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Finalização de Posição */}
+      <FinalizePositionModal
+        isOpen={isFinalizationModalOpen}
+        onClose={() => {
+          setIsFinalizationModalOpen(false);
+          setPositionToFinalize(null);
+        }}
+        position={positionToFinalize}
+        currentSpotPrice={positionToFinalize ? getCurrentSpotPrice(positionToFinalize) : 0}
+        currentFuturesPrice={positionToFinalize ? getCurrentFuturesPrice(positionToFinalize) : 0}
+        onFinalize={handleFinalizationSubmit}
+      />
     </div>
   );
 } 

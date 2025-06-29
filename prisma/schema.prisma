@@ -67,3 +67,21 @@ model Position {
 
   @@index([symbol])
 }
+
+model OperationHistory {
+  id                String   @id @default(cuid())
+  symbol            String
+  quantity          Float
+  spotEntryPrice    Float
+  futuresEntryPrice Float
+  spotExitPrice     Float
+  futuresExitPrice  Float
+  spotExchange      String
+  futuresExchange   String
+  profitLossUsd     Float
+  profitLossPercent Float
+  createdAt         DateTime @default(now())
+  finalizedAt       DateTime @default(now())
+
+  @@index([symbol, finalizedAt])
+}

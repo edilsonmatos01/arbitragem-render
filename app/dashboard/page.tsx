@@ -66,7 +66,7 @@ export default function DashboardPage() {
     { title: 'Dashboard', href: '/dashboard', icon: AppIcons.LayoutDashboard },
     { title: 'Arbitragem', href: '/arbitragem', icon: AppIcons.Repeat },
     { title: 'Carteiras', href: '/carteiras', icon: AppIcons.Wallet },
-    { title: 'Históricos', href: '/historicos', icon: AppIcons.History },
+    { title: 'Histórico', href: '/historico', icon: AppIcons.History },
     { title: 'Configurações', href: '/configuracoes', icon: AppIcons.Settings },
   ];
 
