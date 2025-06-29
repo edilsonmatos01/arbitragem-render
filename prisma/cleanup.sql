@@ -1,10 +1,10 @@
--- Deletar registros de SpreadHistory mais antigos que 7 dias
+-- Deletar registros de SpreadHistory mais antigos que 24 horas
 DELETE FROM "SpreadHistory"
-WHERE timestamp < NOW() - INTERVAL '7 days';
+WHERE timestamp < NOW() - INTERVAL '24 hours';
 
--- Deletar registros de PriceHistory mais antigos que 7 dias
+-- Deletar registros de PriceHistory mais antigos que 24 horas
 DELETE FROM "PriceHistory"
-WHERE timestamp < NOW() - INTERVAL '7 days';
+WHERE timestamp < NOW() - INTERVAL '24 hours';
 
 -- Executar VACUUM para liberar espaço físico
 VACUUM FULL "SpreadHistory";

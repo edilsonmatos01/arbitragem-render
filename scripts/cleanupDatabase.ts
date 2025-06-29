@@ -10,20 +10,20 @@ async function cleanup() {
     try {
         console.log('Iniciando limpeza do banco de dados...');
 
-        // Deletar registros antigos do SpreadHistory
+        // Deletar registros antigos do SpreadHistory (mais de 24 horas)
         const deletedSpreads = await prisma.spreadHistory.deleteMany({
             where: {
                 timestamp: {
-                    lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // 7 dias atrás
+                    lt: new Date(Date.now() - 24 * 60 * 60 * 1000) // 24 horas atrás
                 }
             }
         });
         console.log(`Deletados ${deletedSpreads.count} registros antigos de SpreadHistory`);
 
-        // Deletar registros antigos do PriceHistory
+        // Deletar registros antigos do PriceHistory (mais de 24 horas)
         const deletedPrices = await prisma.$queryRaw<DeleteResult[]>`
             DELETE FROM "PriceHistory"
-            WHERE timestamp < NOW() - INTERVAL '7 days'
+            WHERE timestamp < NOW() - INTERVAL '24 hours'
             RETURNING COUNT(*) as count
         `;
         console.log(`Deletados ${deletedPrices[0].count} registros antigos de PriceHistory`);

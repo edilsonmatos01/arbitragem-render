@@ -35,11 +35,11 @@ function cleanOldData() {
         }
     });
 }
-// Agenda a limpeza para rodar a cada hora
-// O '0 * * * *' significa: no minuto 0 de cada hora
-node_cron_1.default.schedule('0 * * * *', cleanOldData, {
+// Agenda a limpeza para rodar diariamente às 02:00 (mantém apenas últimas 24h)
+// O '0 2 * * *' significa: às 02:00 de cada dia
+node_cron_1.default.schedule('0 2 * * *', cleanOldData, {
     timezone: "America/Sao_Paulo"
 });
-console.log('Limpeza automática agendada. Rodará a cada hora.');
+console.log('Limpeza automática agendada. Rodará diariamente às 02:00 (mantém apenas últimas 24h).');
 // Mantém o processo rodando
 process.stdin.resume();

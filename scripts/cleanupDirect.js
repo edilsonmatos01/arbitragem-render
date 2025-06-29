@@ -13,18 +13,18 @@ async function cleanup() {
     await client.connect();
     console.log('Conectado ao banco de dados com sucesso!');
 
-    // Deletar registros antigos do SpreadHistory
+    // Deletar registros antigos do SpreadHistory (mais de 24 horas)
     const deletedSpreads = await client.query(`
       DELETE FROM "SpreadHistory"
-      WHERE timestamp < NOW() - INTERVAL '7 days'
+      WHERE timestamp < NOW() - INTERVAL '24 hours'
       RETURNING COUNT(*) as count
     `);
     console.log(`Deletados ${deletedSpreads.rows[0].count} registros antigos de SpreadHistory`);
 
-    // Deletar registros antigos do PriceHistory
+    // Deletar registros antigos do PriceHistory (mais de 24 horas)
     const deletedPrices = await client.query(`
       DELETE FROM "PriceHistory"
-      WHERE timestamp < NOW() - INTERVAL '7 days'
+      WHERE timestamp < NOW() - INTERVAL '24 hours'
       RETURNING COUNT(*) as count
     `);
     console.log(`Deletados ${deletedPrices.rows[0].count} registros antigos de PriceHistory`);

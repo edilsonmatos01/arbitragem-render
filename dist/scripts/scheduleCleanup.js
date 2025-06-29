@@ -13,14 +13,14 @@ async function cleanup() {
         const deletedSpreads = await prisma.spreadHistory.deleteMany({
             where: {
                 timestamp: {
-                    lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+                    lt: new Date(Date.now() - 24 * 60 * 60 * 1000)
                 }
             }
         });
         console.log(`[${timestamp}] Deletados ${deletedSpreads.count} registros antigos de SpreadHistory`);
         const deletedPrices = await prisma.$queryRaw `
             DELETE FROM "PriceHistory"
-            WHERE timestamp < NOW() - INTERVAL '7 days'
+            WHERE timestamp < NOW() - INTERVAL '24 hours'
             RETURNING COUNT(*) as count
         `;
         console.log(`[${timestamp}] Deletados ${deletedPrices[0].count} registros antigos de PriceHistory`);
@@ -38,7 +38,7 @@ async function cleanup() {
         throw error;
     }
 }
-node_cron_1.default.schedule('0 0 * * *', async () => {
+node_cron_1.default.schedule('0 2 * * *', async () => {
     try {
         await cleanup();
     }
@@ -50,7 +50,7 @@ cleanup()
     .catch(error => {
     console.error('Erro na limpeza inicial:', error);
 });
-console.log('Script de limpeza agendada iniciado. Rodará todos os dias às 00:00.');
+console.log('Script de limpeza agendada iniciado. Rodará diariamente às 02:00 (mantém apenas últimas 24h).');
 process.on('SIGINT', async () => {
     console.log('Encerrando script de limpeza...');
     await prisma.$disconnect();

@@ -8,14 +8,14 @@ async function cleanup() {
         const deletedSpreads = await prisma.spreadHistory.deleteMany({
             where: {
                 timestamp: {
-                    lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+                    lt: new Date(Date.now() - 24 * 60 * 60 * 1000)
                 }
             }
         });
         console.log(`Deletados ${deletedSpreads.count} registros antigos de SpreadHistory`);
         const deletedPrices = await prisma.$queryRaw `
             DELETE FROM "PriceHistory"
-            WHERE timestamp < NOW() - INTERVAL '7 days'
+            WHERE timestamp < NOW() - INTERVAL '24 hours'
             RETURNING COUNT(*) as count
         `;
         console.log(`Deletados ${deletedPrices[0].count} registros antigos de PriceHistory`);

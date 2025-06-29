@@ -94,8 +94,10 @@ function initializeStandaloneServer() {
         }
     });
     startWebSocketServer(httpServer);
-    httpServer.listen(PORT, () => {
-        console.log(`[Servidor Standalone] Servidor HTTP e WebSocket escutando na porta ${PORT}`);
+    httpServer.listen(PORT, '0.0.0.0', () => {
+        console.log(`[Servidor Standalone] Servidor HTTP e WebSocket escutando na porta ${PORT} em todas as interfaces`);
+        console.log(`[Servidor Standalone] Health check disponível em: http://0.0.0.0:${PORT}/health`);
+        console.log(`[Servidor Standalone] WebSocket disponível em: ws://0.0.0.0:${PORT}`);
     });
 }
 if (require.main === module) {
@@ -338,7 +340,7 @@ async function startFeeds() {
             const gateioCount = Object.keys(marketPrices['gateio'] || {}).length;
             const mexcCount = Object.keys(marketPrices['mexc'] || {}).length;
             console.log(`[STATUS] Gate.io: ${gateioCount} símbolos | MEXC: ${mexcCount} símbolos`);
-        }, 30000);
+        }, 30 * 60 * 1000);
     }
     catch (error) {
         console.error('[Feeds] ===== ERRO CRÍTICO =====');

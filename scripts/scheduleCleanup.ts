@@ -12,20 +12,20 @@ async function cleanup() {
         console.log('Iniciando limpeza do banco de dados...');
         const timestamp = new Date().toISOString();
 
-        // Deletar registros antigos do SpreadHistory
+        // Deletar registros antigos do SpreadHistory (mais de 24 horas)
         const deletedSpreads = await prisma.spreadHistory.deleteMany({
             where: {
                 timestamp: {
-                    lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // 7 dias atrás
+                    lt: new Date(Date.now() - 24 * 60 * 60 * 1000) // 24 horas atrás
                 }
             }
         });
         console.log(`[${timestamp}] Deletados ${deletedSpreads.count} registros antigos de SpreadHistory`);
 
-        // Deletar registros antigos do PriceHistory
+        // Deletar registros antigos do PriceHistory (mais de 24 horas)
         const deletedPrices = await prisma.$queryRaw<DeleteResult[]>`
             DELETE FROM "PriceHistory"
-            WHERE timestamp < NOW() - INTERVAL '7 days'
+            WHERE timestamp < NOW() - INTERVAL '24 hours'
             RETURNING COUNT(*) as count
         `;
         console.log(`[${timestamp}] Deletados ${deletedPrices[0].count} registros antigos de PriceHistory`);
@@ -47,8 +47,8 @@ async function cleanup() {
     }
 }
 
-// Agendar limpeza para rodar toda semana aos domingos às 00:00 (otimizado para economia)
-cron.schedule('0 0 * * 0', async () => {
+// Agendar limpeza para rodar diariamente às 02:00 (mantém apenas últimas 24h)
+cron.schedule('0 2 * * *', async () => {
     try {
         await cleanup();
     } catch (error) {
@@ -62,7 +62,7 @@ cleanup()
         console.error('Erro na limpeza inicial:', error);
     });
 
-console.log('Script de limpeza agendada iniciado. Rodará toda semana aos domingos às 00:00.');
+console.log('Script de limpeza agendada iniciado. Rodará diariamente às 02:00 (mantém apenas últimas 24h).');
 
 // Manter o processo rodando
 process.on('SIGINT', async () => {
