@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/safe-web-build.js",
+    "build:next": "next build",
     "start": "next start -H 0.0.0.0 -p ${PORT:-10000}",
     "lint": "next lint",
     "dev:tracker": "ts-node-dev --respawn --transpile-only --project tsconfig.server.json websocket-server.ts",
@@ -18,7 +19,7 @@
     "clean:db": "ts-node scripts/cleanupDatabase.ts",
     "clean:db:scheduled": "ts-node scripts/scheduleCleanup.ts",
     "fix:migrations": "node scripts/fix-production-migrations.js",
-    "db:setup": "prisma migrate deploy",
+    "db:setup": "prisma generate",
     "build:cron": "tsc -p tsconfig.server.json && npm run copy-env",
     "start:cron": "node dist/scripts/server.js",
     "copy-env": "cp .env dist/.env || true",
