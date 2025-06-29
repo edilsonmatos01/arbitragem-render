@@ -3,30 +3,51 @@ export const fetchCache = 'force-no-store';
 import { NextResponse } from 'next/server';
 import ccxt, { Balances } from 'ccxt';
 
-const API_KEY = process.env.MEXC_API_KEY!;
-const API_SECRET = process.env.MEXC_API_SECRET!;
-
-interface CustomBalance {
-  total: number;
-  free: number;
-  used: number;
-}
-
 export async function GET() {
   try {
+    // Verificar se as variáveis de ambiente estão definidas
+    if (!process.env.MEXC_API_KEY || !process.env.MEXC_API_SECRET) {
+      return NextResponse.json(
+        { error: 'Credenciais da MEXC não configuradas', details: 'MEXC_API_KEY ou MEXC_API_SECRET não encontrados' },
+        { status: 500 }
+      );
+    }
+
     const exchange = new ccxt.mexc({
       apiKey: process.env.MEXC_API_KEY,
       secret: process.env.MEXC_API_SECRET,
+      sandbox: false,
+      enableRateLimit: true,
       options: {
-        defaultType: 'spot',
+        defaultType: 'swap', // Usar 'swap' ao invés de 'future' para futuros da MEXC
       },
     });
 
-    // A MEXC pode precisar que a v1 da API seja habilitada para fetchBalance em algumas contas
-    // ou pode requerer parâmetros específicos. Vamos tentar o padrão primeiro.
-    // exchange.options['fetchBalance'] = 'spot'; // ou 'account' ou 'wallet' dependendo da API
+    let balanceData: Balances;
+    
+    try {
+      // Tentar buscar saldo de futuros primeiro
+      balanceData = await exchange.fetchBalance();
+    } catch (futuresError) {
+      console.warn('Erro ao buscar saldo de futuros, tentando spot:', futuresError);
+      
+      // Se falhar, tentar spot como fallback
+      exchange.options['defaultType'] = 'spot';
+      try {
+        balanceData = await exchange.fetchBalance();
+      } catch (spotError) {
+        console.error('Erro ao buscar saldo spot também:', spotError);
+        throw futuresError; // Lançar o erro original de futuros
+      }
+    }
 
-    const balanceData: Balances = await exchange.fetchBalance();
+    // Verificar se balanceData existe e tem a estrutura esperada
+    if (!balanceData || !balanceData.total) {
+      return NextResponse.json(
+        { error: 'Resposta inválida da MEXC', details: 'Estrutura de saldo não encontrada' },
+        { status: 500 }
+      );
+    }
 
     const balances = Object.entries(balanceData.total)
       .filter(([, totalAmount]) => typeof totalAmount === 'number' && totalAmount > 0)
@@ -60,21 +81,35 @@ export async function GET() {
   } catch (error) {
     console.error('Erro ao buscar saldo da MEXC com CCXT:', error);
     const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-    // Tenta extrair informações mais detalhadas do erro ccxt
+    
+    // Diagnóstico mais detalhado do erro
     let details = errorMessage;
+    let statusCode = 500;
+    
     if (error instanceof ccxt.NetworkError) {
       details = `NetworkError: ${error.message}`;
+      statusCode = 503; // Service Unavailable
     } else if (error instanceof ccxt.ExchangeError) {
       details = `ExchangeError: ${error.message}`;
+      statusCode = 502; // Bad Gateway
     } else if (error instanceof ccxt.AuthenticationError) {
       details = `AuthenticationError: ${error.message}`;
+      statusCode = 401; // Unauthorized
     } else if (error instanceof ccxt.InvalidNonce) {
       details = `InvalidNonce: ${error.message}`;
+      statusCode = 400; // Bad Request
+    } else if (error instanceof ccxt.RateLimitExceeded) {
+      details = `RateLimitExceeded: ${error.message}`;
+      statusCode = 429; // Too Many Requests
     }
 
     return NextResponse.json(
-      { error: 'Erro ao buscar saldo da MEXC com CCXT', details },
-      { status: 500 }
+      { 
+        error: 'Erro ao buscar saldo da MEXC', 
+        details,
+        timestamp: new Date().toISOString()
+      },
+      { status: statusCode }
     );
   }
 } 
