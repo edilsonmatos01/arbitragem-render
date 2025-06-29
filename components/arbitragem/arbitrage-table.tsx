@@ -480,13 +480,21 @@ export default function ArbitrageTable() {
     if (!positionToFinalize) return;
 
     try {
-      // Calcular PnL
+      // ✅ Fórmula de Lucro (PnL) em Dólar:
+      // PnL = (Preço de Saída - Preço de Entrada) × Quantidade
+      
+      // PnL Spot: venda do ativo comprado
       const spotPnL = (exitData.spotExitPrice - positionToFinalize.spotEntry) * positionToFinalize.quantity;
+      
+      // PnL Futures: recompra do ativo vendido (posição short)
       const futuresPnL = (positionToFinalize.futuresEntry - exitData.futuresExitPrice) * positionToFinalize.quantity;
+      
+      // PnL Total
       const totalPnL = spotPnL + futuresPnL;
 
-      const spotPnLPercent = ((exitData.spotExitPrice - positionToFinalize.spotEntry) / positionToFinalize.spotEntry) * 100;
-      const futuresPnLPercent = ((positionToFinalize.futuresEntry - exitData.futuresExitPrice) / positionToFinalize.futuresEntry) * 100;
+      // Cálculo do PnL percentual para referência
+      const spotPnLPercent = positionToFinalize.spotEntry > 0 ? ((exitData.spotExitPrice - positionToFinalize.spotEntry) / positionToFinalize.spotEntry) * 100 : 0;
+      const futuresPnLPercent = positionToFinalize.futuresEntry > 0 ? ((positionToFinalize.futuresEntry - exitData.futuresExitPrice) / positionToFinalize.futuresEntry) * 100 : 0;
       const percentPnL = spotPnLPercent + futuresPnLPercent;
 
       // Salvar no histórico

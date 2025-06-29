@@ -54,14 +54,21 @@ export default function FinalizePositionModal({
       return { spotPnL: 0, futuresPnL: 0, totalPnL: 0, percentPnL: 0 };
     }
 
-    // Cálculo do PnL em valor absoluto
+    // ✅ Fórmula de Lucro (PnL) em Dólar:
+    // PnL = (Preço de Saída - Preço de Entrada) × Quantidade
+    
+    // PnL Spot: venda do ativo comprado
     const spotPnL = (spotExitPrice - position.spotEntry) * position.quantity;
+    
+    // PnL Futures: recompra do ativo vendido (posição short)
     const futuresPnL = (position.futuresEntry - futuresExitPrice) * position.quantity;
+    
+    // PnL Total
     const totalPnL = spotPnL + futuresPnL;
 
-    // Cálculo do PnL percentual
-    const spotPnLPercent = ((spotExitPrice - position.spotEntry) / position.spotEntry) * 100;
-    const futuresPnLPercent = ((position.futuresEntry - futuresExitPrice) / position.futuresEntry) * 100;
+    // Cálculo do PnL percentual para referência
+    const spotPnLPercent = position.spotEntry > 0 ? ((spotExitPrice - position.spotEntry) / position.spotEntry) * 100 : 0;
+    const futuresPnLPercent = position.futuresEntry > 0 ? ((position.futuresEntry - futuresExitPrice) / position.futuresEntry) * 100 : 0;
     const percentPnL = spotPnLPercent + futuresPnLPercent;
 
     return { spotPnL, futuresPnL, totalPnL, percentPnL };
@@ -208,15 +215,27 @@ export default function FinalizePositionModal({
           {spotExitPrice > 0 && futuresExitPrice > 0 && (
             <div className="bg-gray-800 p-4 rounded-lg">
               <h3 className="text-lg font-semibold text-white mb-3">Previsão de Resultado</h3>
+              
+              {/* Fórmula explicativa */}
+              <div className="mb-4 p-3 bg-gray-700 rounded-lg">
+                <p className="text-xs text-gray-300 mb-1">
+                  ✅ <strong>Fórmula:</strong> PnL = (Preço de Saída - Preço de Entrada) × Quantidade
+                </p>
+                <div className="text-xs text-gray-400 space-y-1">
+                  <p>• Spot: ({spotExitPrice.toFixed(4)} - {position.spotEntry.toFixed(4)}) × {position.quantity.toFixed(4)} = ${spotPnL.toFixed(2)}</p>
+                  <p>• Futures: ({position.futuresEntry.toFixed(4)} - {futuresExitPrice.toFixed(4)}) × {position.quantity.toFixed(4)} = ${futuresPnL.toFixed(2)}</p>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-gray-400">PnL Spot</p>
+                  <p className="text-sm text-gray-400">PnL Spot (Venda)</p>
                   <p className={`font-medium ${spotPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     {spotPnL >= 0 ? '+' : ''}${spotPnL.toFixed(2)}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-400">PnL Futures</p>
+                  <p className="text-sm text-gray-400">PnL Futures (Recompra)</p>
                   <p className={`font-medium ${futuresPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     {futuresPnL >= 0 ? '+' : ''}${futuresPnL.toFixed(2)}
                   </p>
