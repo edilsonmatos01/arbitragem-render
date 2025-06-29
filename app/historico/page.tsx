@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Calendar, Filter, TrendingUp, TrendingDown } from 'lucide-react';
+import { OperationHistoryStorage } from '@/lib/operation-history-storage';
 
 interface OperationHistory {
   id: string;
@@ -30,20 +31,43 @@ export default function HistoricoPage() {
   const fetchOperations = async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams({
-        filter,
-        ...(filter === 'day' && startDate && { startDate }),
-        ...(filter === 'range' && startDate && endDate && { startDate, endDate }),
-        ...(selectedSymbol && { symbol: selectedSymbol })
-      });
+      
+      // Primeiro, tentar buscar da API
+      try {
+        const params = new URLSearchParams({
+          filter,
+          ...(filter === 'day' && startDate && { startDate }),
+          ...(filter === 'range' && startDate && endDate && { startDate, endDate }),
+          ...(selectedSymbol && { symbol: selectedSymbol })
+        });
 
-      const response = await fetch(`/api/operation-history?${params}`);
-      if (response.ok) {
-        const data = await response.json();
-        setOperations(data);
+        const response = await fetch(`/api/operation-history?${params}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.length > 0) {
+            console.log('✅ Dados carregados da API:', data.length, 'operações');
+            setOperations(data);
+            return;
+          }
+        }
+      } catch (apiError) {
+        console.error('❌ Erro ao buscar da API:', apiError);
       }
+
+      // Fallback: buscar do localStorage
+      console.log('📱 Carregando do localStorage...');
+      const localData = OperationHistoryStorage.getFilteredOperations(
+        filter,
+        startDate,
+        endDate,
+        selectedSymbol
+      );
+      console.log('✅ Dados carregados do localStorage:', localData.length, 'operações');
+      setOperations(localData);
+
     } catch (error) {
-      console.error('Erro ao buscar histórico:', error);
+      console.error('❌ Erro geral ao buscar histórico:', error);
+      setOperations([]);
     } finally {
       setLoading(false);
     }
@@ -70,15 +94,32 @@ export default function HistoricoPage() {
     }).format(value);
   };
 
+  // Calcular estatísticas dos dados exibidos
   const totalProfit = operations.reduce((sum, op) => sum + op.profitLossUsd, 0);
   const totalPercent = operations.length > 0 
     ? operations.reduce((sum, op) => sum + op.profitLossPercent, 0) / operations.length 
     : 0;
 
+  // Estatísticas gerais do localStorage para comparação
+  const generalStats = OperationHistoryStorage.getStats();
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-semibold text-white">Histórico de Operações</h1>
+        <div>
+          <h1 className="text-3xl font-semibold text-white">Histórico de Operações</h1>
+          <p className="text-sm text-gray-400 mt-1">
+            {operations.length > 0 
+              ? `${operations.length} operações encontradas` 
+              : 'Nenhuma operação encontrada'
+            }
+            {generalStats.totalOperations > 0 && (
+              <span className="ml-2 text-custom-cyan">
+                (Total geral: {generalStats.totalOperations} operações)
+              </span>
+            )}
+          </p>
+        </div>
       </div>
 
       {/* Resumo */}

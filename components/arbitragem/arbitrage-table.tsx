@@ -7,6 +7,7 @@ import React from 'react';
 import Decimal from 'decimal.js';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import FinalizePositionModal from './FinalizePositionModal';
+import { OperationHistoryStorage } from '@/lib/operation-history-storage';
 
 const EXCHANGES = [
   { value: "gateio", label: "Gate.io" },
@@ -512,16 +513,35 @@ export default function ArbitrageTable() {
         createdAt: positionToFinalize.createdAt
       };
 
-      // Tentar salvar no banco
+      // Salvar no localStorage como backup/fallback
+      const operationForStorage = {
+        id: `op_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        ...historyData,
+        createdAt: typeof historyData.createdAt === 'string' ? historyData.createdAt : new Date(historyData.createdAt).toISOString(),
+        finalizedAt: new Date().toISOString()
+      };
+
+      OperationHistoryStorage.saveOperation(operationForStorage);
+
+      // Tentar salvar no banco também
       try {
-        await fetch('/api/operation-history', {
+        console.log('📊 Salvando no histórico (API):', historyData);
+        const historyResponse = await fetch('/api/operation-history', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(historyData)
         });
+
+        if (historyResponse.ok) {
+          const savedHistory = await historyResponse.json();
+          console.log('✅ Histórico salvo na API com sucesso:', savedHistory);
+        } else {
+          const errorData = await historyResponse.json();
+          console.error('❌ Erro ao salvar no histórico (resposta):', errorData);
+        }
       } catch (error) {
-        console.error('Erro ao salvar no histórico:', error);
-        // Continua mesmo se falhar o histórico
+        console.error('❌ Erro ao salvar no histórico (network):', error);
+        // Continua - já temos backup no localStorage
       }
 
       // Remover posição
