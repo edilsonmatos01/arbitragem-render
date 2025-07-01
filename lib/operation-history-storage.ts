@@ -17,19 +17,19 @@ export interface OperationHistoryItem {
   finalizedAt: string;
 }
 
-const STORAGE_KEY = 'arbitrage-operation-history';
+const STORAGE_KEY = 'arbitrage_operation_history';
 
 export class OperationHistoryStorage {
-  static saveOperation(operation: OperationHistoryItem): void {
+  static saveOperation(operation: OperationHistoryItem) {
     try {
       const existing = this.getAllOperations();
-      existing.unshift(operation); // Adiciona no início (mais recente primeiro)
+      existing.push(operation);
       
-      // Limita a 1000 operações para não sobrecarregar o localStorage
-      const limited = existing.slice(0, 1000);
+      // Manter apenas os últimos 500 registros
+      const limited = existing.slice(-500);
       
       localStorage.setItem(STORAGE_KEY, JSON.stringify(limited));
-      console.log('✅ Operação salva no localStorage:', operation);
+      console.log('✅ Operação salva no localStorage:', operation.symbol);
     } catch (error) {
       console.error('❌ Erro ao salvar no localStorage:', error);
     }
@@ -40,8 +40,28 @@ export class OperationHistoryStorage {
       const stored = localStorage.getItem(STORAGE_KEY);
       return stored ? JSON.parse(stored) : [];
     } catch (error) {
-      console.error('❌ Erro ao buscar do localStorage:', error);
+      console.error('❌ Erro ao carregar do localStorage:', error);
       return [];
+    }
+  }
+
+  static deleteOperation(operationId: string): boolean {
+    try {
+      const existing = this.getAllOperations();
+      const filtered = existing.filter(op => op.id !== operationId);
+      
+      if (filtered.length === existing.length) {
+        // Operação não encontrada
+        console.log('⚠️ Operação não encontrada no localStorage:', operationId);
+        return false;
+      }
+      
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+      console.log('✅ Operação excluída do localStorage:', operationId);
+      return true;
+    } catch (error) {
+      console.error('❌ Erro ao excluir do localStorage:', error);
+      return false;
     }
   }
 
@@ -99,12 +119,12 @@ export class OperationHistoryStorage {
     return filtered.slice(0, 100); // Limita a 100 resultados
   }
 
-  static clearAll(): void {
+  static clearAll() {
     try {
       localStorage.removeItem(STORAGE_KEY);
-      console.log('🗑️ Histórico limpo');
+      console.log('✅ Todos os registros removidos do localStorage');
     } catch (error) {
-      console.error('❌ Erro ao limpar histórico:', error);
+      console.error('❌ Erro ao limpar localStorage:', error);
     }
   }
 

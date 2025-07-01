@@ -161,4 +161,44 @@ export async function POST(req: NextRequest) {
     console.error('❌ Erro ao criar registro no histórico:', error);
     return NextResponse.json({ error: 'Erro interno do servidor', details: error instanceof Error ? error.message : 'Erro desconhecido' }, { status: 500 });
   }
+}
+
+// DELETE - Excluir operação do histórico
+export async function DELETE(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const operationId = searchParams.get('id');
+
+    if (!operationId) {
+      return NextResponse.json({ error: 'ID da operação é obrigatório' }, { status: 400 });
+    }
+
+    console.log('🗑️ Excluindo operação:', operationId);
+
+    // Tentar excluir do banco de dados se disponível
+    if (prisma) {
+      try {
+        const deletedOperation = await (prisma as any).operationHistory.delete({
+          where: { id: operationId }
+        });
+        console.log('✅ Operação excluída do banco:', deletedOperation);
+        return NextResponse.json({ success: true, deletedOperation });
+      } catch (dbError: any) {
+        if (dbError.code === 'P2025') {
+          // Record not found
+          console.log('⚠️ Operação não encontrada no banco:', operationId);
+          return NextResponse.json({ error: 'Operação não encontrada' }, { status: 404 });
+        }
+        console.error('❌ Erro no banco ao excluir:', dbError);
+        return NextResponse.json({ error: 'Erro ao excluir do banco de dados' }, { status: 500 });
+      }
+    }
+
+    // Fallback: apenas retornar sucesso (já que não temos banco)
+    console.log('📝 Usando fallback - exclusão simulada:', operationId);
+    return NextResponse.json({ success: true, message: 'Operação excluída (fallback)' });
+  } catch (error) {
+    console.error('❌ Erro ao excluir operação:', error);
+    return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 });
+  }
 } 

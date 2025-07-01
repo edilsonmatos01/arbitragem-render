@@ -35,19 +35,37 @@ const filterButtons = [
   { label: '1A', dataKey: '1A', days: 365 }
 ];
 
-export default function ArbitrageHistoryChart() {
+interface ArbitrageHistoryChartProps {
+  operations?: OperationHistory[];
+  onDataUpdate?: (operations: OperationHistory[]) => void;
+}
+
+export default function ArbitrageHistoryChart({ operations: externalOperations, onDataUpdate }: ArbitrageHistoryChartProps) {
   const [activeButton, setActiveButton] = useState('30D');
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [totalReturn, setTotalReturn] = useState(0);
+  const [internalOperations, setInternalOperations] = useState<OperationHistory[]>([]);
 
   const fetchOperationsData = async (days: number) => {
     try {
       setIsLoading(true);
       
-      // Buscar todas as operações
-      const response = await fetch('/api/operation-history');
-      const operations: OperationHistory[] = await response.json();
+      let operations: OperationHistory[] = [];
+      
+      // Usar operações externas se fornecidas, senão buscar da API
+      if (externalOperations && externalOperations.length > 0) {
+        operations = externalOperations;
+      } else {
+        const response = await fetch('/api/operation-history');
+        operations = await response.json();
+        setInternalOperations(operations);
+        
+        // Notificar componente pai sobre os dados carregados
+        if (onDataUpdate) {
+          onDataUpdate(operations);
+        }
+      }
 
       if (!Array.isArray(operations) || operations.length === 0) {
         setChartData([]);
@@ -126,7 +144,7 @@ export default function ArbitrageHistoryChart() {
     if (selectedFilter) {
       fetchOperationsData(selectedFilter.days);
     }
-  }, [activeButton]);
+  }, [activeButton, externalOperations]);
 
   const handleFilterClick = (label: string) => {
     setActiveButton(label);

@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Calendar, Filter, TrendingUp, TrendingDown, BarChart3, Download, Search, RefreshCw, Activity, PieChart, LayoutDashboard, Repeat, Wallet, History, Settings } from 'lucide-react';
+import { Calendar, Filter, TrendingUp, TrendingDown, BarChart3, Download, Search, RefreshCw, Activity, PieChart, LayoutDashboard, Repeat, Wallet, History, Settings, Trash2 } from 'lucide-react';
 import { OperationHistoryStorage } from '@/lib/operation-history-storage';
 import HistoryChart from '@/components/historico/HistoryChart';
 import SymbolAnalysis from '@/components/historico/SymbolAnalysis';
 import Sidebar from '@/components/dashboard/sidebar';
+import ConfirmationModal from '@/components/ui/confirmation-modal';
 
 interface OperationHistory {
   id: string;
@@ -40,6 +41,9 @@ export default function HistoricoPage() {
   const [filteredOperations, setFilteredOperations] = useState<OperationHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<HistoryStats | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [operationToDelete, setOperationToDelete] = useState<OperationHistory | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   
   // Estados de filtro
   const [filter, setFilter] = useState('all');
@@ -91,6 +95,56 @@ export default function HistoricoPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDeleteClick = (operation: OperationHistory) => {
+    setOperationToDelete(operation);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteOperation = async () => {
+    if (!operationToDelete) return;
+
+    try {
+      setDeletingId(operationToDelete.id);
+      
+      // Tentar excluir da API primeiro
+      try {
+        const response = await fetch(`/api/operation-history?id=${operationToDelete.id}`, {
+          method: 'DELETE'
+        });
+        
+        if (response.ok) {
+          console.log('✅ Operação excluída da API:', operationToDelete.id);
+        } else {
+          console.log('⚠️ Erro ao excluir da API, continuando com localStorage');
+        }
+      } catch (apiError) {
+        console.error('❌ Erro na API, usando fallback:', apiError);
+      }
+
+      // Sempre tentar excluir do localStorage também
+      OperationHistoryStorage.deleteOperation(operationToDelete.id);
+
+      // Atualizar a lista local imediatamente
+      setOperations(prev => prev.filter(op => op.id !== operationToDelete.id));
+      
+      console.log('✅ Operação excluída com sucesso:', operationToDelete.id);
+      
+      // Fechar modal
+      setShowDeleteModal(false);
+      setOperationToDelete(null);
+    } catch (error) {
+      console.error('❌ Erro ao excluir operação:', error);
+      alert('Erro ao excluir operação. Tente novamente.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const cancelDeleteOperation = () => {
+    setShowDeleteModal(false);
+    setOperationToDelete(null);
   };
 
   // Função para aplicar filtros
@@ -668,6 +722,7 @@ export default function HistoricoPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Resultado</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Duração</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Data</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-700">
@@ -708,6 +763,20 @@ export default function HistoricoPage() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
                             {formatDate(operation.finalizedAt)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <button
+                              onClick={() => handleDeleteClick(operation)}
+                              disabled={deletingId === operation.id}
+                              className="text-red-400 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors p-1 rounded hover:bg-red-400/10"
+                              title="Excluir operação"
+                            >
+                              {deletingId === operation.id ? (
+                                <div className="animate-spin h-4 w-4 border-2 border-red-400 border-t-transparent rounded-full"></div>
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </button>
                           </td>
                         </tr>
                       );
@@ -781,6 +850,23 @@ export default function HistoricoPage() {
       )}
         </div>
       </main>
+      
+      {/* Modal de Confirmação de Exclusão */}
+      <ConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={cancelDeleteOperation}
+        onConfirm={confirmDeleteOperation}
+        title="Excluir Operação"
+        message={
+          operationToDelete 
+            ? `Tem certeza que deseja excluir a operação ${operationToDelete.symbol}? Esta ação não pode ser desfeita.`
+            : 'Tem certeza que deseja excluir esta operação?'
+        }
+        confirmText="Excluir"
+        cancelText="Cancelar"
+        type="danger"
+        loading={deletingId === operationToDelete?.id}
+      />
     </div>
   );
 } 
