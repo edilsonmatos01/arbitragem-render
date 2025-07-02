@@ -1,7 +1,7 @@
 const { Client } = require('pg');
 
 const client = new Client({
-  connectionString: "postgresql://arbitragem_banco_user:fj3tzJ1Gu1FVHdvscaOyUzKUVJbRoOSn@dpg-d14g0m15pdvs73f4uve0-a.oregon-postgres.render.com/arbitragem_banco",
+  connectionString: "postgresql://arbitragem_banco_bdx8_user:eSa4DBin3bl9GI5DHmL9x1lXd4I329vT@dpg-d1i63eqdbo4c7387d2l0-a.oregon-postgres.render.com/arbitragem_banco_bdx8",
   ssl: {
     rejectUnauthorized: false
   }

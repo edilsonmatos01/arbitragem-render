@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { symbol, quantity, spotEntry, futuresEntry, spotExchange, futuresExchange } = body;
+    const { symbol, quantity, spotEntry, futuresEntry, spotExchange, futuresExchange, isSimulated } = body;
 
     if (!symbol || !quantity || !spotEntry || !futuresEntry || !spotExchange || !futuresExchange) {
       return NextResponse.json({ error: 'Todos os campos são obrigatórios' }, { status: 400 });
@@ -45,7 +45,8 @@ export async function POST(req: NextRequest) {
         spotEntry,
         futuresEntry,
         spotExchange,
-        futuresExchange
+        futuresExchange,
+        isSimulated: isSimulated || false
       }
     });
 

@@ -8,6 +8,8 @@ import Decimal from 'decimal.js';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import FinalizePositionModal from './FinalizePositionModal';
 import { OperationHistoryStorage } from '@/lib/operation-history-storage';
+import ExchangeBalances from './ExchangeBalances';
+import ConfirmOrderModal from './ConfirmOrderModal';
 
 const EXCHANGES = [
   { value: "gateio", label: "Gate.io" },
@@ -169,6 +171,7 @@ interface Position {
   futuresEntry: number;
   spotExchange: string;
   futuresExchange: string;
+  isSimulated?: boolean; // Campo opcional para compatibilidade
   createdAt: Date | string; // Pode vir como string do banco de dados
 }
 
@@ -198,6 +201,19 @@ export default function ArbitrageTable() {
     spotExchange: 'gateio',
     futuresExchange: 'mexc'
   });
+
+  // Estados para o modal de confirmação de ordem
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [pendingOrderData, setPendingOrderData] = useState<{
+    symbol: string;
+    quantity: number;
+    spotExchange: string;
+    futuresExchange: string;
+    spotPrice: number;
+    futuresPrice: number;
+    spread: number;
+    estimatedProfit: number;
+  } | null>(null);
 
   // Carregar posições do banco de dados na inicialização
   useEffect(() => {
@@ -476,36 +492,82 @@ export default function ArbitrageTable() {
     }
   };
 
-  // Função para processar a finalização com dados do modal
+  // Função para processar a finalização com execução de ordens de fechamento
   const handleFinalizationSubmit = async (exitData: { spotExitPrice: number; futuresExitPrice: number }) => {
     if (!positionToFinalize) return;
 
     try {
-      // ✅ Fórmula de Lucro (PnL) em Dólar:
-      // PnL = (Preço de Saída - Preço de Entrada) × Quantidade
+      console.log('🔄 Iniciando fechamento de posição com ordens reais...');
       
+      // 1. Preparar ordens de fechamento (operações contrárias à abertura)
+      const closeOrders = [
+        {
+          exchange: positionToFinalize.spotExchange as 'gateio' | 'mexc',
+          symbol: positionToFinalize.symbol,
+          side: 'sell' as const, // Vender o que foi comprado no spot
+          amount: positionToFinalize.quantity,
+          type: 'market' as const,
+          marketType: 'spot' as const
+        },
+        {
+          exchange: positionToFinalize.futuresExchange as 'gateio' | 'mexc',
+          symbol: positionToFinalize.symbol,
+          side: 'buy' as const, // Comprar para fechar o short em futures
+          amount: positionToFinalize.quantity,
+          type: 'market' as const,
+          marketType: 'futures' as const
+        }
+      ];
+
+      console.log('📋 Ordens de fechamento preparadas:', closeOrders);
+
+      // 2. Executar ordens de fechamento
+      const orderResponse = await fetch('/api/trading/execute-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ orders: closeOrders }),
+      });
+
+      const orderResult = await orderResponse.json();
+
+      if (!orderResult.success) {
+        throw new Error(orderResult.error || 'Falha na execução das ordens de fechamento');
+      }
+
+      console.log('✅ Ordens de fechamento executadas:', orderResult.results);
+
+      // 3. Usar preços reais de execução para cálculos
+      const spotCloseResult = orderResult.results[0];
+      const futuresCloseResult = orderResult.results[1];
+      
+      const realSpotExitPrice = spotCloseResult.price || exitData.spotExitPrice;
+      const realFuturesExitPrice = futuresCloseResult.price || exitData.futuresExitPrice;
+
+      // 4. Calcular PnL com preços reais
       // PnL Spot: venda do ativo comprado
-      const spotPnL = (exitData.spotExitPrice - positionToFinalize.spotEntry) * positionToFinalize.quantity;
+      const spotPnL = (realSpotExitPrice - positionToFinalize.spotEntry) * positionToFinalize.quantity;
       
       // PnL Futures: recompra do ativo vendido (posição short)
-      const futuresPnL = (positionToFinalize.futuresEntry - exitData.futuresExitPrice) * positionToFinalize.quantity;
+      const futuresPnL = (positionToFinalize.futuresEntry - realFuturesExitPrice) * positionToFinalize.quantity;
       
       // PnL Total
       const totalPnL = spotPnL + futuresPnL;
 
       // Cálculo do PnL percentual para referência
-      const spotPnLPercent = positionToFinalize.spotEntry > 0 ? ((exitData.spotExitPrice - positionToFinalize.spotEntry) / positionToFinalize.spotEntry) * 100 : 0;
-      const futuresPnLPercent = positionToFinalize.futuresEntry > 0 ? ((positionToFinalize.futuresEntry - exitData.futuresExitPrice) / positionToFinalize.futuresEntry) * 100 : 0;
+      const spotPnLPercent = positionToFinalize.spotEntry > 0 ? ((realSpotExitPrice - positionToFinalize.spotEntry) / positionToFinalize.spotEntry) * 100 : 0;
+      const futuresPnLPercent = positionToFinalize.futuresEntry > 0 ? ((positionToFinalize.futuresEntry - realFuturesExitPrice) / positionToFinalize.futuresEntry) * 100 : 0;
       const percentPnL = spotPnLPercent + futuresPnLPercent;
 
-      // Salvar no histórico
+      // 5. Salvar no histórico com dados reais
       const historyData = {
         symbol: positionToFinalize.symbol,
         quantity: positionToFinalize.quantity,
         spotEntryPrice: positionToFinalize.spotEntry,
         futuresEntryPrice: positionToFinalize.futuresEntry,
-        spotExitPrice: exitData.spotExitPrice,
-        futuresExitPrice: exitData.futuresExitPrice,
+        spotExitPrice: realSpotExitPrice,
+        futuresExitPrice: realFuturesExitPrice,
         spotExchange: positionToFinalize.spotExchange,
         futuresExchange: positionToFinalize.futuresExchange,
         profitLossUsd: totalPnL,
@@ -544,56 +606,188 @@ export default function ArbitrageTable() {
         // Continua - já temos backup no localStorage
       }
 
-      // Remover posição
+      // 6. Remover posição
       await handleRemovePosition(positionToFinalize.id);
       
-      setSuccessMessage(`Posição ${positionToFinalize.symbol} finalizada com sucesso! Lucro/Prejuízo: ${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)}`);
-      setTimeout(() => setSuccessMessage(null), 5000);
+      setSuccessMessage(`✅ Posição ${positionToFinalize.symbol} fechada com sucesso! 
+        Spot: ${spotCloseResult.orderId} (${realSpotExitPrice.toFixed(4)})
+        Futures: ${futuresCloseResult.orderId} (${realFuturesExitPrice.toFixed(4)})
+        PnL: ${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)}`);
+      setTimeout(() => setSuccessMessage(null), 8000);
 
       // Fechar modal
       setIsFinalizationModalOpen(false);
       setPositionToFinalize(null);
     } catch (error) {
-      console.error('Erro ao finalizar posição:', error);
+      console.error('❌ Erro ao finalizar posição:', error);
       throw error; // Propaga o erro para o modal
     }
   };
 
   // Função para abrir o modal de cadastro com dados da oportunidade
   const handleCadastrarPosicao = (opportunity: Opportunity) => {
+    console.log('🎯 handleCadastrarPosicao chamada');
+    console.log('📊 opportunity:', opportunity);
+    
     // Determinar exchanges baseado no tipo de oportunidade
     const spotExchange = opportunity.compraExchange.toLowerCase().includes('gate') ? 'gateio' : 'mexc';
     const futuresExchange = opportunity.vendaExchange.toLowerCase().includes('mexc') ? 'mexc' : 'gateio';
     
-    setNewPosition({
+    console.log('🏢 Exchanges determinadas:', { spotExchange, futuresExchange });
+    
+    const newPos = {
       symbol: opportunity.symbol,
       quantity: 0,
       spotEntry: opportunity.compraPreco,
       futuresEntry: opportunity.vendaPreco,
       spotExchange: spotExchange,
       futuresExchange: futuresExchange
-    });
+    };
+    
+    console.log('📋 Nova posição preparada:', newPos);
+    setNewPosition(newPos);
     setIsPositionModalOpen(true);
+    console.log('✅ Modal de posição aberto');
   };
 
-  // Função para adicionar nova posição
-  const handleAddPosition = async () => {
+  // Função para mostrar modal de confirmação
+  const handleAddPosition = () => {
+    console.log('🎯 handleAddPosition chamada');
+    console.log('📊 newPosition:', newPosition);
+    
     if (!newPosition.symbol || newPosition.spotEntry <= 0 || newPosition.futuresEntry <= 0 || newPosition.quantity <= 0) {
+      console.error('❌ Campos obrigatórios não preenchidos:', {
+        symbol: newPosition.symbol,
+        spotEntry: newPosition.spotEntry,
+        futuresEntry: newPosition.futuresEntry,
+        quantity: newPosition.quantity
+      });
       setError('Por favor, preencha todos os campos obrigatórios');
       return;
     }
 
+    // Calcular spread e lucro estimado
+    const spread = ((newPosition.futuresEntry - newPosition.spotEntry) / newPosition.spotEntry) * 100;
+    const estimatedProfit = (spread / 100) * newPosition.quantity * newPosition.spotEntry;
+
+    console.log('📊 Cálculos:', { spread, estimatedProfit });
+
+    // Preparar dados para o modal de confirmação
+    const orderData = {
+      symbol: newPosition.symbol,
+      quantity: newPosition.quantity,
+      spotExchange: newPosition.spotExchange,
+      futuresExchange: newPosition.futuresExchange,
+      spotPrice: newPosition.spotEntry,
+      futuresPrice: newPosition.futuresEntry,
+      spread: spread,
+      estimatedProfit: estimatedProfit
+    };
+
+    console.log('📋 Dados da ordem preparados:', orderData);
+    setPendingOrderData(orderData);
+
+    setIsPositionModalOpen(false);
+    setIsConfirmModalOpen(true);
+    console.log('✅ Modal de confirmação aberto');
+  };
+
+  // Função para executar ordens após confirmação
+  const executeOrders = async (isRealOrder: boolean) => {
+    if (!pendingOrderData) {
+      console.error('❌ Nenhum dado de ordem pendente encontrado');
+      return;
+    }
+
+    console.log(`🚀 Iniciando abertura de posição com ordens ${isRealOrder ? 'reais' : 'simuladas'}...`);
+    console.log('📊 Dados da ordem pendente:', pendingOrderData);
+    
     setIsLoading(true);
     try {
-      const positionData = {
-        symbol: newPosition.symbol,
-        quantity: newPosition.quantity,
-        spotEntry: newPosition.spotEntry,
-        futuresEntry: newPosition.futuresEntry,
-        spotExchange: newPosition.spotExchange,
-        futuresExchange: newPosition.futuresExchange
-      };
+      let positionData;
 
+      if (isRealOrder) {
+        // 1. Preparar ordens para execução real
+        const orders = [
+          {
+            exchange: pendingOrderData.spotExchange as 'gateio' | 'mexc',
+            symbol: pendingOrderData.symbol,
+            side: 'buy' as const,
+            amount: pendingOrderData.quantity,
+            type: 'market' as const,
+            marketType: 'spot' as const
+          },
+          {
+            exchange: pendingOrderData.futuresExchange as 'gateio' | 'mexc',
+            symbol: pendingOrderData.symbol,
+            side: 'sell' as const,
+            amount: pendingOrderData.quantity,
+            type: 'market' as const,
+            marketType: 'futures' as const
+          }
+        ];
+
+        console.log('📋 Ordens preparadas:', orders);
+
+        // 2. Executar ordens reais nas exchanges
+        console.log('📡 Enviando requisição para API de trading...');
+        const orderResponse = await fetch('/api/trading/execute-order', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ orders }),
+        });
+
+        console.log('📡 Status da resposta:', orderResponse.status);
+        const orderResult = await orderResponse.json();
+        console.log('📡 Resultado da API:', orderResult);
+
+        if (!orderResult.success) {
+          console.error('❌ Falha na execução das ordens:', orderResult);
+          throw new Error(orderResult.error || 'Falha na execução das ordens');
+        }
+
+        console.log('✅ Ordens executadas com sucesso:', orderResult.results);
+
+        // 3. Atualizar preços com os preços reais de execução
+        const spotOrderResult = orderResult.results[0];
+        const futuresOrderResult = orderResult.results[1];
+
+        positionData = {
+          symbol: pendingOrderData.symbol,
+          quantity: pendingOrderData.quantity,
+          spotEntry: spotOrderResult.price || pendingOrderData.spotPrice,
+          futuresEntry: futuresOrderResult.price || pendingOrderData.futuresPrice,
+          spotExchange: pendingOrderData.spotExchange,
+          futuresExchange: pendingOrderData.futuresExchange,
+          isSimulated: false
+        };
+
+        setSuccessMessage(`✅ Posição REAL aberta com sucesso! 
+          Spot: ${spotOrderResult.orderId} (${spotOrderResult.price?.toFixed(4)})
+          Futures: ${futuresOrderResult.orderId} (${futuresOrderResult.price?.toFixed(4)})`);
+
+      } else {
+        // Ordem simulada - usar preços atuais
+        console.log('🎮 Executando ordem simulada...');
+        
+        positionData = {
+          symbol: pendingOrderData.symbol,
+          quantity: pendingOrderData.quantity,
+          spotEntry: pendingOrderData.spotPrice,
+          futuresEntry: pendingOrderData.futuresPrice,
+          spotExchange: pendingOrderData.spotExchange,
+          futuresExchange: pendingOrderData.futuresExchange,
+          isSimulated: true
+        };
+
+        setSuccessMessage(`✅ Posição SIMULADA criada com sucesso! 
+          Spot: ${pendingOrderData.spotPrice.toFixed(4)} (${pendingOrderData.spotExchange})
+          Futures: ${pendingOrderData.futuresPrice.toFixed(4)} (${pendingOrderData.futuresExchange})`);
+      }
+
+      // 4. Salvar posição no banco de dados
       const response = await fetch('/api/positions', {
         method: 'POST',
         headers: {
@@ -605,10 +799,10 @@ export default function ArbitrageTable() {
       if (response.ok) {
         const newPositionFromServer = await response.json();
         setPositions(prev => [...prev, newPositionFromServer]);
-        setSuccessMessage('Posição cadastrada com sucesso!');
-        setIsPositionModalOpen(false);
         
-        // Reset form
+        // Fechar modais e resetar
+        setIsConfirmModalOpen(false);
+        setPendingOrderData(null);
         setNewPosition({
           symbol: '',
           quantity: 0,
@@ -619,11 +813,12 @@ export default function ArbitrageTable() {
         });
       } else {
         const errorData = await response.json();
-        setError(errorData.error || 'Erro ao cadastrar posição');
+        throw new Error(errorData.error || 'Erro ao salvar posição no banco');
       }
+
     } catch (error) {
-      console.error('Erro ao cadastrar posição:', error);
-      setError('Erro ao cadastrar posição');
+      console.error('❌ Erro ao abrir posição:', error);
+      setError(error instanceof Error ? error.message : 'Erro ao abrir posição');
     } finally {
       setIsLoading(false);
     }
@@ -725,6 +920,9 @@ export default function ArbitrageTable() {
           {isPaused ? 'Buscar Oportunidades' : 'Pausar Busca'}
         </button>
       </div>
+
+      {/* Saldos das Exchanges */}
+      <ExchangeBalances />
 
       <div className="p-4 bg-dark-card rounded-lg shadow">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
@@ -869,7 +1067,18 @@ export default function ArbitrageTable() {
                   {/* Header com símbolo, quantidade e botão de lixeira */}
                   <div className="flex justify-between items-start mb-3">
                     <div>
-                      <h3 className="text-lg font-bold text-white">{position.symbol}</h3>
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="text-lg font-bold text-white">{position.symbol}</h3>
+                        {position.isSimulated ? (
+                          <span className="px-2 py-1 bg-blue-600 text-white text-xs rounded-full">
+                            SIMULADA
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 bg-red-600 text-white text-xs rounded-full">
+                            REAL
+                          </span>
+                        )}
+                      </div>
                       <p className="text-sm text-custom-cyan font-medium">
                         {position.quantity.toFixed(3)} {position.symbol.split('/')[0]}
                       </p>
@@ -1086,6 +1295,18 @@ export default function ArbitrageTable() {
         currentSpotPrice={positionToFinalize ? getCurrentSpotPrice(positionToFinalize) : 0}
         currentFuturesPrice={positionToFinalize ? getCurrentFuturesPrice(positionToFinalize) : 0}
         onFinalize={handleFinalizationSubmit}
+      />
+
+      {/* Modal de Confirmação de Ordem */}
+      <ConfirmOrderModal
+        isOpen={isConfirmModalOpen}
+        onClose={() => {
+          setIsConfirmModalOpen(false);
+          setPendingOrderData(null);
+        }}
+        onConfirm={executeOrders}
+        orderData={pendingOrderData}
+        isLoading={isLoading}
       />
     </div>
   );
