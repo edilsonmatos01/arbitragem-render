@@ -49,6 +49,13 @@ export default function ConfiguracoesPage() {
     loadConfigs();
   }, []);
 
+  // Carregar configurações existentes nos formulários quando configs mudarem
+  useEffect(() => {
+    if (configs.length > 0) {
+      loadExistingConfigsIntoForms();
+    }
+  }, [configs]);
+
   const loadConfigs = async () => {
     try {
       const response = await fetch('/api/config/api-keys');
@@ -68,14 +75,52 @@ export default function ConfiguracoesPage() {
     setTimeout(() => setMessage(null), 5000);
   };
 
+  // Função para carregar configurações existentes nos formulários
+  const loadExistingConfigsIntoForms = () => {
+    configs.forEach(config => {
+      // Criar um formulário com placeholders indicando que há configuração
+      const existingForm = {
+        apiKey: '••••••••••••••••••••••••••••••••', // Placeholder para indicar chave existente
+        apiSecret: '••••••••••••••••••••••••••••••••', // Placeholder para indicar secret existente
+        passphrase: config.exchange === 'bitget' ? '••••••••••••••••••••••••••••••••' : '',
+        showApiKey: false,
+        showApiSecret: false,
+        showPassphrase: false,
+        isActive: config.isActive
+      };
+
+      // Aplicar ao formulário correspondente
+      switch(config.exchange) {
+        case 'gateio': 
+          setGateioForm(existingForm); 
+          break;
+        case 'mexc': 
+          setMexcForm(existingForm); 
+          break;
+        case 'binance': 
+          setBinanceForm(existingForm); 
+          break;
+        case 'bybit': 
+          setBybitForm(existingForm); 
+          break;
+        case 'bitget': 
+          setBitgetForm(existingForm); 
+          break;
+      }
+    });
+  };
+
   const handleSaveConfig = async (exchange: string, form: ExchangeForm) => {
-    if (!form.apiKey || !form.apiSecret) {
-      showMessage('error', 'API Key e API Secret são obrigatórios');
+    // Verificar se os campos contêm apenas placeholders (•••)
+    const isPlaceholder = (value: string) => /^•+$/.test(value);
+    
+    if (!form.apiKey || !form.apiSecret || isPlaceholder(form.apiKey) || isPlaceholder(form.apiSecret)) {
+      showMessage('error', 'API Key e API Secret são obrigatórios. Digite as chaves reais para salvar.');
       return;
     }
 
-    if (exchange === 'bitget' && !form.passphrase) {
-      showMessage('error', 'Passphrase é obrigatória para Bitget');
+    if (exchange === 'bitget' && (!form.passphrase || isPlaceholder(form.passphrase))) {
+      showMessage('error', 'Passphrase é obrigatória para Bitget. Digite a passphrase real para salvar.');
       return;
     }
 
@@ -156,7 +201,17 @@ export default function ConfiguracoesPage() {
           </span>
         </div>
 
-        <p className="text-sm text-gray-400 mb-4">{instructions}</p>
+        <p className="text-sm text-gray-400 mb-2">{instructions}</p>
+        
+        {/* Informação sobre configuração existente */}
+        {isConfigured && (
+          <div className="mb-4 p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg">
+            <p className="text-blue-300 text-sm">
+              ℹ️ <strong>Configuração existente detectada.</strong> Os campos mostram placeholders (•••) por segurança. 
+              Para atualizar, digite as novas chaves e clique em "Salvar Configuração".
+            </p>
+          </div>
+        )}
 
         <div className="space-y-4">
           {/* API Key */}
@@ -165,13 +220,13 @@ export default function ConfiguracoesPage() {
               API Key *
             </label>
             <div className="relative">
-              <input
-                type={form.showApiKey ? "text" : "password"}
-                value={form.apiKey}
-                onChange={(e) => setForm({...form, apiKey: e.target.value})}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-custom-cyan focus:border-transparent"
-                placeholder="Sua API Key"
-              />
+                              <input
+                  type={form.showApiKey ? "text" : "password"}
+                  value={form.apiKey}
+                  onChange={(e) => setForm({...form, apiKey: e.target.value})}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-custom-cyan focus:border-transparent"
+                  placeholder={isConfigured ? "Digite nova API Key para atualizar" : "Sua API Key"}
+                />
               <button
                 type="button"
                 onClick={() => setForm({...form, showApiKey: !form.showApiKey})}
@@ -188,13 +243,13 @@ export default function ConfiguracoesPage() {
               API Secret *
             </label>
             <div className="relative">
-              <input
-                type={form.showApiSecret ? "text" : "password"}
-                value={form.apiSecret}
-                onChange={(e) => setForm({...form, apiSecret: e.target.value})}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-custom-cyan focus:border-transparent"
-                placeholder="Sua API Secret"
-              />
+                              <input
+                  type={form.showApiSecret ? "text" : "password"}
+                  value={form.apiSecret}
+                  onChange={(e) => setForm({...form, apiSecret: e.target.value})}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-custom-cyan focus:border-transparent"
+                  placeholder={isConfigured ? "Digite novo API Secret para atualizar" : "Sua API Secret"}
+                />
               <button
                 type="button"
                 onClick={() => setForm({...form, showApiSecret: !form.showApiSecret})}
@@ -212,13 +267,13 @@ export default function ConfiguracoesPage() {
                 Passphrase *
               </label>
               <div className="relative">
-                <input
-                  type={form.showPassphrase ? "text" : "password"}
-                  value={form.passphrase || ''}
-                  onChange={(e) => setForm({...form, passphrase: e.target.value})}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-custom-cyan focus:border-transparent"
-                  placeholder="Sua Passphrase"
-                />
+                                  <input
+                    type={form.showPassphrase ? "text" : "password"}
+                    value={form.passphrase || ''}
+                    onChange={(e) => setForm({...form, passphrase: e.target.value})}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-custom-cyan focus:border-transparent"
+                    placeholder={isConfigured ? "Digite nova Passphrase para atualizar" : "Sua Passphrase"}
+                  />
                 <button
                   type="button"
                   onClick={() => setForm({...form, showPassphrase: !form.showPassphrase})}
