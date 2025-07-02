@@ -101,19 +101,21 @@ export default function ConfiguracoesPage() {
         showMessage('success', `Configuração ${exchange.toUpperCase()} salva com sucesso!`);
         loadConfigs();
         
-        // Limpar formulário
-        const emptyForm = {
-          apiKey: '', apiSecret: '', passphrase: '', 
-          showApiKey: false, showApiSecret: false, showPassphrase: false, 
-          isActive: true
+        // Manter os campos preenchidos para permitir futuras atualizações
+        // Apenas ocultar as senhas por segurança
+        const updatedForm = {
+          ...form,
+          showApiKey: false, 
+          showApiSecret: false, 
+          showPassphrase: false
         };
         
         switch(exchange) {
-          case 'gateio': setGateioForm(emptyForm); break;
-          case 'mexc': setMexcForm(emptyForm); break;
-          case 'binance': setBinanceForm(emptyForm); break;
-          case 'bybit': setBybitForm(emptyForm); break;
-          case 'bitget': setBitgetForm(emptyForm); break;
+          case 'gateio': setGateioForm(updatedForm); break;
+          case 'mexc': setMexcForm(updatedForm); break;
+          case 'binance': setBinanceForm(updatedForm); break;
+          case 'bybit': setBybitForm(updatedForm); break;
+          case 'bitget': setBitgetForm(updatedForm); break;
         }
       } else {
         const errorData = await response.json();
