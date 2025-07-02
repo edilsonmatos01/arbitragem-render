@@ -2,12 +2,33 @@ export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 import { NextResponse } from 'next/server';
 import ccxt, { Balances } from 'ccxt';
+import { getApiCredentials } from '@/app/api/config/api-keys/route';
 
 export async function GET() {
   try {
+    // Tentar obter credenciais do banco de dados primeiro
+    let apiKey = process.env.GATEIO_API_KEY;
+    let apiSecret = process.env.GATEIO_API_SECRET;
+    
+    const dbCredentials = await getApiCredentials('gateio');
+    if (dbCredentials) {
+      apiKey = dbCredentials.apiKey;
+      apiSecret = dbCredentials.apiSecret;
+    }
+
+    if (!apiKey || !apiSecret) {
+      return NextResponse.json(
+        { 
+          error: 'Credenciais da Gate.io não configuradas', 
+          details: 'Configure suas API Keys na página de Configurações' 
+        },
+        { status: 401 }
+      );
+    }
+
     const exchange = new ccxt.gateio({
-      apiKey: process.env.GATEIO_API_KEY,
-      secret: process.env.GATEIO_API_SECRET,
+      apiKey,
+      secret: apiSecret,
       options: {
         defaultType: 'spot',
       },

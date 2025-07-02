@@ -26,11 +26,52 @@ interface ApiResponse {
 }
 
 export default function RealBalanceCard() {
-  const [exchanges, setExchanges] = useState<ExchangeBalance[]>([
-    { name: 'Gate.io', type: 'spot', balance: 0, isLoading: true, error: null },
-    { name: 'MEXC', type: 'futures', balance: 0, isLoading: true, error: null }
-  ]);
+  const [exchanges, setExchanges] = useState<ExchangeBalance[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [exchangeConfigs, setExchangeConfigs] = useState([
+    { name: 'Gate.io', key: 'gateio', type: 'spot' as const, endpoint: '/api/gateio/wallet-balance' },
+    { name: 'MEXC', key: 'mexc', type: 'futures' as const, endpoint: '/api/mexc/wallet-balance' }
+  ]);
+
+  // Configurações de todas as exchanges suportadas  
+  const allExchangeConfigs = [
+    { name: 'Gate.io', key: 'gateio', type: 'spot' as const, endpoint: '/api/gateio/wallet-balance' },
+    { name: 'MEXC', key: 'mexc', type: 'futures' as const, endpoint: '/api/mexc/wallet-balance' },
+    { name: 'Binance', key: 'binance', type: 'spot' as const, endpoint: '/api/binance/wallet-balance' },
+    { name: 'Bybit', key: 'bybit', type: 'spot' as const, endpoint: '/api/bybit/wallet-balance' },
+    { name: 'Bitget', key: 'bitget', type: 'spot' as const, endpoint: '/api/bitget/wallet-balance' },
+  ];
+
+  // Função para carregar exchanges configuradas
+  const loadConfiguredExchanges = async () => {
+    try {
+      const response = await fetch('/api/config/api-keys');
+      if (response.ok) {
+        const configuredExchanges = await response.json();
+        
+        // Filtrar apenas exchanges que estão configuradas e ativas
+        const activeExchangeKeys = configuredExchanges
+          .filter((config: any) => config.isActive)
+          .map((config: any) => config.exchange);
+        
+        // Filtrar as configurações para incluir apenas exchanges ativas
+        const activeConfigs = allExchangeConfigs.filter(config => 
+          activeExchangeKeys.includes(config.key)
+        );
+        
+        // Se não há exchanges configuradas, manter Gate.io e MEXC como padrão
+        if (activeConfigs.length === 0) {
+          setExchangeConfigs(allExchangeConfigs.slice(0, 2));
+        } else {
+          setExchangeConfigs(activeConfigs);
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao carregar exchanges configuradas:', error);
+      // Em caso de erro, manter configuração padrão
+      setExchangeConfigs(allExchangeConfigs.slice(0, 2));
+    }
+  };
 
   const fetchExchangeBalance = async (exchangeName: string, endpoint: string): Promise<number> => {
     try {
@@ -48,11 +89,38 @@ export default function RealBalanceCard() {
 
       let usdtBalance = 0;
       if (data.balances) {
-        const usdtEntry = data.balances.find(b => (b.asset === 'USDT' || b.currency === 'USDT'));
+        const usdtEntry = data.balances.find(b => {
+          // Diferentes exchanges usam diferentes campos para o nome da moeda
+          return (b.asset === 'USDT' || b.currency === 'USDT' || (b as any).coin === 'USDT');
+        });
+        
         if (usdtEntry) {
-          const availableAmount = parseFloat(usdtEntry.available || usdtEntry.free || '0');
-          const lockedAmount = parseFloat(usdtEntry.locked || '0');
-          usdtBalance = availableAmount + lockedAmount;
+          // Diferentes exchanges usam diferentes campos para valores
+          let freeAmount = 0;
+          let lockedAmount = 0;
+          
+          // Gate.io usa 'available' e 'locked'
+          if (usdtEntry.available) {
+            freeAmount = parseFloat(usdtEntry.available);
+            lockedAmount = parseFloat(usdtEntry.locked || '0');
+          }
+          // Binance, MEXC usam 'free' e 'locked'
+          else if (usdtEntry.free) {
+            freeAmount = parseFloat(usdtEntry.free);
+            lockedAmount = parseFloat(usdtEntry.locked || '0');
+          }
+          // Bybit usa 'walletBalance' 
+          else if ((usdtEntry as any).walletBalance) {
+            freeAmount = parseFloat((usdtEntry as any).walletBalance);
+            lockedAmount = parseFloat((usdtEntry as any).locked || '0');
+          }
+          // Bitget usa 'available' e 'frozen'
+          else if ((usdtEntry as any).available && (usdtEntry as any).frozen !== undefined) {
+            freeAmount = parseFloat((usdtEntry as any).available);
+            lockedAmount = parseFloat((usdtEntry as any).frozen || '0');
+          }
+          
+          usdtBalance = freeAmount + lockedAmount;
         }
       }
       
@@ -67,11 +135,6 @@ export default function RealBalanceCard() {
     if (!isRefreshing) {
       setExchanges(prev => prev.map(ex => ({ ...ex, isLoading: true, error: null })));
     }
-
-    const exchangeConfigs = [
-      { name: 'Gate.io', type: 'spot' as const, endpoint: '/api/gateio/wallet-balance' },
-      { name: 'MEXC', type: 'futures' as const, endpoint: '/api/mexc/wallet-balance' }
-    ];
 
     const updatedExchanges = await Promise.all(
       exchangeConfigs.map(async (config) => {
@@ -101,8 +164,28 @@ export default function RealBalanceCard() {
   };
 
   useEffect(() => {
-    fetchAllBalances();
+    const initializeComponent = async () => {
+      await loadConfiguredExchanges();
+      fetchAllBalances();
+    };
+    
+    initializeComponent();
   }, []);
+
+  // Recarregar saldos quando as exchanges configuradas mudarem
+  useEffect(() => {
+    if (exchangeConfigs.length > 0) {
+      // Inicializar o estado com as exchanges configuradas
+      setExchanges(exchangeConfigs.map(config => ({
+        name: config.name,
+        type: config.type,
+        balance: 0,
+        isLoading: true,
+        error: null
+      })));
+      fetchAllBalances();
+    }
+  }, [exchangeConfigs]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -128,7 +211,9 @@ export default function RealBalanceCard() {
       <div className="flex justify-between items-start mb-4">
         <div>
           <h3 className="text-lg font-medium text-white">Saldos das Exchanges</h3>
-          <p className="text-sm text-gray-400">Gate.io (Spot) + MEXC (Futuros)</p>
+          <p className="text-sm text-gray-400">
+            {exchangeConfigs.length} exchange{exchangeConfigs.length !== 1 ? 's' : ''} configurada{exchangeConfigs.length !== 1 ? 's' : ''}
+          </p>
         </div>
         <button 
           onClick={handleRefresh}

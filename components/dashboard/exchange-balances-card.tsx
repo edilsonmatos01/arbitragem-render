@@ -45,10 +45,47 @@ export default function ExchangeBalancesCard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [debugInfo, setDebugInfo] = useState<string>('');
 
-  const exchangeConfigs = [
-    { name: 'Gate.io', endpoint: '/api/gateio/wallet-balance', assetField: 'currency', freeField: 'available', lockedField: 'locked' },
-    { name: 'MEXC', endpoint: '/api/mexc/wallet-balance', assetField: 'asset', freeField: 'free', lockedField: 'locked' },
+  // Configurações de todas as exchanges suportadas
+  const allExchangeConfigs = [
+    { name: 'Gate.io', key: 'gateio', endpoint: '/api/gateio/wallet-balance', assetField: 'currency', freeField: 'available', lockedField: 'locked' },
+    { name: 'MEXC', key: 'mexc', endpoint: '/api/mexc/wallet-balance', assetField: 'asset', freeField: 'free', lockedField: 'locked' },
+    { name: 'Binance', key: 'binance', endpoint: '/api/binance/wallet-balance', assetField: 'asset', freeField: 'free', lockedField: 'locked' },
+    { name: 'Bybit', key: 'bybit', endpoint: '/api/bybit/wallet-balance', assetField: 'coin', freeField: 'walletBalance', lockedField: 'locked' },
+    { name: 'Bitget', key: 'bitget', endpoint: '/api/bitget/wallet-balance', assetField: 'coin', freeField: 'available', lockedField: 'frozen' },
   ];
+
+  const [exchangeConfigs, setExchangeConfigs] = useState(allExchangeConfigs.slice(0, 2)); // Iniciar apenas com Gate.io e MEXC
+
+  // Função para carregar exchanges configuradas
+  const loadConfiguredExchanges = async () => {
+    try {
+      const response = await fetch('/api/config/api-keys');
+      if (response.ok) {
+        const configuredExchanges = await response.json();
+        
+        // Filtrar apenas exchanges que estão configuradas e ativas
+        const activeExchangeKeys = configuredExchanges
+          .filter((config: any) => config.isActive)
+          .map((config: any) => config.exchange);
+        
+        // Filtrar as configurações para incluir apenas exchanges ativas
+        const activeConfigs = allExchangeConfigs.filter(config => 
+          activeExchangeKeys.includes(config.key)
+        );
+        
+        // Se não há exchanges configuradas, manter Gate.io e MEXC como padrão
+        if (activeConfigs.length === 0) {
+          setExchangeConfigs(allExchangeConfigs.slice(0, 2));
+        } else {
+          setExchangeConfigs(activeConfigs);
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao carregar exchanges configuradas:', error);
+      // Em caso de erro, manter configuração padrão
+      setExchangeConfigs(allExchangeConfigs.slice(0, 2));
+    }
+  };
 
   const fetchBalances = async () => {
     if (!isRefreshing) setIsLoading(true);
@@ -81,7 +118,8 @@ export default function ExchangeBalancesCard() {
           rawUsdtData = usdtEntry;
           if (usdtEntry) {
             const freeAmount = parseFloat((usdtEntry as any)[config.freeField!] || '0');
-            const lockedAmount = parseFloat(usdtEntry.locked || '0');
+            const lockedField = config.lockedField || 'locked';
+            const lockedAmount = parseFloat((usdtEntry as any)[lockedField] || '0');
             usdtTotal = freeAmount + lockedAmount;
           }
         }
@@ -113,8 +151,20 @@ export default function ExchangeBalancesCard() {
   };
 
   useEffect(() => {
-    fetchBalances();
+    const initializeComponent = async () => {
+      await loadConfiguredExchanges();
+      fetchBalances();
+    };
+    
+    initializeComponent();
   }, []);
+
+  // Recarregar saldos quando as exchanges configuradas mudarem
+  useEffect(() => {
+    if (exchangeConfigs.length > 0) {
+      fetchBalances();
+    }
+  }, [exchangeConfigs]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);

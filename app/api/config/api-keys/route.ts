@@ -37,7 +37,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Banco de dados não disponível' }, { status: 500 });
     }
 
-    const body = await req.json();
+    let body;
+    try {
+      body = await req.json();
+    } catch (jsonError) {
+      console.error('Erro ao fazer parse do JSON:', jsonError);
+      return NextResponse.json({ error: 'JSON inválido fornecido' }, { status: 400 });
+    }
+
     const { exchange, apiKey, apiSecret, passphrase, isActive = true } = body;
 
     if (!exchange || !apiKey || !apiSecret) {

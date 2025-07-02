@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Sidebar from '@/components/dashboard/sidebar';
 import ArbitrageHistoryChart from '@/components/dashboard/arbitrage-history-chart';
-import SimplifiedBalanceCard from '@/components/dashboard/simplified-balance-card';
+import TotalBalanceCard from '@/components/dashboard/total-balance-card';
 import StaticMetrics from '@/components/dashboard/static-metrics';
 import EnhancedPercentageGauge from '@/components/dashboard/enhanced-percentage-gauge';
 import { LayoutDashboard, Repeat, Wallet, History, Settings, AlertCircle } from 'lucide-react';
@@ -57,7 +57,7 @@ export default function DashboardPage() {
         {/* Seção de Saldo Total */}
         <section className="mb-8">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <SimplifiedBalanceCard />
+            <TotalBalanceCard />
             <div className="lg:col-span-3">
               <div className="bg-dark-card p-6 rounded-lg shadow h-full flex flex-col justify-center">
                 <h2 className="text-xl font-semibold text-white mb-2">Sistema de Arbitragem</h2>
