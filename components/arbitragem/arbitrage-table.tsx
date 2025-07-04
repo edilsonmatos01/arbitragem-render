@@ -58,7 +58,9 @@ interface Opportunity {
   tipo: 'intra' | 'inter';
   directionApi?: 'FUTURES_TO_SPOT' | 'SPOT_TO_FUTURES';
   fundingRateApi?: string;
-  maxSpread24h: number | null; 
+  maxSpread24h: number | null;
+  buyAtMarketType: 'spot' | 'futures';
+  sellAtMarketType: 'spot' | 'futures';
 }
 
 // Função auxiliar para extrair o nome base da exchange (ex: "Gate.io (Spot)" -> "gateio")
@@ -101,7 +103,7 @@ const POLLING_INTERVAL_MS = 5000; // Intervalo de polling: 5 segundos
 
 // ✅ 6. A renderização deve ser otimizada com React.memo
 const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSpreadDisplayClass, calcularLucro, handleCadastrarPosicao }: any) => {
-    
+    console.log('[RENDER ROW]', opportunity);
     // ✅ 4. Na renderização de cada linha da tabela, ao exibir os preços:
     const getLivePrice = (originalPrice: number, marketTypeStr: string, side: 'buy' | 'sell') => {
         const liveData = livePrices[opportunity.symbol];
@@ -126,9 +128,11 @@ const OpportunityRow = React.memo(({ opportunity, livePrices, formatPrice, getSp
         .dividedBy(new Decimal(rawCompraPreco))
         .times(100)
         .toNumber();
+    console.log('[SPREAD RENDER]', opportunity.symbol, spreadValue, opportunity.compraPreco, opportunity.vendaPreco, rawCompraPreco, rawVendaPreco);
 
     // Não renderiza a linha se o spread for negativo ou zero
     if (spreadValue <= 0) {
+        console.log('[ROW OCULTA]', opportunity.symbol, spreadValue, opportunity);
         return null;
     }
 
@@ -175,6 +179,17 @@ interface Position {
   createdAt: Date | string; // Pode vir como string do banco de dados
 }
 
+// Função para normalizar o nome da exchange
+function normalizeExchangeName(name: string) {
+  return name
+    .toLowerCase()
+    .replace(' (spot)', '')
+    .replace(' (futuros)', '')
+    .replace(/\./g, '') // remove pontos
+    .replace(/\s/g, '') // remove espaços
+    .trim();
+}
+
 export default function ArbitrageTable() {
   const [arbitrageType, setArbitrageType] = useState<'intra'|'inter'>('inter');
   const [direction, setDirection] = useState<'SPOT_TO_FUTURES' | 'FUTURES_TO_SPOT' | 'ALL'>('ALL');
@@ -182,11 +197,8 @@ export default function ArbitrageTable() {
   const [amount, setAmount] = useState(100);
   const [spotExchange, setSpotExchange] = useState('gateio');
   const [futuresExchange, setFuturesExchange] = useState('mexc');
-  const [isPaused, setIsPaused] = useState(false); // Inicia com busca ativa
+  const [isPaused, setIsPaused] = useState(true); // Agora inicia pausado
 
-  // Novo estado para o ranking dinâmico
-  const [rankedOpportunities, setRankedOpportunities] = useState<Opportunity[]>([]);
-  
   // Estados para posições com persistência no banco de dados
   const [positions, setPositions] = useState<Position[]>([]);
   const [isLoadingPositions, setIsLoadingPositions] = useState(false);
@@ -214,6 +226,9 @@ export default function ArbitrageTable() {
     spread: number;
     estimatedProfit: number;
   } | null>(null);
+
+  // Adicionar estado para quantidade máxima de oportunidades
+  const [maxOpportunities, setMaxOpportunities] = useState(10);
 
   // Carregar posições do banco de dados na inicialização
   useEffect(() => {
@@ -255,8 +270,8 @@ export default function ArbitrageTable() {
   
 
   
-  // 1. Obter livePrices do hook
-  const { opportunities: opportunitiesRaw, livePrices } = useArbitrageWebSocket();
+  // Hook de oportunidades sempre chamado, mas só conecta se enabled=true
+  const { opportunities: opportunitiesRaw, livePrices } = useArbitrageWebSocket(!isPaused);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string|null>(null);
   const [successMessage, setSuccessMessage] = useState<string|null>(null);
@@ -302,153 +317,6 @@ export default function ArbitrageTable() {
       return 'text-yellow-400'; // Spread baixo - pouco lucrativo
     }
   };
-
-  // Lógica de Ranking Dinâmico
-  useEffect(() => {
-    console.log('[DEBUG] useEffect executado - isPaused:', isPaused, 'opportunitiesRaw.length:', opportunitiesRaw.length);
-    
-    if (isPaused) {
-      console.log('[DEBUG] ⏸️ Busca pausada - não processando oportunidades');
-      return;
-    }
-
-    console.log('[DEBUG] Processando oportunidades recebidas:', opportunitiesRaw);
-
-    // 1. Mapeia as novas oportunidades recebidas do WebSocket
-    const newOpportunities = opportunitiesRaw
-      .map((opp): Opportunity | null => {
-        if (!opp.buyAt || !opp.sellAt || opp.buyAt.price <= 0 || opp.sellAt.price <= 0) {
-          console.log('[DEBUG] Oportunidade ignorada por preços inválidos:', opp);
-          return null;
-        }
-
-        // Calcula o spread usando a fórmula correta: ((Futures - Spot) / Spot) × 100
-        const spread = ((opp.sellAt.price - opp.buyAt.price) / opp.buyAt.price) * 100;
-        
-        // Ignora spreads negativos já no mapeamento inicial
-        if (spread <= 0) {
-          console.log(`[DEBUG] Oportunidade ignorada por spread negativo ou zero: ${opp.baseSymbol} (${spread.toFixed(2)}%)`);
-          return null;
-        }
-        
-        console.log(`[DEBUG] Spread calculado para ${opp.baseSymbol}: ${spread.toFixed(2)}%`);
-
-        const newOpp: Opportunity = {
-          symbol: opp.baseSymbol,
-          compraExchange: opp.buyAt.exchange,
-          compraPreco: opp.buyAt.price,
-          vendaExchange: opp.sellAt.exchange,
-          vendaPreco: opp.sellAt.price,
-          spread: spread,
-          tipo: 'inter', // Como estamos lidando com arbitragem entre exchanges (Gate.io e MEXC)
-          directionApi: opp.arbitrageType.includes('spot_to_futures') ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT',
-          maxSpread24h: null
-        };
-
-        console.log('[DEBUG] ✅ Nova oportunidade processada:', {
-          symbol: newOpp.symbol,
-          tipo: newOpp.tipo,
-          directionApi: newOpp.directionApi,
-          compraExchange: newOpp.compraExchange,
-          vendaExchange: newOpp.vendaExchange,
-          spread: newOpp.spread,
-          arbitrageTypeOriginal: opp.arbitrageType
-        });
-        return newOpp;
-      })
-      .filter((o): o is Opportunity => o !== null);
-
-    console.log('[DEBUG] Total de novas oportunidades válidas:', newOpportunities.length);
-
-    // 2. Funde as novas oportunidades com o ranking existente
-    setRankedOpportunities(prevRanked => {
-      const combined = [...prevRanked, ...newOpportunities];
-      
-      const opportunitiesMap = new Map<string, Opportunity>();
-      for (const opp of combined) {
-        const key = `${opp.symbol}-${opp.directionApi}`;
-        const existing = opportunitiesMap.get(key);
-
-        if (existing) {
-          // Mantém o maior maxSpread24h entre a oportunidade existente e a nova
-          opp.maxSpread24h = Math.max(existing.maxSpread24h || 0, opp.maxSpread24h || 0);
-          
-          // Se a nova oportunidade tiver um spread maior, ela substitui a antiga
-          if (opp.spread > (existing.spread || 0)) {
-            opportunitiesMap.set(key, opp);
-          } else {
-            // Caso contrário, mantém a antiga mas atualiza seu maxSpread24h
-            existing.maxSpread24h = opp.maxSpread24h;
-            opportunitiesMap.set(key, existing);
-          }
-        } else {
-          opportunitiesMap.set(key, opp);
-        }
-      }
-
-      // 3. Filtra, ordena e limita a lista final
-      const finalOpportunities = Array.from(opportunitiesMap.values())
-        .filter(o => {
-          // Re-aplica os filtros do usuário
-          const passesSpreadFilter = o.spread >= minSpread; // Removido Math.abs pois já filtramos negativos
-          const passesDirectionFilter = direction === 'ALL' || o.directionApi === direction;
-          const passesTypeFilter = o.tipo === arbitrageType;
-          let passesExchangeFilter = true;
-
-          // Verifica se a operação é compra em spot e venda em futures
-          // Aceita qualquer combinação de Gate.io (Spot) comprando e MEXC (Futures) vendendo
-          const isSpotBuyFuturesSell = (o.compraExchange.toLowerCase().includes('spot') || 
-                                       o.compraExchange.toLowerCase().includes('gate.io')) && 
-                                      (o.vendaExchange.toLowerCase().includes('futures') ||
-                                       o.vendaExchange.toLowerCase().includes('mexc'));
-          passesExchangeFilter = isSpotBuyFuturesSell;
-
-          const passes = passesSpreadFilter && passesDirectionFilter && passesTypeFilter && passesExchangeFilter;
-          
-          if (!passes) {
-            console.log(`[DEBUG] ❌ Oportunidade filtrada - ${o.symbol}:`, {
-              spread: passesSpreadFilter,
-              direction: passesDirectionFilter,
-              type: passesTypeFilter,
-              exchange: passesExchangeFilter,
-              isSpotBuyFuturesSell,
-              compraExchange: o.compraExchange,
-              vendaExchange: o.vendaExchange,
-              spreadValue: o.spread,
-              minSpreadRequired: minSpread,
-              directionRequired: direction,
-              arbitrageTypeRequired: arbitrageType
-            });
-          } else {
-            console.log(`[DEBUG] ✅ Oportunidade passou pelos filtros - ${o.symbol}:`, {
-              spread: o.spread,
-              tipo: o.tipo,
-              direction: o.directionApi,
-              compraExchange: o.compraExchange,
-              vendaExchange: o.vendaExchange
-            });
-          }
-
-          return passes;
-        })
-        .sort((a, b) => b.spread - a.spread) // Ordenação direta pois todos são positivos
-        .slice(0, 8);
-
-      console.log('[DEBUG] Oportunidades finais após filtros:', finalOpportunities);
-      return finalOpportunities;
-    });
-  }, [
-    opportunitiesRaw, 
-    isPaused,
-    minSpread,
-    direction,
-    arbitrageType,
-    spotExchange,
-    futuresExchange,
-    amount,
-  ]);
-
-
 
   // Função para remover posição
   const handleRemovePosition = async (positionId: string) => {
@@ -824,8 +692,6 @@ export default function ArbitrageTable() {
     }
   };
 
-
-
   // Função para calcular PnL
   // Função para normalizar o símbolo (pode haver diferenças de formato)
   const normalizeSymbol = (symbol: string) => {
@@ -916,67 +782,46 @@ export default function ArbitrageTable() {
           onClick={() => setIsPaused((prev) => !prev)}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-colors ${isPaused ? 'bg-green-500 text-black hover:bg-green-400' : 'bg-red-500 text-white hover:bg-red-400'}`}
         >
-          {!isPaused && <RefreshCw className="h-5 w-5 animate-spin" />}
-          {isPaused ? 'Buscar Oportunidades' : 'Pausar Busca'}
+          {isPaused ? 'Iniciar Busca' : 'Pausar Busca'}
         </button>
       </div>
 
-      {/* Saldos das Exchanges */}
-      <ExchangeBalances />
-
       <div className="p-4 bg-dark-card rounded-lg shadow">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-4 gap-4 items-end">
           <div>
             <label htmlFor="minSpread" className="block text-sm font-medium text-gray-300 mb-1">Spread Mínimo (%)</label>
             <input 
               id="minSpread" type="number" step="0.01" min={0} 
               className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan"
-              value={minSpread} onChange={e => setMinSpread(Number(e.target.value))} 
+              value={minSpread}
+              onChange={e => setMinSpread(Number(e.target.value.replace(',', '.')))} 
             />
           </div>
           <div>
-            <label htmlFor="amount" className="block text-sm font-medium text-gray-300 mb-1">Valor por Operação (USDT)</label>
-            <input id="amount" type="number" step="1" min={1} 
-              className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan" 
-              value={amount} onChange={e => setAmount(Number(e.target.value))} 
-            />
-          </div>
-          <div>
-            <label htmlFor="arbitrageType" className="block text-sm font-medium text-gray-300 mb-1">Tipo de Arbitragem</label>
-            <select id="arbitrageType" className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan" value={arbitrageType} onChange={e => setArbitrageType(e.target.value as 'intra'|'inter')}>
-              <option value="intra">Intra-Corretora</option>
-              <option value="inter">Inter-Corretoras</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor="direction" className="block text-sm font-medium text-gray-300 mb-1">Direção da Operação</label>
-            <select 
-                id="direction" 
-                className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan" 
-                value={direction} 
-                onChange={e => setDirection(e.target.value as 'SPOT_TO_FUTURES' | 'FUTURES_TO_SPOT' | 'ALL')}
+            <label htmlFor="maxOpportunities" className="block text-sm font-medium text-gray-300 mb-1">Qtd. Máx. Oportunidades</label>
+            <select
+              id="maxOpportunities"
+              className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan"
+              value={maxOpportunities}
+              onChange={e => setMaxOpportunities(Number(e.target.value))}
             >
-              {directionOptions.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              {[...Array(20)].map((_, i) => (
+                <option key={i+1} value={i+1}>{i+1}</option>
               ))}
             </select>
           </div>
-          {arbitrageType === 'inter' && (
-            <>
-              <div className="lg:col-span-1">
-                <label htmlFor="spotExchange" className="block text-sm font-medium text-gray-300 mb-1">Exchange Spot</label>
-                <select id="spotExchange" className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan" value={spotExchange} onChange={e => setSpotExchange(e.target.value)}>
-                  {EXCHANGES.map(ex => <option key={ex.value} value={ex.value}>{ex.label}</option>)}
-                </select>
-              </div>
-              <div className="lg:col-span-1">
-                <label htmlFor="futuresExchange" className="block text-sm font-medium text-gray-300 mb-1">Exchange Futuros</label>
-                <select id="futuresExchange" className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan" value={futuresExchange} onChange={e => setFuturesExchange(e.target.value)}>
-                  {EXCHANGES.map(ex => <option key={ex.value} value={ex.value}>{ex.label}</option>)}
-                </select>
-              </div>
-            </>
-          )}
+          <div>
+            <label htmlFor="spotExchange" className="block text-sm font-medium text-gray-300 mb-1">Exchange Spot</label>
+            <select id="spotExchange" className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan" value={spotExchange} onChange={e => setSpotExchange(e.target.value)}>
+              {EXCHANGES.map(ex => <option key={ex.value} value={ex.value}>{ex.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="futuresExchange" className="block text-sm font-medium text-gray-300 mb-1">Exchange Futuros</label>
+            <select id="futuresExchange" className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan" value={futuresExchange} onChange={e => setFuturesExchange(e.target.value)}>
+              {EXCHANGES.map(ex => <option key={ex.value} value={ex.value}>{ex.label}</option>)}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -1010,23 +855,41 @@ export default function ArbitrageTable() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
-              {isLoading ? (
-                <tr><td colSpan={6} className="text-center py-8"><RefreshCw className="h-6 w-6 animate-spin inline-block mr-2" />Carregando oportunidades...</td></tr>
-              ) : rankedOpportunities.length === 0 && !error ? (
-                <tr><td colSpan={6} className="text-center text-gray-400 py-8">Nenhuma oportunidade encontrada para os filtros selecionados.</td></tr>
-              ) : (
-                rankedOpportunities.map((opportunity) => (
-                  <OpportunityRow 
-                    key={`${opportunity.symbol}-${opportunity.directionApi}`} 
-                    opportunity={opportunity}
+              {opportunitiesRaw
+                .filter(opp => {
+                  const isSpotBuyFuturesSell = opp.buyAt.marketType === 'spot' && opp.sellAt.marketType === 'futures';
+                  const spread = ((opp.sellAt.price - opp.buyAt.price) / opp.buyAt.price) * 100;
+                  return isSpotBuyFuturesSell && spread >= minSpread;
+                })
+                .sort((a, b) => {
+                  const spreadA = ((a.sellAt.price - a.buyAt.price) / a.buyAt.price) * 100;
+                  const spreadB = ((b.sellAt.price - b.buyAt.price) / b.buyAt.price) * 100;
+                  return spreadB - spreadA;
+                })
+                .slice(0, maxOpportunities)
+                .map((opp) => (
+                  <OpportunityRow
+                    key={`${opp.baseSymbol}-${opp.buyAt.exchange}-${opp.sellAt.exchange}`}
+                    opportunity={{
+                      symbol: opp.baseSymbol,
+                      compraExchange: opp.buyAt.exchange,
+                      compraPreco: opp.buyAt.price,
+                      vendaExchange: opp.sellAt.exchange,
+                      vendaPreco: opp.sellAt.price,
+                      spread: ((opp.sellAt.price - opp.buyAt.price) / opp.buyAt.price) * 100,
+                      tipo: 'inter',
+                      directionApi: opp.arbitrageType.includes('spot_to_futures') ? 'SPOT_TO_FUTURES' : 'FUTURES_TO_SPOT',
+                      maxSpread24h: null,
+                      buyAtMarketType: opp.buyAt.marketType,
+                      sellAtMarketType: opp.sellAt.marketType,
+                    }}
                     livePrices={livePrices}
                     formatPrice={formatPrice}
                     getSpreadDisplayClass={getSpreadDisplayClass}
                     calcularLucro={calcularLucro}
                     handleCadastrarPosicao={handleCadastrarPosicao}
                   />
-                ))
-              )}
+                ))}
             </tbody>
           </table>
         </div>

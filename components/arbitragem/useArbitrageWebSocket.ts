@@ -34,7 +34,7 @@ interface LivePrices {
     }
 }
 
-export function useArbitrageWebSocket() {
+export function useArbitrageWebSocket(enabled = true) {
   const [opportunities, setOpportunities] = useState<ArbitrageOpportunity[]>([]);
   const [livePrices, setLivePrices] = useState<LivePrices>({});
   const ws = useRef<WebSocket | null>(null);
@@ -151,21 +151,22 @@ export function useArbitrageWebSocket() {
 
   useEffect(() => {
     isMounted.current = true;
-    connect();
-
-    // A função de cleanup é executada quando o componente é desmontado.
+    if (enabled) {
+      connect();
+    }
+    // A função de cleanup é executada quando o componente é desmontado ou enabled muda para false.
     return () => {
       isMounted.current = false;
       if (reconnectTimeout.current) {
         clearTimeout(reconnectTimeout.current);
       }
       if (ws.current) {
-        // Fechar a conexão não acionará mais a reconexão devido à verificação isMounted.current.
-        ws.current.close(); 
+        ws.current.close();
+        ws.current = null;
         console.log('[WS Hook] Limpeza da conexão WebSocket concluída.');
       }
     };
-  }, []);
+  }, [enabled]);
 
   return { opportunities, livePrices };
 } 
