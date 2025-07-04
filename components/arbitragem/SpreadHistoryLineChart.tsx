@@ -44,6 +44,19 @@ function formatBrasiliaTime(date: Date): string {
   });
 }
 
+// Função utilitária para converter timestamp para horário de Brasília no formato DD/MM - HH:mm
+function toBrasiliaLabel(timestamp: string) {
+  const date = new Date(timestamp);
+  return date.toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).replace(', ', ' - ');
+}
+
 export default function SpreadHistoryLineChart({ symbol, isOpen, onClose }: SpreadHistoryLineChartProps) {
   const [data, setData] = useState<SpreadHistoryData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -140,7 +153,7 @@ export default function SpreadHistoryLineChart({ symbol, isOpen, onClose }: Spre
                   stroke="#9CA3AF"
                   tick={{ fill: '#9CA3AF', fontSize: 12 }}
                   interval="preserveStartEnd"
-                  tickFormatter={(value) => value.split(' - ')[1]}
+                  tickFormatter={(value) => value}
                   angle={-45}
                   textAnchor="end"
                   height={60}

@@ -12,16 +12,9 @@ try {
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-function adjustToUTC(date: Date): Date {
-  return new Date(date.getTime() + date.getTimezoneOffset() * 60000);
-}
-
 function formatDateTime(date: Date): string {
-  // Primeiro converte para UTC
-  const utcDate = new Date(date.getTime() + date.getTimezoneOffset() * 60000);
-  
-  // Depois converte para America/Sao_Paulo
-  return utcDate.toLocaleString('pt-BR', {
+  // Converte diretamente para America/Sao_Paulo
+  return date.toLocaleString('pt-BR', {
     timeZone: 'America/Sao_Paulo',
     day: '2-digit',
     month: '2-digit',
@@ -53,39 +46,35 @@ export async function GET(
       return NextResponse.json([]);
     }
 
-    // Define o intervalo de 24 horas em UTC
+    // Define o intervalo de 24 horas em UTC (sem ajuste manual)
     const now = new Date();
-    const utcNow = adjustToUTC(now);
-    const utcStart = new Date(utcNow.getTime() - 24 * 60 * 60 * 1000);
+    const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
     // Busca os dados do banco usando UTC
-    const priceHistory = await prisma.priceHistory.findMany({
+    const spreadHistory = await prisma.spreadHistory.findMany({
       where: {
         symbol: symbol,
         timestamp: {
-          gte: utcStart,
-          lte: utcNow
+          gte: start,
+          lte: now
         }
       },
       select: {
         timestamp: true,
-        gateioSpotToMexcFuturesSpread: true,
-        mexcSpotToGateioFuturesSpread: true
+        spread: true
       },
       orderBy: {
         timestamp: 'asc'
       }
     });
 
-    // Agrupa os dados em intervalos de 30 minutos
+    // Agrupa os dados em intervalos de 30 minutos (lógica idêntica ao Spot vs Futures)
     const groupedData = new Map<string, number>();
-    
-    // Inicializa todos os intervalos de 30 minutos
-    let currentTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const endTime = now;
+    let currentTime = roundToNearestInterval(start, 30);
+    const endTime = roundToNearestInterval(now, 30);
 
     while (currentTime <= endTime) {
-      const timeKey = formatDateTime(roundToNearestInterval(currentTime, 30));
+      const timeKey = formatDateTime(currentTime);
       if (!groupedData.has(timeKey)) {
         groupedData.set(timeKey, 0);
       }
@@ -93,18 +82,13 @@ export async function GET(
     }
 
     // Preenche com os dados reais
-    for (const record of priceHistory) {
-      const localTime = new Date(record.timestamp);
-      const timeKey = formatDateTime(roundToNearestInterval(localTime, 30));
-      
-      // Pega o maior spread entre as duas direções
-      const maxSpread = Math.max(
-        record.gateioSpotToMexcFuturesSpread,
-        record.mexcSpotToGateioFuturesSpread
-      );
-      
+    for (const record of spreadHistory) {
+      // Arredonda o timestamp para o intervalo de 30 minutos em UTC
+      const utcTime = roundToNearestInterval(new Date(record.timestamp), 30);
+      // Só converte para o fuso de Brasília na exibição
+      const timeKey = formatDateTime(utcTime);
       const currentMax = groupedData.get(timeKey) || 0;
-      groupedData.set(timeKey, Math.max(currentMax, maxSpread));
+      groupedData.set(timeKey, Math.max(currentMax, record.spread));
     }
 
     // Converte para o formato esperado pelo gráfico e ordena

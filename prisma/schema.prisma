@@ -62,9 +62,9 @@ model Position {
   futuresEntry    Float
   spotExchange    String
   futuresExchange String
-  isSimulated     Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  isSimulated     Boolean  @default(false)
 
   @@index([symbol])
 }
@@ -88,14 +88,14 @@ model OperationHistory {
 }
 
 model ApiConfiguration {
-  id          String   @id @default(cuid())
-  exchange    String   @unique // 'gateio', 'mexc', 'binance', 'bybit', 'bitget'
-  apiKey      String   // Criptografado
-  apiSecret   String   // Criptografado
-  passphrase  String?  // Para exchanges que precisam (como Bitget)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  exchange   String   @unique
+  apiKey     String
+  apiSecret  String
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  passphrase String?
 
   @@index([exchange])
 }
