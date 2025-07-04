@@ -4,7 +4,7 @@ const prisma = new PrismaClient();
 
 async function cleanupOldData() {
   const now = new Date();
-  const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000); // 24 horas atrás
+  const cutoff = new Date(now.getTime() - 12 * 60 * 60 * 1000); // 12 horas atrás
 
   // Exclui da tabela SpreadHistory
   const spreadResult = await prisma.spreadHistory.deleteMany({

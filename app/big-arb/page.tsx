@@ -23,7 +23,7 @@ const sidebarNavItems = [
   { title: 'Configurações', href: '/configuracoes', icon: AppIcons.Settings },
 ];
 
-export default function ArbitragemPage() {
+export default function BigArbPage() {
   return (
     <div className="flex min-h-screen bg-dark-bg text-white">
       <Sidebar
@@ -34,7 +34,7 @@ export default function ArbitragemPage() {
         navItems={sidebarNavItems}
       />
       <main className="flex-1 p-8">
-        <ArbitrageTable isBigArb={false} />
+        <ArbitrageTable isBigArb={true} />
       </main>
     </div>
   );

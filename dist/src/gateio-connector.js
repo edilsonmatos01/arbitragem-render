@@ -6,6 +6,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.GateioConnector = void 0;
 const ws_1 = __importDefault(require("ws"));
 const node_fetch_1 = __importDefault(require("node-fetch"));
+/**
+ * Conector para Gate.io SPOT (não futures)
+ * Usado para a estratégia: Comprar Gate.io Spot -> Vender MEXC Futures
+ */
 class GateioConnector {
     constructor() {
         this.ws = null;
@@ -49,7 +53,7 @@ class GateioConnector {
                 setTimeout(() => this.connect(), 5000);
             });
             this.ws.on('close', (code, reason) => {
-                console.log(`[GATEIO CLOSE] Conexão fechada: ${code} ${reason === null || reason === void 0 ? void 0 : reason.toString()}`);
+                console.log(`[GATEIO CLOSE] Conexão fechada: ${code} ${reason?.toString()}`);
                 this.cleanup();
                 this.reconnectAttempts++;
                 setTimeout(() => this.connect(), 5000);
@@ -98,39 +102,40 @@ class GateioConnector {
         }
     }
     setupHeartbeat() {
-        var _a;
         if (this.pingInterval) {
             clearInterval(this.pingInterval);
         }
         this.pingInterval = setInterval(() => {
-            var _a;
-            if (((_a = this.ws) === null || _a === void 0 ? void 0 : _a.readyState) === ws_1.default.OPEN) {
+            if (this.ws?.readyState === ws_1.default.OPEN) {
                 this.ws.ping();
                 console.log('[GATEIO PING] Ping enviado');
             }
         }, 20000);
-        (_a = this.ws) === null || _a === void 0 ? void 0 : _a.on('pong', () => {
+        this.ws?.on('pong', () => {
             console.log('[GATEIO PONG] Pong recebido');
         });
     }
     subscribeToSpotSymbols() {
         console.log(`[GATEIO SUB] Iniciando subscrições SPOT para ${this.symbols.length} símbolos`);
+        // Usar TODOS os símbolos da lista dinâmica (não filtrar)
         console.log(`[GATEIO SUB] Usando lista dinâmica completa: ${this.symbols.length} símbolos`);
         console.log(`[GATEIO SUB] Primeiros 10: ${this.symbols.slice(0, 10).join(', ')}`);
         console.log(`[GATEIO SUB] Últimos 5: ${this.symbols.slice(-5).join(', ')}`);
         this.symbols.forEach((symbol, index) => {
-            var _a;
-            if (((_a = this.ws) === null || _a === void 0 ? void 0 : _a.readyState) === ws_1.default.OPEN) {
+            if (this.ws?.readyState === ws_1.default.OPEN) {
+                // Usar canal de tickers para SPOT
                 const msg = {
                     time: Math.floor(Date.now() / 1000),
                     channel: "spot.tickers",
                     event: "subscribe",
                     payload: [symbol]
                 };
+                // Log apenas a cada 100 símbolos para não sobrecarregar
                 if (index % 100 === 0 || index < 5 || index >= this.symbols.length - 5) {
                     console.log(`[GATEIO SUB] (${index + 1}/${this.symbols.length}) ${symbol}`);
                 }
                 this.ws.send(JSON.stringify(msg));
+                // Delay pequeno entre subscrições para não sobrecarregar
                 if (index < this.symbols.length - 1) {
                     setTimeout(() => { }, 10);
                 }
@@ -141,11 +146,13 @@ class GateioConnector {
     handleMessage(data) {
         try {
             const message = JSON.parse(data.toString());
+            // Log apenas eventos importantes de subscrição
             if (message.event) {
                 if (message.event === 'subscribe') {
                     console.log(`[GATEIO EVENT] Subscrição confirmada para canal: ${message.channel}`);
                 }
                 else if (message.event === 'update' && message.result) {
+                    // Processar dados de ticker SPOT
                     if (message.channel === 'spot.tickers') {
                         const ticker = message.result;
                         const symbol = ticker.currency_pair;
@@ -160,6 +167,7 @@ class GateioConnector {
                                 bestAsk,
                                 bestBid
                             };
+                            // Log apenas para pares prioritários para reduzir verbosidade
                             const priorityPairs = ['BTC_USDT', 'ETH_USDT', 'SOL_USDT', 'XRP_USDT', 'BNB_USDT'];
                             if (priorityPairs.includes(symbol)) {
                                 console.log(`[GATEIO PRICE] ${symbol}: Ask=${bestAsk}, Bid=${bestBid}`);
@@ -176,6 +184,7 @@ class GateioConnector {
                 }
                 return;
             }
+            // Log de mensagens não processadas (apenas estrutura para debug)
             if (message.channel && !message.event) {
                 console.log(`[GATEIO DEBUG] Canal ${message.channel} - Tipo: ${typeof message.result}`);
             }
@@ -207,4 +216,3 @@ class GateioConnector {
     }
 }
 exports.GateioConnector = GateioConnector;
-//# sourceMappingURL=gateio-connector.js.map

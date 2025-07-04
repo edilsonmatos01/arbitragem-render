@@ -26,6 +26,12 @@ const DEFAULT_PAIRS = [
   "TON/USDT", "APT/USDT", "SEI/USDT"
 ];
 
+// Lista fixa para Big Arb com os pares especificados
+const BIG_ARB_PAIRS = [
+  "BTC_USDT", "ETH_USDT", "SOL_USDT", "BNB_USDT", "XRP_USDT",
+  "LINK_USDT", "AAVE_USDT", "APT_USDT", "SUI_USDT", "NEAR_USDT", "ONDO_USDT"
+];
+
 interface OpportunityFromAPI { // Interface para dados crus da API (intra-exchange)
   symbol: string;
   spotPrice: string;
@@ -190,7 +196,26 @@ function normalizeExchangeName(name: string) {
     .trim();
 }
 
-export default function ArbitrageTable() {
+interface ArbitrageTableProps {
+  isBigArb?: boolean;
+}
+
+// Função utilitária para normalizar símbolo conforme exchange e tipo de mercado
+function getExchangeSymbol(symbol: string, exchange: string, marketType: 'spot' | 'futures') {
+  if (marketType === 'spot') {
+    // Spot normalmente usa barra
+    return symbol.replace('_', '/');
+  }
+  // Futures
+  let base = symbol.replace('/', '_');
+  if (exchange === 'gateio' && !base.endsWith(':USDT')) {
+    base += ':USDT';
+  }
+  // Para MEXC, não adiciona :USDT
+  return base;
+}
+
+export default function ArbitrageTable({ isBigArb = false }: ArbitrageTableProps) {
   const [arbitrageType, setArbitrageType] = useState<'intra'|'inter'>('inter');
   const [direction, setDirection] = useState<'SPOT_TO_FUTURES' | 'FUTURES_TO_SPOT' | 'ALL'>('ALL');
   const [minSpread, setMinSpread] = useState(0.1);
@@ -365,13 +390,64 @@ export default function ArbitrageTable() {
     if (!positionToFinalize) return;
 
     try {
+      // Se for simulada, não executa ordens reais
+      if (positionToFinalize.isSimulated) {
+        // Calcular PnL com preços informados
+        const spotPnL = (exitData.spotExitPrice - positionToFinalize.spotEntry) * positionToFinalize.quantity;
+        const futuresPnL = (positionToFinalize.futuresEntry - exitData.futuresExitPrice) * positionToFinalize.quantity;
+        const totalPnL = spotPnL + futuresPnL;
+        const spotPnLPercent = positionToFinalize.spotEntry > 0 ? ((exitData.spotExitPrice - positionToFinalize.spotEntry) / positionToFinalize.spotEntry) * 100 : 0;
+        const futuresPnLPercent = positionToFinalize.futuresEntry > 0 ? ((positionToFinalize.futuresEntry - exitData.futuresExitPrice) / positionToFinalize.futuresEntry) * 100 : 0;
+        const percentPnL = spotPnLPercent + futuresPnLPercent;
+
+        const historyData = {
+          symbol: positionToFinalize.symbol,
+          quantity: positionToFinalize.quantity,
+          spotEntryPrice: positionToFinalize.spotEntry,
+          futuresEntryPrice: positionToFinalize.futuresEntry,
+          spotExitPrice: exitData.spotExitPrice,
+          futuresExitPrice: exitData.futuresExitPrice,
+          spotExchange: positionToFinalize.spotExchange,
+          futuresExchange: positionToFinalize.futuresExchange,
+          profitLossUsd: totalPnL,
+          profitLossPercent: percentPnL,
+          createdAt: positionToFinalize.createdAt,
+          isSimulated: true
+        };
+
+        // Salvar no localStorage como backup/fallback
+        const operationForStorage = {
+          id: `op_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          ...historyData,
+          createdAt: typeof historyData.createdAt === 'string' ? historyData.createdAt : new Date(historyData.createdAt).toISOString(),
+          finalizedAt: new Date().toISOString()
+        };
+        OperationHistoryStorage.saveOperation(operationForStorage);
+
+        // Tentar salvar no banco também
+        try {
+          await fetch('/api/operation-history', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(historyData)
+          });
+        } catch {}
+
+        await handleRemovePosition(positionToFinalize.id);
+        setSuccessMessage(`✅ Posição simulada ${positionToFinalize.symbol} fechada! PnL: ${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)}`);
+        setTimeout(() => setSuccessMessage(null), 8000);
+        setIsFinalizationModalOpen(false);
+        setPositionToFinalize(null);
+        return;
+      }
+
       console.log('🔄 Iniciando fechamento de posição com ordens reais...');
       
       // 1. Preparar ordens de fechamento (operações contrárias à abertura)
       const closeOrders = [
         {
           exchange: positionToFinalize.spotExchange as 'gateio' | 'mexc',
-          symbol: positionToFinalize.symbol,
+          symbol: getExchangeSymbol(positionToFinalize.symbol, positionToFinalize.spotExchange, 'spot'),
           side: 'sell' as const, // Vender o que foi comprado no spot
           amount: positionToFinalize.quantity,
           type: 'market' as const,
@@ -379,7 +455,7 @@ export default function ArbitrageTable() {
         },
         {
           exchange: positionToFinalize.futuresExchange as 'gateio' | 'mexc',
-          symbol: positionToFinalize.symbol,
+          symbol: getExchangeSymbol(positionToFinalize.symbol, positionToFinalize.futuresExchange, 'futures'),
           side: 'buy' as const, // Comprar para fechar o short em futures
           amount: positionToFinalize.quantity,
           type: 'market' as const,
@@ -776,7 +852,14 @@ export default function ArbitrageTable() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-semibold text-white">Arbitragem</h1>
+          <h1 className="text-3xl font-semibold text-white">
+            {isBigArb ? 'Big Arb - Grandes Ativos' : 'Arbitragem'}
+          </h1>
+          {isBigArb && (
+            <p className="text-gray-400 mt-1">
+              Monitoramento exclusivo de grandes ativos com alto volume de mercado
+            </p>
+          )}
         </div>
         <button
           onClick={() => setIsPaused((prev) => !prev)}
@@ -787,16 +870,18 @@ export default function ArbitrageTable() {
       </div>
 
       <div className="p-4 bg-dark-card rounded-lg shadow">
-        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-4 gap-4 items-end">
-          <div>
-            <label htmlFor="minSpread" className="block text-sm font-medium text-gray-300 mb-1">Spread Mínimo (%)</label>
-            <input 
-              id="minSpread" type="number" step="0.01" min={0} 
-              className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan"
-              value={minSpread}
-              onChange={e => setMinSpread(Number(e.target.value.replace(',', '.')))} 
-            />
-          </div>
+        <div className={`grid grid-cols-1 md:grid-cols-${isBigArb ? '3' : '4'} lg:grid-cols-${isBigArb ? '3' : '4'} gap-4 items-end`}>
+          {!isBigArb && (
+            <div>
+              <label htmlFor="minSpread" className="block text-sm font-medium text-gray-300 mb-1">Spread Mínimo (%)</label>
+              <input 
+                id="minSpread" type="number" step="0.01" min={0} 
+                className="w-full bg-gray-700 border-gray-600 text-white rounded-md p-2 focus:ring-custom-cyan focus:border-custom-cyan"
+                value={minSpread}
+                onChange={e => setMinSpread(Number(e.target.value.replace(',', '.')))} 
+              />
+            </div>
+          )}
           <div>
             <label htmlFor="maxOpportunities" className="block text-sm font-medium text-gray-300 mb-1">Qtd. Máx. Oportunidades</label>
             <select
@@ -859,6 +944,12 @@ export default function ArbitrageTable() {
                 .filter(opp => {
                   const isSpotBuyFuturesSell = opp.buyAt.marketType === 'spot' && opp.sellAt.marketType === 'futures';
                   const spread = ((opp.sellAt.price - opp.buyAt.price) / opp.buyAt.price) * 100;
+                  
+                  // Para Big Arb, filtra apenas os pares específicos e não aplica filtro de spread mínimo
+                  if (isBigArb) {
+                    return isSpotBuyFuturesSell && BIG_ARB_PAIRS.includes(opp.baseSymbol);
+                  }
+                  
                   return isSpotBuyFuturesSell && spread >= minSpread;
                 })
                 .sort((a, b) => {

@@ -376,6 +376,7 @@ export default function HistoricoPage() {
   const AppIcons = {
     LayoutDashboard: <LayoutDashboard {...iconProps} />,
     Repeat: <Repeat {...iconProps} />,
+    TrendingUp: <TrendingUp {...iconProps} />,
     Wallet: <Wallet {...iconProps} />,
     History: <History {...iconProps} />,
     Settings: <Settings {...iconProps} />,
@@ -384,6 +385,7 @@ export default function HistoricoPage() {
   const sidebarNavItems = [
     { title: 'Dashboard', href: '/dashboard', icon: AppIcons.LayoutDashboard },
     { title: 'Arbitragem', href: '/arbitragem', icon: AppIcons.Repeat },
+    { title: 'Big Arb', href: '/big-arb', icon: AppIcons.TrendingUp },
     { title: 'Carteiras', href: '/carteiras', icon: AppIcons.Wallet },
     { title: 'Histórico', href: '/historico', icon: AppIcons.History },
     { title: 'Configurações', href: '/configuracoes', icon: AppIcons.Settings },
